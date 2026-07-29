@@ -5,8 +5,9 @@ const { requireAdmin } = require('../auth');
 
 const router = express.Router();
 
-const EDITABLE_KEYS = new Set(['site_title', 'site_description']);
+const EDITABLE_KEYS = new Set(['site_title', 'site_description', 'allow_registration']);
 
+// Platform-wide settings; per-team settings live under /api/teams/:teamId/settings.
 router.get('/', (req, res) => {
   const rows = getDb().prepare('SELECT key, value FROM settings').all();
   res.json(Object.fromEntries(rows.map((r) => [r.key, r.value])));

@@ -4,25 +4,32 @@ const bcrypt = require('bcryptjs');
 const { getDb } = require('../db');
 const { requireAdmin } = require('../auth');
 
+// Platform-level user administration (admins only). Team membership is
+// managed per team under /api/teams/:teamId/members.
 const router = express.Router();
 
 router.get('/', requireAdmin, (req, res) => {
   const rows = getDb()
-    .prepare('SELECT id, username, role, created_at FROM users ORDER BY username')
+    .prepare(
+      `SELECT u.id, u.username, u.role, u.created_at,
+              COUNT(tm.team_id) AS team_count
+       FROM users u LEFT JOIN team_members tm ON tm.user_id = u.id
+       GROUP BY u.id ORDER BY u.username`
+    )
     .all();
   res.json(rows);
 });
 
 router.post('/', requireAdmin, (req, res) => {
-  const { username, password, role = 'editor' } = req.body || {};
+  const { username, password, role = 'user' } = req.body || {};
   if (!username || !password) {
     return res.status(400).json({ error: 'username and password are required' });
   }
   if (String(password).length < 8) {
     return res.status(400).json({ error: 'Password must be at least 8 characters' });
   }
-  if (!['admin', 'editor'].includes(role)) {
-    return res.status(400).json({ error: 'role must be admin or editor' });
+  if (!['admin', 'user'].includes(role)) {
+    return res.status(400).json({ error: 'role must be admin or user' });
   }
   const db = getDb();
   if (db.prepare('SELECT 1 FROM users WHERE username = ?').get(username)) {

@@ -19,6 +19,36 @@ router.post('/login', (req, res) => {
   res.json({ id: user.id, username: user.username, role: user.role });
 });
 
+// Self-serve signup, so any team can onboard itself. Can be disabled via
+// the allow_registration platform setting.
+router.post('/register', (req, res) => {
+  const db = getDb();
+  const allowed = db.prepare("SELECT value FROM settings WHERE key = 'allow_registration'").get();
+  if (allowed && allowed.value !== 'true') {
+    return res.status(403).json({ error: 'Registration is disabled — ask an administrator for an account' });
+  }
+  const { username, password } = req.body || {};
+  if (!username || !password) {
+    return res.status(400).json({ error: 'username and password are required' });
+  }
+  const name = String(username).trim();
+  if (!/^[a-zA-Z0-9_.-]{3,32}$/.test(name)) {
+    return res.status(400).json({ error: 'Username must be 3-32 characters (letters, digits, _ . -)' });
+  }
+  if (String(password).length < 8) {
+    return res.status(400).json({ error: 'Password must be at least 8 characters' });
+  }
+  if (db.prepare('SELECT 1 FROM users WHERE username = ?').get(name)) {
+    return res.status(409).json({ error: 'Username already taken' });
+  }
+  const result = db
+    .prepare("INSERT INTO users (username, password_hash, role) VALUES (?, ?, 'user')")
+    .run(name, bcrypt.hashSync(password, 10));
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(result.lastInsertRowid);
+  setAuthCookie(res, issueToken(user));
+  res.status(201).json({ id: user.id, username: user.username, role: user.role });
+});
+
 router.post('/logout', (req, res) => {
   clearAuthCookie(res);
   res.json({ ok: true });

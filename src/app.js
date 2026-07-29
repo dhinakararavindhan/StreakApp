@@ -5,9 +5,7 @@ const cookieParser = require('cookie-parser');
 const { init } = require('./db');
 const { attachUser } = require('./auth');
 const authRoutes = require('./routes/auth');
-const contentRoutes = require('./routes/content');
-const tagRoutes = require('./routes/tags');
-const mediaRoutes = require('./routes/media');
+const teamRoutes = require('./routes/teams');
 const userRoutes = require('./routes/users');
 const settingsRoutes = require('./routes/settings');
 const publicRoutes = require('./routes/public');
@@ -20,11 +18,10 @@ function createApp(options = {}) {
   app.use(cookieParser());
   app.use(attachUser);
 
-  // REST API
+  // REST API — content, tags, and media are nested under their team:
+  // /api/teams/:teamId/{content,tags,media,members,settings}
   app.use('/api/auth', authRoutes);
-  app.use('/api/content', contentRoutes);
-  app.use('/api/tags', tagRoutes);
-  app.use('/api/media', mediaRoutes);
+  app.use('/api/teams', teamRoutes);
   app.use('/api/users', userRoutes);
   app.use('/api/settings', settingsRoutes);
 
@@ -37,7 +34,7 @@ function createApp(options = {}) {
     express.static(process.env.UPLOAD_DIR || path.join(__dirname, '..', 'uploads'))
   );
 
-  // Public site (must be last — catches slugs)
+  // Public sites: / is the team directory, /t/:team is each team's site
   app.use('/', publicRoutes);
 
   // eslint-disable-next-line no-unused-vars
