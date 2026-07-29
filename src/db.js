@@ -37,6 +37,7 @@ function init(options = {}) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
       slug TEXT NOT NULL UNIQUE,
+      custom_domain TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
@@ -101,6 +102,15 @@ function init(options = {}) {
       value TEXT NOT NULL
     );
   `);
+
+  // Migration for databases created before custom domains existed.
+  const teamCols = db.prepare('PRAGMA table_info(teams)').all();
+  if (!teamCols.some((c) => c.name === 'custom_domain')) {
+    db.exec('ALTER TABLE teams ADD COLUMN custom_domain TEXT');
+  }
+  db.exec(
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_teams_custom_domain ON teams(custom_domain) WHERE custom_domain IS NOT NULL'
+  );
 
   seed();
   return db;

@@ -1,12 +1,21 @@
 # CMS
 
-A lightweight multi-team content management system built with Node.js, Express, and SQLite. Any team can sign up, invite members, and run its own site — content, media, tags, and settings are fully isolated per team.
+A lightweight multi-team content management system built with Node.js, Express, and SQLite. Any company or team can onboard itself and use the CMS to power its website — with its own look, its own domain, and fully isolated content.
 
 It ships three things in one small app:
 
 - **REST API** (`/api/…`) — auth, teams, members, content, tags, media, settings
 - **Admin panel** (`/admin`) — sign up, create teams, write and manage content in the browser
-- **Public sites** — `/` is a directory of team sites; each team publishes at `/t/<team-slug>`
+- **Public sites** — `/` is a directory of team sites; each team publishes at `/t/<team-slug>` or on its own custom domain
+
+## Onboarding a company
+
+1. **Register** at `/admin` (self-serve; the platform admin can switch to invite-only).
+2. **Create a team** — the company workspace. The creator becomes its owner and can add teammates by username as editors or co-owners.
+3. **Publish** posts and pages from the admin panel; the site is immediately live at `/t/<slug>`.
+4. **Make it theirs** — pick one of two integration modes:
+   - **Hosted site**: choose a theme preset (Default, Midnight, Paper, Forest, Ocean), set a brand accent color and custom CSS, and connect a **custom domain** — point the domain's DNS at the server and the site is served at the domain root (`www.company.com`, `/posts/<slug>`, `/about`), with no platform branding.
+   - **Headless**: keep their existing website and pull published content as JSON from the public, CORS-open content API — `GET /api/public/<team>/content` and `GET /api/public/<team>/content/<slug>` (includes both raw Markdown and rendered HTML). No auth or API key needed for published content; drafts are never exposed.
 
 ## Quick start
 
@@ -37,7 +46,8 @@ On first run a platform admin is created — username `admin`, password `admin12
 - **Slugs** auto-generated from titles and de-duplicated *within each team*.
 - **Tags** per team, with filtering on the public site and in the admin list.
 - **Media library** per team — images and files up to 10 MB, served from `/uploads`.
-- **Per-team site settings** — each team controls its own site title and description.
+- **Per-team site settings** — title, description, theme preset, accent color, and custom CSS, so every site can look different.
+- **Custom domains** — one per team, validated and unique, serving the team's site at the domain root.
 
 ## Configuration
 
@@ -68,7 +78,9 @@ All `/api` routes accept and return JSON. Authentication uses an httpOnly cookie
 | GET | `/api/teams/:id/members` | member | List members |
 | POST | `/api/teams/:id/members` | owner | Add a member by username (`{username, role}`) |
 | PUT/DELETE | `/api/teams/:id/members/:userId` | owner (self-removal allowed) | Change role / remove or leave |
-| GET/PUT | `/api/teams/:id/settings` | member / owner | Team site title and description |
+| GET/PUT | `/api/teams/:id/settings` | member / owner | Site title, description, theme, accent color, custom CSS |
+| GET | `/api/public/:team` | — | Public team profile (JSON, CORS-open) |
+| GET | `/api/public/:team/content[/:slug]` | — | Published content as JSON — list (`?type=&tag=`) or single item with `body_html` |
 | GET/POST | `/api/teams/:id/content` | member | List (`?type=&status=&tag=&search=`) / create |
 | GET/PUT/DELETE | `/api/teams/:id/content/:cid` | member | Read / update / delete one item |
 | GET/DELETE | `/api/teams/:id/tags[/:tagId]` | member | List / delete tags |

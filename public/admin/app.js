@@ -362,14 +362,36 @@
         <b>Team profile</b>
         <label>Name</label><input name="name" value="${esc(info.name)}">
         <label>URL slug — site lives at /t/&lt;slug&gt;</label><input name="slug" value="${esc(info.slug)}">
+        <label>Custom domain — serve your site at its root (point the domain's DNS at this server first)</label>
+        <input name="custom_domain" placeholder="www.yourcompany.com" value="${esc(info.custom_domain || '')}">
         <p><button class="btn">Save</button></p>
       </form>
       <form class="card" id="site-form" style="max-width:480px;margin-top:1.5rem">
         <b>Public site</b>
         <label>Site title</label><input name="site_title" id="ts-title">
         <label>Site description</label><input name="site_description" id="ts-desc">
+        <label>Theme</label>
+        <select name="theme" id="ts-theme">
+          <option value="default">Default (follows visitor light/dark)</option>
+          <option value="midnight">Midnight</option>
+          <option value="paper">Paper</option>
+          <option value="forest">Forest</option>
+          <option value="ocean">Ocean</option>
+        </select>
+        <label>Accent color (hex, e.g. #dc2626 — blank for theme default)</label>
+        <input name="accent_color" id="ts-accent" placeholder="#2563eb">
+        <label>Custom CSS (applied to your public site only)</label>
+        <textarea name="custom_css" id="ts-css" rows="5" placeholder="h1 { letter-spacing: -0.02em; }"></textarea>
         <p><button class="btn">Save</button></p>
-      </form>` : ''}
+      </form>
+      <div class="card" style="max-width:480px;margin-top:1.5rem">
+        <b>Headless API</b>
+        <p style="color:var(--muted);font-size:0.85rem;margin-bottom:0">
+          Using your own website frontend? Pull published content as JSON (CORS-open, no auth needed):<br>
+          <code>GET /api/public/${esc(info.slug)}/content</code><br>
+          <code>GET /api/public/${esc(info.slug)}/content/&lt;slug&gt;</code>
+        </p>
+      </div>` : ''}
       <div style="margin-top:1.5rem"><b>Members</b>
         ${isOwner ? `
         <form class="toolbar" id="add-member">
@@ -433,6 +455,9 @@
       const settings = await api(`/teams/${team.id}/settings`);
       page.querySelector('#ts-title').value = settings.site_title || '';
       page.querySelector('#ts-desc').value = settings.site_description || '';
+      page.querySelector('#ts-theme').value = settings.theme || 'default';
+      page.querySelector('#ts-accent').value = settings.accent_color || '';
+      page.querySelector('#ts-css').value = settings.custom_css || '';
 
       page.querySelector('#team-form').addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -440,7 +465,7 @@
         try {
           const updated = await api(`/teams/${team.id}`, {
             method: 'PUT',
-            body: { name: f.get('name'), slug: f.get('slug') },
+            body: { name: f.get('name'), slug: f.get('slug'), custom_domain: f.get('custom_domain') },
           });
           Object.assign(team, updated);
           teams = teams.map((t) => (t.id === team.id ? { ...t, ...updated } : t));
@@ -456,7 +481,13 @@
         try {
           await api(`/teams/${team.id}/settings`, {
             method: 'PUT',
-            body: { site_title: f.get('site_title'), site_description: f.get('site_description') },
+            body: {
+              site_title: f.get('site_title'),
+              site_description: f.get('site_description'),
+              theme: f.get('theme'),
+              accent_color: f.get('accent_color'),
+              custom_css: f.get('custom_css'),
+            },
           });
           flash(msg, 'Site settings saved.');
         } catch (err) {

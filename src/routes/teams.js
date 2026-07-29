@@ -8,7 +8,15 @@ const mediaRoutes = require('./media');
 
 const router = express.Router();
 
-const TEAM_SETTING_KEYS = new Set(['site_title', 'site_description']);
+const TEAM_SETTING_KEYS = new Set([
+  'site_title',
+  'site_description',
+  'theme',
+  'accent_color',
+  'custom_css',
+]);
+
+const DOMAIN_RE = /^(?=.{4,253}$)[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
 
 function serialize(team) {
   const db = getDb();
@@ -55,13 +63,36 @@ router.get('/:teamId', requireTeamRole('editor'), (req, res) => {
 });
 
 router.put('/:teamId', requireTeamRole('owner'), (req, res) => {
-  const { name, slug } = req.body || {};
+  const { name, slug, custom_domain } = req.body || {};
   const db = getDb();
   const newName = name !== undefined && String(name).trim() ? String(name).trim() : req.team.name;
   const newSlug = slug !== undefined || name !== undefined
     ? uniqueTeamSlug(slug || newName, req.team.id)
     : req.team.slug;
-  db.prepare('UPDATE teams SET name = ?, slug = ? WHERE id = ?').run(newName, newSlug, req.team.id);
+
+  let newDomain = req.team.custom_domain;
+  if (custom_domain !== undefined) {
+    const domain = String(custom_domain).trim().toLowerCase();
+    if (!domain) {
+      newDomain = null;
+    } else {
+      if (!DOMAIN_RE.test(domain)) {
+        return res.status(400).json({ error: 'custom_domain must be a valid hostname like www.example.com' });
+      }
+      const taken = db
+        .prepare('SELECT 1 FROM teams WHERE custom_domain = ? AND id != ?')
+        .get(domain, req.team.id);
+      if (taken) return res.status(409).json({ error: 'That domain is already connected to another team' });
+      newDomain = domain;
+    }
+  }
+
+  db.prepare('UPDATE teams SET name = ?, slug = ?, custom_domain = ? WHERE id = ?').run(
+    newName,
+    newSlug,
+    newDomain,
+    req.team.id
+  );
   res.json(serialize(db.prepare('SELECT * FROM teams WHERE id = ?').get(req.team.id)));
 });
 

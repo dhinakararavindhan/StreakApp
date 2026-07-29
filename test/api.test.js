@@ -1,5 +1,6 @@
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
+const http = require('node:http');
 
 process.env.ADMIN_USERNAME = 'admin';
 process.env.ADMIN_PASSWORD = 'test-password-123';
@@ -241,6 +242,81 @@ test('registration can be disabled by the platform admin', async () => {
   });
   assert.strictEqual(res.status, 403);
   await admin('/api/settings', { method: 'PUT', body: { allow_registration: 'true' } });
+});
+
+test('theme and accent color change the public site CSS', async () => {
+  const res = await alice(`/api/teams/${aliceTeam.id}/settings`, {
+    method: 'PUT',
+    body: { theme: 'midnight', accent_color: '#dc2626' },
+  });
+  assert.strictEqual(res.status, 200);
+  const html = await (await fetch(`${base}/t/acme-docs`)).text();
+  assert.ok(html.includes('--bg: #0f1115'));
+  assert.ok(html.includes('--accent: #dc2626'));
+});
+
+test('headless API serves published content as JSON without auth', async () => {
+  const list = await fetch(`${base}/api/public/acme-docs/content`);
+  assert.strictEqual(list.status, 200);
+  assert.strictEqual(list.headers.get('access-control-allow-origin'), '*');
+  const rows = await list.json();
+  assert.ok(rows.some((r) => r.slug === 'hello-world'));
+  assert.ok(rows.every((r) => r.body === undefined));
+
+  const single = await fetch(`${base}/api/public/acme-docs/content/hello-world`);
+  const item = await single.json();
+  assert.ok(item.body_html.includes('<h1>Hi</h1>'));
+
+  // Drafts stay private.
+  const draft = await fetch(`${base}/api/public/acme-docs/content/hello-world-2`);
+  assert.strictEqual(draft.status, 404);
+});
+
+test('invalid custom domains are rejected', async () => {
+  const res = await alice(`/api/teams/${aliceTeam.id}`, {
+    method: 'PUT',
+    body: { custom_domain: 'not a domain!' },
+  });
+  assert.strictEqual(res.status, 400);
+});
+
+test('a connected custom domain serves the team site at its root', async () => {
+  const set = await alice(`/api/teams/${aliceTeam.id}`, {
+    method: 'PUT',
+    body: { custom_domain: 'docs.acme.example' },
+  });
+  assert.strictEqual(set.status, 200);
+  assert.strictEqual((await set.json()).custom_domain, 'docs.acme.example');
+
+  const fetchAsHost = (path, host) =>
+    new Promise((resolve, reject) => {
+      const url = new URL(base);
+      http.get(
+        { host: url.hostname, port: url.port, path, headers: { Host: host } },
+        (r) => {
+          let body = '';
+          r.on('data', (c) => (body += c));
+          r.on('end', () => resolve({ status: r.statusCode, body }));
+        }
+      ).on('error', reject);
+    });
+
+  const home = await fetchAsHost('/', 'docs.acme.example');
+  assert.strictEqual(home.status, 200);
+  assert.ok(home.body.includes('Acme Knowledge Base'));
+  assert.ok(!home.body.includes('All teams'));
+
+  const post = await fetchAsHost('/posts/hello-world', 'docs.acme.example');
+  assert.strictEqual(post.status, 200);
+  assert.ok(post.body.includes('<h1>Hi</h1>'));
+
+  const pageRes = await fetchAsHost('/about', 'docs.acme.example');
+  assert.strictEqual(pageRes.status, 200);
+  assert.ok(pageRes.body.includes('About Acme Docs.'));
+
+  // The platform host still serves the directory.
+  const directory = await fetch(`${base}/`);
+  assert.ok((await directory.text()).includes('Team sites'));
 });
 
 test('deleting a team removes its content everywhere', async () => {
