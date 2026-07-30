@@ -17,6 +17,8 @@ const TEAM_SETTING_KEYS = new Set([
   'accent_color',
   'custom_css',
   'default_locale',
+  'heading_font',
+  'layout',
 ]);
 
 const DOMAIN_RE = /^(?=.{4,253}$)[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;

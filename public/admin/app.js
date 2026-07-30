@@ -84,6 +84,20 @@
 
   // ---------- auth screens ----------
 
+  const THEME_GALLERY = [
+    ['default', 'Auto', '#ffffff', '#1a1a1a', '#2563eb'],
+    ['paper', 'Paper', '#faf7f0', '#292420', '#b45309'],
+    ['forest', 'Forest', '#f6faf7', '#14281d', '#166534'],
+    ['ocean', 'Ocean', '#f4f8fb', '#0f2537', '#0e7490'],
+    ['mint', 'Mint', '#f1faf6', '#11312a', '#0d9488'],
+    ['lavender', 'Lavender', '#faf8ff', '#26203a', '#7c3aed'],
+    ['midnight', 'Midnight', '#0f1115', '#e5e7eb', '#60a5fa'],
+    ['slate', 'Slate', '#1e293b', '#e2e8f0', '#38bdf8'],
+    ['noir', 'Noir', '#000000', '#f5f5f5', '#f43f5e'],
+    ['sunset', 'Sunset', '#1d1210', '#f6e9e1', '#fb923c'],
+    ['terminal', 'Terminal', '#0a0f0a', '#c9f5c9', '#22c55e'],
+  ];
+
   const PORTALS = {
     superadmin: { label: 'Super Admin', hint: 'Platform operators — full platform oversight.' },
     admin: { label: 'Admin', hint: 'Company owners — branding, domain, members, content.' },
@@ -1138,12 +1152,26 @@
         <label>Site title</label><input name="site_title" id="ts-title">
         <label>Site description</label><input name="site_description" id="ts-desc">
         <label>Theme</label>
-        <select name="theme" id="ts-theme">
-          <option value="default">Default (follows visitor light/dark)</option>
-          <option value="midnight">Midnight</option>
-          <option value="paper">Paper</option>
-          <option value="forest">Forest</option>
-          <option value="ocean">Ocean</option>
+        <input type="hidden" name="theme" id="ts-theme" value="default">
+        <div class="theme-grid" id="theme-grid">
+          ${THEME_GALLERY.map(
+            ([key, name, bg, fg, accent]) => `
+            <button type="button" class="swatch" data-theme="${key}" style="background:${bg};color:${fg}" title="${name}">
+              <span class="dot" style="background:${accent}"></span>
+              <span class="tn">${name}</span>
+            </button>`
+          ).join('')}
+        </div>
+        <label>Headings typeface</label>
+        <select name="heading_font" id="ts-hfont">
+          <option value="sans">Sans (Geist)</option>
+          <option value="serif">Serif (editorial)</option>
+          <option value="mono">Monospace (technical)</option>
+        </select>
+        <label>Home layout</label>
+        <select name="layout" id="ts-layout">
+          <option value="cards">Card grid</option>
+          <option value="list">List</option>
         </select>
         <label>Accent color (hex, e.g. #dc2626 — blank for theme default)</label>
         <input name="accent_color" id="ts-accent" placeholder="#2563eb">
@@ -1255,6 +1283,21 @@
       page.querySelector('#ts-title').value = settings.site_title || '';
       page.querySelector('#ts-desc').value = settings.site_description || '';
       page.querySelector('#ts-theme').value = settings.theme || 'default';
+      page.querySelector('#ts-hfont').value = settings.heading_font || 'sans';
+      page.querySelector('#ts-layout').value = settings.layout || 'cards';
+      const markSwatch = () => {
+        const current = page.querySelector('#ts-theme').value;
+        page.querySelectorAll('#theme-grid .swatch').forEach((b) =>
+          b.classList.toggle('sel', b.dataset.theme === current)
+        );
+      };
+      page.querySelectorAll('#theme-grid .swatch').forEach((b) =>
+        b.addEventListener('click', () => {
+          page.querySelector('#ts-theme').value = b.dataset.theme;
+          markSwatch();
+        })
+      );
+      markSwatch();
       page.querySelector('#ts-accent').value = settings.accent_color || '';
       page.querySelector('#ts-css').value = settings.custom_css || '';
       page.querySelector('#ts-locale').value = settings.default_locale || 'en';
@@ -1287,6 +1330,8 @@
               theme: f.get('theme'),
               accent_color: f.get('accent_color'),
               custom_css: f.get('custom_css'),
+              heading_font: f.get('heading_font'),
+              layout: f.get('layout'),
               default_locale: (f.get('default_locale') || 'en').toLowerCase(),
             },
           });

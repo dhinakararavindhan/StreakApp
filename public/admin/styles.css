@@ -393,3 +393,16 @@ td .path { color: var(--faint); font-size: 0.76rem; }
 
 /* editor live preview reads as prose, not code */
 #body-preview { font-family: 'Geist Sans', system-ui, sans-serif; font-size: 0.95rem; }
+
+/* theme gallery */
+.theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(86px, 1fr)); gap: 0.45rem; }
+.swatch {
+  border: 2px solid var(--border-2); border-radius: 9px; padding: 0.55rem 0.5rem 0.5rem;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 0.35rem;
+  font-size: 0.76rem; font-weight: 600; min-height: 54px;
+  transition: border-color 0.1s, transform 0.1s;
+}
+.swatch:hover { transform: translateY(-1px); border-color: var(--a1); }
+.swatch.sel { border-color: var(--a1); box-shadow: 0 0 0 3px rgba(109, 124, 255, 0.25); }
+.swatch .dot { width: 14px; height: 14px; border-radius: 50%; }
+.swatch .tn { line-height: 1.1; }

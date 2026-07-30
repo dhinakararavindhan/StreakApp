@@ -26,7 +26,7 @@ Users can belong to several companies (with different roles in each) and switch 
 2. **Create the company workspace** — the creator becomes its admin and adds employees by username as managers (or co-admins).
 3. **Publish** from the admin panel; the site is immediately live at `/t/<slug>`.
 4. **Make it theirs** — two integration modes:
-   - **Hosted site**: pick a theme preset (Default, Midnight, Paper, Forest, Ocean), set a brand accent color and custom CSS, and connect a **custom domain** — point DNS at the server and the site is served at the domain root with no platform branding.
+   - **Hosted site**: pick from an **11-theme gallery** (Auto, Paper, Forest, Ocean, Mint, Lavender, Midnight, Slate, Noir, Sunset, Terminal) with visual swatches, choose a **headings typeface** (sans / serif / monospace) and a **home layout** (card grid or list), set a brand accent color and custom CSS, and connect a **custom domain** — point DNS at the server and the site is served at the domain root with no platform branding.
    - **Headless**: keep an existing website and pull published content as JSON from the public, CORS-open content API — `GET /api/public/<company>/content` and `…/content/<slug>` (raw Markdown + rendered HTML + cover image). Drafts are never exposed.
 
 ## World-ready content (i18n)
@@ -69,7 +69,7 @@ Managers have full CRUD on content, but nothing they touch goes live on its own:
 - **Slugs** auto-generated from titles and de-duplicated *within each company*.
 - **Tags** per company, with filtering on the public site and in the admin.
 - **Media library** per company — images and files up to 10 MB, served from `/uploads`.
-- **Public sites** with hero sections, card grids, sticky blurred navigation, and per-company theming.
+- **Public sites** with hero sections, card-grid or list layouts, sticky blurred navigation, and per-company theming (11 presets × 3 heading typefaces × accent color × custom CSS).
 
 ## Quick start
 
@@ -157,7 +157,7 @@ All `/api` routes accept and return JSON. Authentication uses an httpOnly cookie
 npm test
 ```
 
-45 end-to-end tests (`node --test`, in-memory database): registration, company creation, the three-tier role model, cross-company isolation, content CRUD with cover images, per-company slug scoping, draft/pending/publish visibility, the approval workflow, feeds/sitemaps/SEO, rate limiting, theming, custom-domain routing, the headless API, dashboards, and platform stats.
+46 end-to-end tests (`node --test`, in-memory database): registration, company creation, the three-tier role model, cross-company isolation, content CRUD with cover images, per-company slug scoping, draft/pending/publish visibility, the approval workflow, feeds/sitemaps/SEO, rate limiting, theming, custom-domain routing, the headless API, dashboards, and platform stats.
 
 ## Project layout
 

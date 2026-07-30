@@ -827,6 +827,32 @@ test('body formats: text, html, image, and embed all render correctly', async ()
   assert.strictEqual(bad.status, 400);
 });
 
+
+test('theme presets, heading fonts, and home layout apply to the site', async () => {
+  const res = await alice(`/api/teams/${aliceTeam.id}/settings`, {
+    method: 'PUT',
+    body: { theme: 'noir', heading_font: 'serif', layout: 'list' },
+  });
+  assert.strictEqual(res.status, 200);
+  const saved = await res.json();
+  assert.strictEqual(saved.theme, 'noir');
+
+  const home = await (await fetch(`${base}/t/acme-docs`)).text();
+  assert.ok(home.includes('--bg: #000000'));
+  assert.ok(home.includes("Georgia, 'Times New Roman', serif"));
+  assert.ok(home.includes('class="postrow"'));
+  assert.ok(!home.includes('class="cards"'));
+
+  // Back to a light preset with the card grid.
+  await alice(`/api/teams/${aliceTeam.id}/settings`, {
+    method: 'PUT',
+    body: { theme: 'mint', heading_font: 'sans', layout: 'cards' },
+  });
+  const mint = await (await fetch(`${base}/t/acme-docs`)).text();
+  assert.ok(mint.includes('--bg: #f1faf6'));
+  assert.ok(mint.includes('class="cards"'));
+});
+
 test('health endpoint responds for load balancers', async () => {
   const res = await fetch(`${base}/api/health`);
   assert.strictEqual(res.status, 200);

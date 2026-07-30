@@ -10,10 +10,23 @@ const router = express.Router();
 // visitor's light/dark preference; the rest are fixed brand looks.
 const THEMES = {
   default: null, // handled via prefers-color-scheme below
-  midnight: { bg: '#0f1115', fg: '#e5e7eb', muted: '#98a2b3', border: '#2a2f3a', accent: '#60a5fa' },
   paper: { bg: '#faf7f0', fg: '#292420', muted: '#8a7f70', border: '#e6ddcc', accent: '#b45309' },
   forest: { bg: '#f6faf7', fg: '#14281d', muted: '#5c6f60', border: '#d8e4da', accent: '#166534' },
   ocean: { bg: '#f4f8fb', fg: '#0f2537', muted: '#5b7387', border: '#d4e2ec', accent: '#0e7490' },
+  mint: { bg: '#f1faf6', fg: '#11312a', muted: '#5c7a70', border: '#d5e9e0', accent: '#0d9488' },
+  lavender: { bg: '#faf8ff', fg: '#26203a', muted: '#6f6a89', border: '#e7e1f6', accent: '#7c3aed' },
+  midnight: { bg: '#0f1115', fg: '#e5e7eb', muted: '#98a2b3', border: '#2a2f3a', accent: '#60a5fa' },
+  slate: { bg: '#1e293b', fg: '#e2e8f0', muted: '#94a3b8', border: '#334155', accent: '#38bdf8' },
+  noir: { bg: '#000000', fg: '#f5f5f5', muted: '#9a9a9a', border: '#262626', accent: '#f43f5e' },
+  sunset: { bg: '#1d1210', fg: '#f6e9e1', muted: '#b39a8d', border: '#3c2a23', accent: '#fb923c' },
+  terminal: { bg: '#0a0f0a', fg: '#c9f5c9', muted: '#71a071', border: '#1e301e', accent: '#22c55e' },
+};
+
+// Heading typography options a company can pair with any theme.
+const HEADING_FONTS = {
+  sans: '',
+  serif: "h1, h2, h3, h1.site, .card h2, .postrow h2 { font-family: Georgia, 'Times New Roman', serif; }",
+  mono: "h1, h2, h3, h1.site, .card h2, .postrow h2 { font-family: ui-monospace, 'SF Mono', 'Cascadia Code', monospace; letter-spacing: -0.01em; }",
 };
 
 function esc(s) {
@@ -86,6 +99,7 @@ ${(meta.alternates || []).map((a) => `<link rel="alternate" hreflang="${esc(a.la
   @font-face { font-family: 'Geist Sans'; font-weight: 600; font-display: swap; src: url('/assets/fonts/geist-sans-latin-600-normal.woff2') format('woff2'); }
   @font-face { font-family: 'Geist Sans'; font-weight: 800; font-display: swap; src: url('/assets/fonts/geist-sans-latin-800-normal.woff2') format('woff2'); }
   ${themeCss(settings)}
+  ${HEADING_FONTS[settings.heading_font] || ''}
   * { box-sizing: border-box; }
   body { margin: 0; font-family: 'Geist Sans', system-ui, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; color: var(--fg); background: var(--bg); line-height: 1.65; }
   header.top {
@@ -131,6 +145,13 @@ ${(meta.alternates || []).map((a) => `<link rel="alternate" hreflang="${esc(a.la
   code { background: color-mix(in srgb, var(--fg) 6%, var(--bg)); border-radius: 4px; padding: 0.1em 0.35em; font-size: 0.9em; }
   pre code { background: none; padding: 0; }
   blockquote { border-left: 3px solid var(--accent); margin-left: 0; padding-left: 1.25rem; color: var(--muted); }
+  .postlist { margin-top: 1.5rem; }
+  a.postrow { display: flex; gap: 1.1rem; padding: 1.15rem 0; border-bottom: 1px solid var(--border); color: var(--fg); align-items: flex-start; }
+  a.postrow:hover { text-decoration: none; }
+  a.postrow:hover h2 { color: var(--accent); }
+  .postrow h2 { margin: 0 0 0.25rem; font-size: 1.1rem; letter-spacing: -0.01em; }
+  .postrow p { margin: 0 0 0.3rem; color: var(--muted); font-size: 0.92rem; }
+  .postrow img.thumb { width: 112px; height: 76px; object-fit: cover; border-radius: 8px; flex: none; }
   figure.body-image { margin: 0; }
   figure.body-image img { width: 100%; border-radius: 12px; }
   figure.body-image figcaption { color: var(--muted); font-size: 0.85rem; margin-top: 0.5rem; text-align: center; }
@@ -201,6 +222,19 @@ function postCard(team, row, base) {
       <div class="meta">${esc(date)} ${tagLinks(row, base)}</div>
     </div>
   </div>`;
+}
+
+/** Compact row for the 'list' home layout. */
+function postRow(team, row, base) {
+  const date = (row.published_at || row.created_at || '').slice(0, 10);
+  const href = `${base}/posts/${row.slug}`;
+  const thumb = row.cover_image ? `<img class="thumb" src="${esc(row.cover_image)}" alt="">` : '';
+  const excerpt = row.excerpt ? mdInline(row.excerpt) : esc(fallbackExcerpt(row.format, row.body));
+  return `<a class="postrow" href="${esc(href)}">${thumb}<div>
+    <h2>${esc(row.title)}</h2>
+    <p>${excerpt}</p>
+    <div class="meta">${esc(date)}</div>
+  </div></a>`;
 }
 
 function fullArticle(team, row, base) {
@@ -294,8 +328,13 @@ function renderTeamHome(team, onDomain, req, res, locale = null) {
     <p>${tag ? esc(`Tagged “${tag}”`) : mdInline(s.site_description || '')}</p>
     <div class="rule"></div>
   </div>`;
+  const listMode = s.layout === 'list';
   const content = posts.length
-    ? `${hero}<div class="cards">${posts.map((p) => postCard(team, p, base)).join('')}</div>`
+    ? `${hero}${
+        listMode
+          ? `<div class="postlist">${posts.map((p) => postRow(team, p, base)).join('')}</div>`
+          : `<div class="cards">${posts.map((p) => postCard(team, p, base)).join('')}</div>`
+      }`
     : `${hero}<p class="meta" style="margin-top:2rem">No posts yet.</p>`;
   res.send(teamLayout(team, onDomain, { title: tag ? `Tag: ${tag}` : '', content, locale: loc }));
 }

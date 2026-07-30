@@ -64,6 +64,7 @@ From one box to the planet.
 The moat is other people's work running on Nova.
 
 - [ ] Plugin API (server hooks + admin panel extension points)
+- [x] Theme gallery: 11 presets × heading typefaces (sans/serif/mono) × home layouts (cards/list) × accent + custom CSS
 - [ ] Theme system beyond presets: installable themes, template overrides
 - [ ] Official SDKs (JS/TS first) generated from an OpenAPI spec
 - [ ] Docs site built on Nova itself (dogfooding), template gallery, showcase
