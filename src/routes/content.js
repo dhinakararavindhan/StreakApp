@@ -3,6 +3,7 @@ const { marked } = require('marked');
 
 const { getDb, slugify, uniqueSlug } = require('../db');
 const { audit } = require('../audit');
+const { deliver, contentPayload } = require('../webhooks');
 
 // Mounted at /api/teams/:teamId/content behind requireTeamRole('manager'),
 // which sets req.team and req.teamRole — every query below is scoped to
@@ -17,6 +18,28 @@ const router = express.Router({ mergeParams: true });
 
 const STATUSES = ['draft', 'pending', 'published'];
 const MAX_VERSIONS = 50;
+const LOCALE_RE = /^[a-z]{2,3}(-[a-z0-9]{2,8})?$/;
+
+function teamDefaultLocale(teamId) {
+  const row = getDb()
+    .prepare("SELECT value FROM team_settings WHERE team_id = ? AND key = 'default_locale'")
+    .get(teamId);
+  return (row && row.value) || 'en';
+}
+
+/** The translation group root id for a row. */
+function groupRoot(row) {
+  return row.translation_of || row.id;
+}
+
+function groupMembers(teamId, rootId) {
+  return getDb()
+    .prepare(
+      `SELECT id, locale, title, slug, status FROM content
+       WHERE team_id = ? AND (id = ? OR translation_of = ?) ORDER BY locale`
+    )
+    .all(teamId, rootId, rootId);
+}
 
 function loadTags(contentId) {
   return getDb()
@@ -54,6 +77,7 @@ function serialize(row, { withHtml = false } = {}) {
   const out = { ...rest, live_version: live, tags: loadTags(row.id) };
   if (withHtml) {
     out.body_html = marked.parse(row.body);
+    out.translations = groupMembers(row.team_id, groupRoot(row)).filter((t) => t.id !== row.id);
     const lastEditor = getDb()
       .prepare(
         `SELECT u.username FROM content_versions v LEFT JOIN users u ON u.id = v.edited_by
@@ -90,12 +114,13 @@ function normalizeWhen(value) {
 
 // List with optional filters: ?type=post&status=pending&tag=news&search=hello
 router.get('/', (req, res) => {
-  const { type, status, tag, search } = req.query;
+  const { type, status, tag, search, locale } = req.query;
   const where = ['c.team_id = ?'];
   const params = [req.team.id];
   if (type) { where.push('c.type = ?'); params.push(type); }
   if (status) { where.push('c.status = ?'); params.push(status); }
   if (search) { where.push('(c.title LIKE ? OR c.body LIKE ?)'); params.push(`%${search}%`, `%${search}%`); }
+  if (locale) { where.push('c.locale = ?'); params.push(String(locale).toLowerCase()); }
   if (tag) {
     where.push(
       'c.id IN (SELECT ct.content_id FROM content_tags ct JOIN tags t ON t.id = ct.tag_id WHERE t.team_id = ? AND t.slug = ?)'
@@ -128,7 +153,7 @@ router.get('/:id', (req, res) => {
 router.post('/', (req, res) => {
   const {
     type = 'post', title, slug, body = '', excerpt = '', cover_image = '',
-    status = 'draft', tags, publish_at, expire_at,
+    status = 'draft', tags, publish_at, expire_at, locale, translation_of,
   } = req.body || {};
   if (!title) return res.status(400).json({ error: 'title is required' });
   if (!['post', 'page'].includes(type)) return res.status(400).json({ error: 'type must be post or page' });
@@ -143,17 +168,35 @@ router.post('/', (req, res) => {
   }
 
   const db = getDb();
+  const finalLocale = String(locale || teamDefaultLocale(req.team.id)).toLowerCase();
+  if (!LOCALE_RE.test(finalLocale)) {
+    return res.status(400).json({ error: 'locale must look like "en", "pt-br", or "zh-hans"' });
+  }
+  let rootId = null;
+  if (translation_of !== undefined && translation_of !== null && translation_of !== '') {
+    const target = db
+      .prepare('SELECT * FROM content WHERE id = ? AND team_id = ?')
+      .get(translation_of, req.team.id);
+    if (!target) return res.status(404).json({ error: 'translation_of item not found' });
+    rootId = groupRoot(target);
+    const clash = groupMembers(req.team.id, rootId).some((m) => m.locale === finalLocale);
+    if (clash || finalLocale === db.prepare('SELECT locale FROM content WHERE id = ?').get(rootId).locale) {
+      return res.status(409).json({ error: `A "${finalLocale}" version already exists in this translation group` });
+    }
+  }
+
   const finalSlug = uniqueSlug(slug || title, req.team.id);
   const result = db
     .prepare(
-      `INSERT INTO content (team_id, type, title, slug, body, excerpt, cover_image, status, author_id, publish_at, expire_at, published_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? = 'published' THEN datetime('now') ELSE NULL END)`
+      `INSERT INTO content (team_id, type, title, slug, body, excerpt, cover_image, status, author_id, publish_at, expire_at, locale, translation_of, published_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? = 'published' THEN datetime('now') ELSE NULL END)`
     )
-    .run(req.team.id, type, title, finalSlug, body, excerpt, String(cover_image), status, req.user.id, publishAt, expireAt, status);
+    .run(req.team.id, type, title, finalSlug, body, excerpt, String(cover_image), status, req.user.id, publishAt, expireAt, finalLocale, rootId, status);
   setTags(req.team.id, result.lastInsertRowid, tags);
   const row = db.prepare('SELECT * FROM content WHERE id = ?').get(result.lastInsertRowid);
   saveVersion(row, req.user.id);
   audit(req.team.id, req.user, status === 'pending' ? 'content.submit' : 'content.create', title);
+  if (row.status === 'published') deliver(req.team.id, 'content.published', contentPayload(req.team, row));
   res.status(201).json(serialize(row));
 });
 
@@ -161,7 +204,14 @@ router.post('/', (req, res) => {
     slug, body, excerpt, cover_image, status, tags, publish_at, expire_at. */
 function applyUpdate(req, res, existing, fields) {
   const db = getDb();
-  const { title, slug, body, excerpt, cover_image, status, tags, publish_at, expire_at } = fields;
+  const { title, slug, body, excerpt, cover_image, status, tags, publish_at, expire_at, locale } = fields;
+  let newLocale = existing.locale;
+  if (locale !== undefined) {
+    newLocale = String(locale).toLowerCase();
+    if (!LOCALE_RE.test(newLocale)) {
+      return res.status(400).json({ error: 'locale must look like "en", "pt-br", or "zh-hans"' });
+    }
+  }
   if (status && !STATUSES.includes(status)) {
     return res.status(400).json({ error: 'status must be draft, pending, or published' });
   }
@@ -217,7 +267,7 @@ function applyUpdate(req, res, existing, fields) {
   db.prepare(
     `UPDATE content SET title = ?, slug = ?, body = ?, excerpt = ?, cover_image = ?, status = ?,
      review_note = ?, published_snapshot = ?, publish_at = ?, expire_at = ?, published_at = ?,
-     updated_at = datetime('now') WHERE id = ?`
+     locale = ?, updated_at = datetime('now') WHERE id = ?`
   ).run(
     newTitle,
     newSlug,
@@ -230,6 +280,7 @@ function applyUpdate(req, res, existing, fields) {
     publishAt,
     expireAt,
     publishedAt,
+    newLocale,
     existing.id
   );
   if (tags !== undefined) setTags(req.team.id, existing.id, tags);
@@ -254,6 +305,15 @@ router.put('/:id', (req, res) => {
         ? 'content.publish'
         : 'content.update';
   audit(req.team.id, req.user, action, updated.title);
+  if (updated.status === 'published') {
+    deliver(
+      req.team.id,
+      existing.status === 'published' || existing.published_snapshot ? 'content.updated' : 'content.published',
+      contentPayload(req.team, updated)
+    );
+  } else if (existing.status === 'published' && !updated.published_snapshot) {
+    deliver(req.team.id, 'content.unpublished', contentPayload(req.team, updated));
+  }
   res.json(serialize(updated));
 });
 
@@ -307,12 +367,15 @@ router.post('/:id/approve', (req, res) => {
   const row = db.prepare('SELECT * FROM content WHERE id = ? AND team_id = ?').get(req.params.id, req.team.id);
   if (!row) return res.status(404).json({ error: 'Not found' });
   if (row.status !== 'pending') return res.status(400).json({ error: 'Only pending content can be approved' });
+  const hadLiveSnapshot = Boolean(row.published_snapshot);
   db.prepare(
     `UPDATE content SET status = 'published', review_note = '', published_snapshot = '',
      published_at = COALESCE(published_at, datetime('now')), updated_at = datetime('now') WHERE id = ?`
   ).run(row.id);
   audit(req.team.id, req.user, 'content.approve', row.title);
-  res.json(serialize(db.prepare('SELECT * FROM content WHERE id = ?').get(row.id)));
+  const fresh = db.prepare('SELECT * FROM content WHERE id = ?').get(row.id);
+  deliver(req.team.id, hadLiveSnapshot ? 'content.updated' : 'content.published', contentPayload(req.team, fresh));
+  res.json(serialize(fresh));
 });
 
 // Reject a pending item back to draft, optionally with a note for the author.
@@ -367,10 +430,12 @@ router.post('/:id/comments', (req, res) => {
 
 router.delete('/:id', (req, res) => {
   const db = getDb();
-  const row = db.prepare('SELECT title FROM content WHERE id = ? AND team_id = ?').get(req.params.id, req.team.id);
+  const row = db.prepare('SELECT * FROM content WHERE id = ? AND team_id = ?').get(req.params.id, req.team.id);
   if (!row) return res.status(404).json({ error: 'Not found' });
+  const wasLive = row.status === 'published' || Boolean(row.published_snapshot);
   db.prepare('DELETE FROM content WHERE id = ? AND team_id = ?').run(req.params.id, req.team.id);
   audit(req.team.id, req.user, 'content.delete', row.title);
+  if (wasLive) deliver(req.team.id, 'content.deleted', contentPayload(req.team, row));
   res.json({ ok: true });
 });
 

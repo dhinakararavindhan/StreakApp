@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const express = require('express');
 
 const { getDb, uniqueTeamSlug, setTeamDefaults } = require('../db');
@@ -15,6 +16,7 @@ const TEAM_SETTING_KEYS = new Set([
   'theme',
   'accent_color',
   'custom_css',
+  'default_locale',
 ]);
 
 const DOMAIN_RE = /^(?=.{4,253}$)[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
@@ -240,6 +242,128 @@ router.put('/:teamId/settings', requireTeamRole('admin'), (req, res) => {
   if (changed.length) audit(req.team.id, req.user, 'settings.update', changed.join(', '));
   const rows = db.prepare('SELECT key, value FROM team_settings WHERE team_id = ?').all(req.team.id);
   res.json(Object.fromEntries(rows.map((r) => [r.key, r.value])));
+});
+
+// ---------- webhooks (company admins) ----------
+
+const EVENT_NAMES = ['content.published', 'content.updated', 'content.unpublished', 'content.deleted'];
+
+router.get('/:teamId/webhooks', requireTeamRole('admin'), (req, res) => {
+  const rows = getDb()
+    .prepare('SELECT id, url, events, active, last_status, last_at, created_at FROM webhooks WHERE team_id = ? ORDER BY id')
+    .all(req.team.id);
+  res.json(rows);
+});
+
+router.post('/:teamId/webhooks', requireTeamRole('admin'), (req, res) => {
+  const { url, events = '*', secret } = req.body || {};
+  let parsed;
+  try {
+    parsed = new URL(String(url));
+  } catch {
+    return res.status(400).json({ error: 'url must be a valid http(s) URL' });
+  }
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    return res.status(400).json({ error: 'url must be http or https' });
+  }
+  const eventList = String(events).trim() || '*';
+  if (eventList !== '*') {
+    const bad = eventList.split(',').map((e) => e.trim()).find((e) => !EVENT_NAMES.includes(e));
+    if (bad) return res.status(400).json({ error: `Unknown event "${bad}" — use ${EVENT_NAMES.join(', ')} or *` });
+  }
+  const finalSecret = secret ? String(secret) : crypto.randomBytes(16).toString('hex');
+  const result = getDb()
+    .prepare('INSERT INTO webhooks (team_id, url, secret, events) VALUES (?, ?, ?, ?)')
+    .run(req.team.id, String(url), finalSecret, eventList);
+  audit(req.team.id, req.user, 'webhook.add', String(url), eventList);
+  // The signing secret is returned once, at creation.
+  res.status(201).json({ id: result.lastInsertRowid, url: String(url), events: eventList, secret: finalSecret });
+});
+
+router.delete('/:teamId/webhooks/:hookId', requireTeamRole('admin'), (req, res) => {
+  const result = getDb()
+    .prepare('DELETE FROM webhooks WHERE id = ? AND team_id = ?')
+    .run(req.params.hookId, req.team.id);
+  if (result.changes === 0) return res.status(404).json({ error: 'Not found' });
+  audit(req.team.id, req.user, 'webhook.remove', `#${req.params.hookId}`);
+  res.json({ ok: true });
+});
+
+// ---------- API keys (company admins) ----------
+
+router.get('/:teamId/api-keys', requireTeamRole('admin'), (req, res) => {
+  const rows = getDb()
+    .prepare('SELECT id, name, prefix, scope, last_used_at, created_at FROM api_keys WHERE team_id = ? ORDER BY id')
+    .all(req.team.id);
+  res.json(rows);
+});
+
+router.post('/:teamId/api-keys', requireTeamRole('admin'), (req, res) => {
+  const { name, scope = 'read' } = req.body || {};
+  if (!name || !String(name).trim()) return res.status(400).json({ error: 'name is required' });
+  if (!['read', 'write'].includes(scope)) return res.status(400).json({ error: 'scope must be read or write' });
+  const token = `nova_${crypto.randomBytes(24).toString('hex')}`;
+  const result = getDb()
+    .prepare('INSERT INTO api_keys (team_id, name, prefix, token_hash, scope, created_by) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(
+      req.team.id,
+      String(name).trim(),
+      token.slice(0, 13),
+      crypto.createHash('sha256').update(token).digest('hex'),
+      scope,
+      req.user.id
+    );
+  audit(req.team.id, req.user, 'apikey.create', String(name).trim(), scope);
+  // The full token is returned once, at creation — only its hash is stored.
+  res.status(201).json({ id: result.lastInsertRowid, name: String(name).trim(), scope, token });
+});
+
+router.delete('/:teamId/api-keys/:keyId', requireTeamRole('admin'), (req, res) => {
+  const result = getDb()
+    .prepare('DELETE FROM api_keys WHERE id = ? AND team_id = ?')
+    .run(req.params.keyId, req.team.id);
+  if (result.changes === 0) return res.status(404).json({ error: 'Not found' });
+  audit(req.team.id, req.user, 'apikey.revoke', `#${req.params.keyId}`);
+  res.json({ ok: true });
+});
+
+// ---------- full export (no lock-in) ----------
+
+router.get('/:teamId/export', requireTeamRole('admin'), (req, res) => {
+  const db = getDb();
+  const settings = Object.fromEntries(
+    db.prepare('SELECT key, value FROM team_settings WHERE team_id = ?').all(req.team.id).map((r) => [r.key, r.value])
+  );
+  const content = db
+    .prepare('SELECT * FROM content WHERE team_id = ? ORDER BY id')
+    .all(req.team.id)
+    .map((row) => {
+      const tags = db
+        .prepare('SELECT t.name FROM tags t JOIN content_tags ct ON ct.tag_id = t.id WHERE ct.content_id = ?')
+        .all(row.id)
+        .map((t) => t.name);
+      const { published_snapshot, ...rest } = row;
+      return { ...rest, tags };
+    });
+  const members = db
+    .prepare(
+      'SELECT u.username, tm.role, tm.created_at FROM team_members tm JOIN users u ON u.id = tm.user_id WHERE tm.team_id = ?'
+    )
+    .all(req.team.id);
+  const media = db
+    .prepare('SELECT filename, original_name, mime_type, size, created_at FROM media WHERE team_id = ?')
+    .all(req.team.id);
+  res.set('Content-Disposition', `attachment; filename="${req.team.slug}-export.json"`);
+  res.json({
+    format: 'nova-cms-export',
+    version: 1,
+    exported_at: new Date().toISOString(),
+    company: { name: req.team.name, slug: req.team.slug, custom_domain: req.team.custom_domain },
+    settings,
+    members,
+    media,
+    content,
+  });
 });
 
 // ---------- company-scoped resources ----------

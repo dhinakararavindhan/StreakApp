@@ -344,7 +344,7 @@
         <tbody>${rows
           .map(
             (r) => `<tr>
-              <td><a href="#/edit/${r.id}"><b>${esc(r.title)}</b></a><br><span class="path">/${esc(r.slug)}</span></td>
+              <td><a href="#/edit/${r.id}"><b>${esc(r.title)}</b></a><br><span class="path">/${esc(r.slug)}</span> <span class="path" style="text-transform:uppercase">· ${esc(r.locale || 'en')}</span></td>
               <td>${esc(r.type)}</td>
               <td><span class="pill ${esc(r.status)}">${esc(r.status)}</span></td>
               <td>${esc(r.updated_at.slice(0, 16))}</td>
@@ -376,7 +376,7 @@
   async function renderEditor(id) {
     const isNew = id === 'new';
     const item = isNew
-      ? { type: 'post', title: '', slug: '', body: '', excerpt: '', cover_image: '', status: 'draft', tags: [], publish_at: null, expire_at: null }
+      ? { type: 'post', title: '', slug: '', body: '', excerpt: '', cover_image: '', status: 'draft', tags: [], publish_at: null, expire_at: null, locale: 'en' }
       : await capi(`/content/${id}`);
 
     const canPublish = isCompanyAdmin();
@@ -415,6 +415,16 @@
           <label>Status</label>
           <select name="status">${statusOptions}</select>
           ${managerHint}
+          <label>Language (BCP-47-ish, e.g. en, es, pt-br)</label>
+          <input name="locale" list="locale-list" value="${esc(item.locale || 'en')}">
+          <datalist id="locale-list">
+            <option value="en">English</option><option value="es">Spanish</option>
+            <option value="fr">French</option><option value="de">German</option>
+            <option value="pt-br">Portuguese (BR)</option><option value="hi">Hindi</option>
+            <option value="zh">Chinese</option><option value="ja">Japanese</option>
+            <option value="ar">Arabic</option><option value="ru">Russian</option>
+            <option value="ta">Tamil</option>
+          </datalist>
           <label>Go live at (UTC — blank: immediately)</label>
           <input type="datetime-local" name="publish_at" value="${toLocalDT(item.publish_at)}">
           <label>Expire at (UTC — blank: never)</label>
@@ -432,6 +442,7 @@
         </div>
       </form>
       ${!isNew ? `
+      <div class="card" style="margin-top:0.9rem"><b>Translations</b><div id="trans-host" style="margin-top:0.6rem">Loading…</div></div>
       <div class="card" style="margin-top:0.9rem"><b>Discussion</b><div id="comments-host" style="margin-top:0.5rem">Loading…</div></div>
       <div class="card" style="margin-top:0.9rem"><b>Version history</b><div id="history-host" style="margin-top:0.6rem">Loading…</div></div>` : ''}`);
 
@@ -478,6 +489,7 @@
       cover_image: f.get('cover_image'),
       status: f.get('status'),
       slug: f.get('slug'),
+      locale: f.get('locale') || 'en',
       publish_at: f.get('publish_at') || '',
       expire_at: f.get('expire_at') || '',
       tags: f.get('tags').split(',').map((t) => t.trim()).filter(Boolean),
@@ -524,6 +536,47 @@
     }
 
     if (!isNew) {
+      const transHost = page.querySelector('#trans-host');
+      const siblings = item.translations || [];
+      transHost.innerHTML = `
+        ${siblings.length
+          ? `<table><thead><tr><th>Locale</th><th>Title</th><th>Status</th></tr></thead>
+            <tbody>${siblings
+              .map(
+                (t) => `<tr><td><span class="pill pending">${esc(t.locale.toUpperCase())}</span></td>
+                <td><a href="#/edit/${t.id}"><b>${esc(t.title)}</b></a></td>
+                <td><span class="pill ${esc(t.status)}">${esc(t.status)}</span></td></tr>`
+              )
+              .join('')}</tbody></table>`
+          : '<p class="path">No translations yet.</p>'}
+        <form class="toolbar" style="margin-bottom:0" id="add-translation">
+          <input name="locale" list="locale-list" placeholder="Locale, e.g. es" required style="max-width:140px">
+          <button class="btn secondary sm">Create translation draft</button>
+        </form>`;
+      transHost.querySelector('#add-translation').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const loc = new FormData(e.target).get('locale');
+        try {
+          const created = await capi('/content', {
+            method: 'POST',
+            body: {
+              type: item.type,
+              title: item.title,
+              body: item.body,
+              excerpt: item.excerpt,
+              cover_image: item.cover_image,
+              locale: loc,
+              translation_of: item.id,
+              tags: item.tags.map((t) => t.name),
+            },
+          });
+          toast(`Translation draft created (${loc}).`);
+          location.hash = `#/edit/${created.id}`;
+        } catch (err) {
+          toast(err.message, 'error');
+        }
+      });
+
       mountComments(page.querySelector('#comments-host'), id);
 
       const historyHost = page.querySelector('#history-host');
@@ -950,6 +1003,8 @@
         <input name="accent_color" id="ts-accent" placeholder="#2563eb">
         <label>Custom CSS (applied to your public site only)</label>
         <textarea name="custom_css" id="ts-css" rows="5" placeholder="h1 { letter-spacing: -0.02em; }"></textarea>
+        <label>Default language (site home + feeds; other locales get /t/&lt;slug&gt;/&lt;locale&gt;)</label>
+        <input name="default_locale" id="ts-locale" placeholder="en">
         <p><button class="btn">Save</button></p>
       </form>
       <div class="card" style="max-width:520px;margin-top:1.4rem">
@@ -959,6 +1014,38 @@
           <code>GET /api/public/${esc(info.slug)}/content</code><br>
           <code>GET /api/public/${esc(info.slug)}/content/&lt;slug&gt;</code>
         </p>
+      </div>
+      <div class="card" style="max-width:520px;margin-top:1.4rem">
+        <b>Webhooks</b>
+        <p style="color:var(--muted);font-size:0.82rem;margin:0.3rem 0 0.6rem">
+          POST notifications on <code>content.published</code>, <code>content.updated</code>,
+          <code>content.unpublished</code>, <code>content.deleted</code> — signed with
+          <code>X-Nova-Signature</code> (HMAC-SHA256).
+        </p>
+        <form class="toolbar" id="add-webhook" style="margin-top:0">
+          <input name="url" placeholder="https://example.com/hooks/nova" required style="flex:1;min-width:200px">
+          <input name="events" placeholder="* or event list" style="max-width:140px">
+          <button class="btn sm">Add</button>
+        </form>
+        <div id="webhook-list"></div>
+      </div>
+      <div class="card" style="max-width:520px;margin-top:1.4rem">
+        <b>API keys</b>
+        <p style="color:var(--muted);font-size:0.82rem;margin:0.3rem 0 0.6rem">
+          Bearer tokens for scripts and CI. <b>read</b> keys can GET everything (drafts included);
+          <b>write</b> keys act as a manager — their writes go through approval.
+        </p>
+        <form class="toolbar" id="add-key" style="margin-top:0">
+          <input name="name" placeholder="Key name, e.g. ci-deploy" required style="flex:1;min-width:160px">
+          <select name="scope" style="width:auto"><option value="read">read</option><option value="write">write</option></select>
+          <button class="btn sm">Create</button>
+        </form>
+        <div id="key-list"></div>
+      </div>
+      <div class="card" style="max-width:520px;margin-top:1.4rem">
+        <b>Export</b>
+        <p style="color:var(--muted);font-size:0.82rem;margin:0.3rem 0 0.6rem">Everything — content, settings, members, media metadata — as one JSON file. No lock-in.</p>
+        <a class="btn secondary sm" href="/api/teams/${info.id}/export" target="_blank">Download company export</a>
       </div>` : ''}
       <div style="margin-top:1.6rem"><b>Members</b>
         ${isAdmin ? `
@@ -1024,6 +1111,7 @@
       page.querySelector('#ts-theme').value = settings.theme || 'default';
       page.querySelector('#ts-accent').value = settings.accent_color || '';
       page.querySelector('#ts-css').value = settings.custom_css || '';
+      page.querySelector('#ts-locale').value = settings.default_locale || 'en';
 
       page.querySelector('#company-form').addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -1053,6 +1141,7 @@
               theme: f.get('theme'),
               accent_color: f.get('accent_color'),
               custom_css: f.get('custom_css'),
+              default_locale: (f.get('default_locale') || 'en').toLowerCase(),
             },
           });
           toast('Site settings saved.');
@@ -1060,6 +1149,79 @@
           toast(err.message, 'error');
         }
       });
+      async function loadWebhooks() {
+        const rows = await api(`/teams/${company.id}/webhooks`);
+        page.querySelector('#webhook-list').innerHTML = rows.length
+          ? `<table><thead><tr><th>URL</th><th>Events</th><th>Last</th><th></th></tr></thead>
+            <tbody>${rows
+              .map(
+                (w) => `<tr><td style="word-break:break-all">${esc(w.url)}</td><td>${esc(w.events)}</td>
+                <td>${esc(w.last_status || '—')}</td>
+                <td><button class="btn danger sm" data-del-hook="${w.id}">Delete</button></td></tr>`
+              )
+              .join('')}</tbody></table>`
+          : '';
+        page.querySelectorAll('[data-del-hook]').forEach((btn) =>
+          btn.addEventListener('click', async () => {
+            await api(`/teams/${company.id}/webhooks/${btn.dataset.delHook}`, { method: 'DELETE' });
+            loadWebhooks();
+          })
+        );
+      }
+      page.querySelector('#add-webhook').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const f = new FormData(e.target);
+        try {
+          const created = await api(`/teams/${company.id}/webhooks`, {
+            method: 'POST',
+            body: { url: f.get('url'), events: f.get('events') || '*' },
+          });
+          e.target.reset();
+          prompt('Webhook created. Signing secret (shown once — save it now):', created.secret);
+          loadWebhooks();
+        } catch (err) {
+          toast(err.message, 'error');
+        }
+      });
+      loadWebhooks();
+
+      async function loadKeys() {
+        const rows = await api(`/teams/${company.id}/api-keys`);
+        page.querySelector('#key-list').innerHTML = rows.length
+          ? `<table><thead><tr><th>Name</th><th>Prefix</th><th>Scope</th><th>Last used</th><th></th></tr></thead>
+            <tbody>${rows
+              .map(
+                (k) => `<tr><td>${esc(k.name)}</td><td><code>${esc(k.prefix)}…</code></td><td>${esc(k.scope)}</td>
+                <td>${esc((k.last_used_at || '—').slice(0, 16))}</td>
+                <td><button class="btn danger sm" data-del-key="${k.id}">Revoke</button></td></tr>`
+              )
+              .join('')}</tbody></table>`
+          : '';
+        page.querySelectorAll('[data-del-key]').forEach((btn) =>
+          btn.addEventListener('click', async () => {
+            if (!confirm('Revoke this API key? Anything using it stops working immediately.')) return;
+            await api(`/teams/${company.id}/api-keys/${btn.dataset.delKey}`, { method: 'DELETE' });
+            loadKeys();
+          })
+        );
+      }
+      page.querySelector('#add-key').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const f = new FormData(e.target);
+        try {
+          const created = await api(`/teams/${company.id}/api-keys`, {
+            method: 'POST',
+            body: { name: f.get('name'), scope: f.get('scope') },
+          });
+          e.target.reset();
+          prompt('API key created (shown once — save it now):', created.token);
+          loadKeys();
+        } catch (err) {
+          toast(err.message, 'error');
+        }
+      });
+      loadKeys();
+
       page.querySelector('#add-member').addEventListener('submit', async (e) => {
         e.preventDefault();
         const f = new FormData(e.target);

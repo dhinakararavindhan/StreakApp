@@ -29,6 +29,19 @@ Users can belong to several companies (with different roles in each) and switch 
    - **Hosted site**: pick a theme preset (Default, Midnight, Paper, Forest, Ocean), set a brand accent color and custom CSS, and connect a **custom domain** — point DNS at the server and the site is served at the domain root with no platform branding.
    - **Headless**: keep an existing website and pull published content as JSON from the public, CORS-open content API — `GET /api/public/<company>/content` and `…/content/<slug>` (raw Markdown + rendered HTML + cover image). Drafts are never exposed.
 
+## World-ready content (i18n)
+
+- Every item has a **locale** (`en`, `es`, `pt-br`, …); each company sets its **default language**.
+- **Translation groups** link an original to its translations (one per locale, enforced) — created from the editor's Translations panel, which copies the source as a draft in the new locale.
+- The site home shows the default locale; other locales live at `/t/<slug>/<locale>` (or `/<locale>` on a custom domain) with a **language switcher** in the nav. Posts and pages emit **`hreflang` alternates** for search engines.
+- Feeds accept `?locale=`, sitemaps include locale homes, and the headless API filters with `?locale=` and returns `translations` on single items.
+
+## Integrations
+
+- **Webhooks** (company admins): signed POSTs (HMAC-SHA256, `X-Nova-Signature`) on `content.published`, `content.updated`, `content.unpublished`, `content.deleted` — perfect for static-site rebuilds. Per-hook delivery status; the signing secret is shown once.
+- **API keys** (company admins): `Bearer nova_…` tokens for scripts and CI. `read` keys can GET everything including drafts; `write` keys act as a *manager*, so anything they write still goes through approval — a leaked CI key can never publish. Keys are stored as hashes and shown once; revocation is immediate.
+- **Export**: one click downloads the whole company (content with tags, settings, members, media metadata) as JSON. No lock-in.
+
 ## Approval workflow
 
 Managers have full CRUD on content, but nothing they touch goes live on its own:
@@ -125,13 +138,16 @@ All `/api` routes accept and return JSON. Authentication uses an httpOnly cookie
 | POST | `/api/teams/:id/content/:cid/versions/:vid/restore` | member | Restore a version (workflow rules apply) |
 | GET/POST | `/api/teams/:id/content/:cid/comments` | member | Discussion thread on an item |
 | GET | `/api/teams/:id/audit` | company admin | Audit log (last 100 entries) |
+| GET/POST/DELETE | `/api/teams/:id/webhooks[/:whid]` | company admin | Manage signed event webhooks |
+| GET/POST/DELETE | `/api/teams/:id/api-keys[/:kid]` | company admin | Manage scoped Bearer tokens |
+| GET | `/api/teams/:id/export` | company admin | Full company JSON export |
 | GET/DELETE | `/api/teams/:id/tags[/:tagId]` | member | List / delete tags |
 | GET/POST/DELETE | `/api/teams/:id/media[/:mid]` | member | List / upload (multipart `file`) / delete |
 | GET | `/api/platform/stats` | superadmin | Platform-wide KPIs and newest companies |
 | GET/POST/DELETE | `/api/users[/:id]` | superadmin | Platform-wide user administration |
 | GET/PUT | `/api/settings` | — / superadmin | Platform settings incl. `allow_registration` |
 | GET | `/api/public/:company` | — | Public company profile (JSON, CORS-open) |
-| GET | `/api/public/:company/content[/:slug]` | — | Published content as JSON — list (`?type=&tag=`) or single with `body_html` |
+| GET | `/api/public/:company/content[/:slug]` | — | Published content as JSON — list (`?type=&tag=&locale=`) or single with `body_html` + `translations` |
 
 ## Tests
 
@@ -139,7 +155,7 @@ All `/api` routes accept and return JSON. Authentication uses an httpOnly cookie
 npm test
 ```
 
-39 end-to-end tests (`node --test`, in-memory database): registration, company creation, the three-tier role model, cross-company isolation, content CRUD with cover images, per-company slug scoping, draft/pending/publish visibility, the approval workflow, feeds/sitemaps/SEO, rate limiting, theming, custom-domain routing, the headless API, dashboards, and platform stats.
+43 end-to-end tests (`node --test`, in-memory database): registration, company creation, the three-tier role model, cross-company isolation, content CRUD with cover images, per-company slug scoping, draft/pending/publish visibility, the approval workflow, feeds/sitemaps/SEO, rate limiting, theming, custom-domain routing, the headless API, dashboards, and platform stats.
 
 ## Project layout
 

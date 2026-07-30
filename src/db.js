@@ -64,6 +64,8 @@ function init(options = {}) {
       status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'pending', 'published')),
       review_note TEXT NOT NULL DEFAULT '',
       published_snapshot TEXT NOT NULL DEFAULT '',
+      locale TEXT NOT NULL DEFAULT 'en',
+      translation_of INTEGER REFERENCES content(id) ON DELETE SET NULL,
       author_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -98,6 +100,30 @@ function init(options = {}) {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE INDEX IF NOT EXISTS idx_audit_team ON audit_log(team_id, id);
+
+    CREATE TABLE IF NOT EXISTS webhooks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+      url TEXT NOT NULL,
+      secret TEXT NOT NULL DEFAULT '',
+      events TEXT NOT NULL DEFAULT '*',
+      active INTEGER NOT NULL DEFAULT 1,
+      last_status TEXT NOT NULL DEFAULT '',
+      last_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS api_keys (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      prefix TEXT NOT NULL,
+      token_hash TEXT NOT NULL UNIQUE,
+      scope TEXT NOT NULL DEFAULT 'read' CHECK (scope IN ('read', 'write')),
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      last_used_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
 
     CREATE TABLE IF NOT EXISTS content_comments (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -184,6 +210,14 @@ function migrate() {
     if (!db.prepare('PRAGMA table_info(content)').all().some((c) => c.name === col)) {
       db.exec(`ALTER TABLE content ADD COLUMN ${col} TEXT`);
     }
+  }
+
+  // i18n (pre-locale databases)
+  if (!db.prepare('PRAGMA table_info(content)').all().some((c) => c.name === 'locale')) {
+    db.exec("ALTER TABLE content ADD COLUMN locale TEXT NOT NULL DEFAULT 'en'");
+  }
+  if (!db.prepare('PRAGMA table_info(content)').all().some((c) => c.name === 'translation_of')) {
+    db.exec('ALTER TABLE content ADD COLUMN translation_of INTEGER REFERENCES content(id) ON DELETE SET NULL');
   }
 
   // Approval workflow: the old status CHECK lacks 'pending', which blocks
@@ -301,6 +335,7 @@ function setTeamDefaults(teamId, name) {
   const stmt = db.prepare('INSERT OR IGNORE INTO team_settings (team_id, key, value) VALUES (?, ?, ?)');
   stmt.run(teamId, 'site_title', name);
   stmt.run(teamId, 'site_description', `${name} on Nova`);
+  stmt.run(teamId, 'default_locale', 'en');
 }
 
 function getDb() {

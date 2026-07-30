@@ -27,7 +27,7 @@ function clearAuthCookie(res) {
   res.clearCookie(COOKIE_NAME);
 }
 
-/** Populates req.user if a valid token cookie is present; never rejects. */
+/** Populates req.user (cookie) or req.apiKey (Bearer token); never rejects. */
 function attachUser(req, res, next) {
   const token = req.cookies[COOKIE_NAME];
   if (token) {
@@ -35,6 +35,15 @@ function attachUser(req, res, next) {
       req.user = jwt.verify(token, JWT_SECRET);
     } catch {
       // expired or invalid — treat as logged out
+    }
+  }
+  const authz = req.headers.authorization || '';
+  if (!req.user && authz.startsWith('Bearer nova_')) {
+    const hash = crypto.createHash('sha256').update(authz.slice(7)).digest('hex');
+    const key = getDb().prepare('SELECT * FROM api_keys WHERE token_hash = ?').get(hash);
+    if (key) {
+      req.apiKey = key;
+      getDb().prepare("UPDATE api_keys SET last_used_at = datetime('now') WHERE id = ?").run(key.id);
     }
   }
   next();
@@ -61,11 +70,28 @@ function requireSuperadmin(req, res, next) {
  */
 function requireTeamRole(requiredRole = 'manager') {
   return (req, res, next) => {
-    if (!req.user) return res.status(401).json({ error: 'Authentication required' });
+    if (!req.user && !req.apiKey) return res.status(401).json({ error: 'Authentication required' });
     const db = getDb();
     const team = db.prepare('SELECT * FROM teams WHERE id = ?').get(req.params.teamId);
     if (!team) return res.status(404).json({ error: 'Company not found' });
     req.team = team;
+
+    // API keys are company-scoped, never admin: a read key allows GETs, a
+    // write key acts as a manager (so its writes go through approval).
+    if (!req.user && req.apiKey) {
+      if (req.apiKey.team_id !== team.id) {
+        return res.status(403).json({ error: 'API key belongs to a different company' });
+      }
+      if (requiredRole === 'admin') {
+        return res.status(403).json({ error: 'API keys cannot perform admin actions' });
+      }
+      if (req.apiKey.scope === 'read' && req.method !== 'GET') {
+        return res.status(403).json({ error: 'This API key is read-only' });
+      }
+      req.teamRole = 'manager';
+      req.user = { id: null, username: `api:${req.apiKey.name}`, role: 'user' };
+      return next();
+    }
 
     if (req.user.role === 'superadmin') {
       req.teamRole = 'admin';

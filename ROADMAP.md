@@ -36,15 +36,16 @@ Make the newsroom-grade workflow complete.
 - [x] Comment threads on content (reviewer ↔ author), in the editor and the review screen
 - [ ] Slash commands in the editor (deferred)
 
-## Phase 3 — World-scale content
+## Phase 3 — World-scale content 🚧 (in progress)
 
 Content for every audience, in every language, of every shape.
 
-- [ ] **i18n**: per-item locales, linked translations, per-site default + fallback locale, `hreflang`
-- [ ] **Custom content types**: user-defined schemas (fields: text, rich text, number, date, media, reference) — posts/pages become just two built-ins
-- [ ] **Webhooks**: publish/update/delete events for static-site rebuilds and integrations
-- [ ] **API keys**: scoped tokens for reading drafts and writing via the API (CI publishing, migrations)
-- [ ] Import/export: WordPress and Markdown-folder importers; full-site JSON export (no lock-in)
+- [x] **i18n**: per-item locales, linked translation groups (one per locale, enforced), per-site default locale, locale homes (`/t/<slug>/<locale>`), language switcher, `hreflang` alternates, locale-filtered feeds and headless API
+- [x] **Webhooks**: `content.published/updated/unpublished/deleted` events, HMAC-SHA256 signed, per-hook delivery status
+- [x] **API keys**: company-scoped Bearer tokens — `read` (GETs incl. drafts) and `write` (acts as a manager, so writes go through approval); hashes only at rest, shown once
+- [x] Full-company **JSON export** (content, settings, members, media metadata) — no lock-in
+- [ ] **Custom content types**: user-defined schemas — posts/pages become just two built-ins (next)
+- [ ] Importers: WordPress and Markdown-folder (next)
 
 ## Phase 4 — Scale-out
 

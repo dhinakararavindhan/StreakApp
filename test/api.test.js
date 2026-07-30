@@ -553,6 +553,185 @@ test('audit log records workflow actions, admin-only', async () => {
   assert.strictEqual(approve.username, 'alice');
 });
 
+
+test('i18n: translations link, locale homes, hreflang, headless locale filter', async () => {
+  // English original, published directly by the company admin.
+  const en = await (
+    await alice(`/api/teams/${aliceTeam.id}/content`, {
+      method: 'POST',
+      body: { type: 'post', title: 'Launch day', body: 'We are live.', status: 'published' },
+    })
+  ).json();
+
+  // Spanish translation linked to it.
+  const esRes = await alice(`/api/teams/${aliceTeam.id}/content`, {
+    method: 'POST',
+    body: {
+      type: 'post', title: 'Dia de lanzamiento', body: 'Estamos en vivo.',
+      status: 'published', locale: 'es', translation_of: en.id,
+    },
+  });
+  assert.strictEqual(esRes.status, 201);
+  const es = await esRes.json();
+  assert.strictEqual(es.locale, 'es');
+
+  // Duplicate locale in the same group is rejected.
+  const dup = await alice(`/api/teams/${aliceTeam.id}/content`, {
+    method: 'POST',
+    body: { type: 'post', title: 'Otra vez', locale: 'es', translation_of: en.id },
+  });
+  assert.strictEqual(dup.status, 409);
+
+  // Single GET lists the sibling translations.
+  const single = await (await alice(`/api/teams/${aliceTeam.id}/content/${en.id}`)).json();
+  assert.ok(single.translations.some((t) => t.locale === 'es'));
+
+  // Default-locale home shows EN, not ES; /es locale home shows ES.
+  const home = await (await fetch(`${base}/t/acme-docs`)).text();
+  assert.ok(home.includes('Launch day'));
+  assert.ok(!home.includes('Dia de lanzamiento'));
+  const esHome = await (await fetch(`${base}/t/acme-docs/es`)).text();
+  assert.ok(esHome.includes('Dia de lanzamiento'));
+  assert.ok(!esHome.includes('Launch day'));
+
+  // hreflang alternates on the post page.
+  const post = await (await fetch(`${base}/t/acme-docs/posts/launch-day`)).text();
+  assert.ok(post.includes('hreflang="es"'));
+  assert.ok(post.includes('hreflang="en"'));
+
+  // Headless: locale filter + translations on single items.
+  const esOnly = await (await fetch(`${base}/api/public/acme-docs/content?locale=es`)).json();
+  assert.ok(esOnly.every((r) => r.locale === 'es'));
+  const headlessSingle = await (await fetch(`${base}/api/public/acme-docs/content/launch-day`)).json();
+  assert.ok(headlessSingle.translations.some((t) => t.locale === 'es' && t.slug === 'dia-de-lanzamiento'));
+});
+
+test('webhooks: signed deliveries on publish, update, and delete', async () => {
+  const crypto = require('node:crypto');
+  const received = [];
+  const receiver = http.createServer((req, res) => {
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', () => {
+      received.push({ headers: req.headers, body });
+      res.end('ok');
+    });
+  });
+  await new Promise((resolve) => receiver.listen(0, resolve));
+  const hookUrl = `http://127.0.0.1:${receiver.address().port}/nova`;
+
+  const created = await alice(`/api/teams/${aliceTeam.id}/webhooks`, {
+    method: 'POST',
+    body: { url: hookUrl, events: '*' },
+  });
+  assert.strictEqual(created.status, 201);
+  const { secret } = await created.json();
+  assert.ok(secret);
+
+  // Listing never exposes the secret again.
+  const listed = await (await alice(`/api/teams/${aliceTeam.id}/webhooks`)).json();
+  assert.ok(listed.length >= 1);
+  assert.strictEqual(listed[0].secret, undefined);
+
+  const waitFor = async (n) => {
+    for (let i = 0; i < 40 && received.length < n; i++) await new Promise((r) => setTimeout(r, 50));
+    assert.ok(received.length >= n, `expected ${n} deliveries, got ${received.length}`);
+  };
+
+  // Publish -> content.published, with a valid HMAC signature.
+  const item = await (
+    await alice(`/api/teams/${aliceTeam.id}/content`, {
+      method: 'POST',
+      body: { type: 'post', title: 'Hooked post', status: 'published' },
+    })
+  ).json();
+  await waitFor(1);
+  const first = received[0];
+  assert.strictEqual(first.headers['x-nova-event'], 'content.published');
+  const expected = `sha256=${crypto.createHmac('sha256', secret).update(first.body).digest('hex')}`;
+  assert.strictEqual(first.headers['x-nova-signature'], expected);
+  assert.strictEqual(JSON.parse(first.body).content.slug, 'hooked-post');
+
+  // Live update -> content.updated.
+  await alice(`/api/teams/${aliceTeam.id}/content/${item.id}`, {
+    method: 'PUT',
+    body: { body: 'Updated body.' },
+  });
+  await waitFor(2);
+  assert.strictEqual(received[1].headers['x-nova-event'], 'content.updated');
+
+  // Delete -> content.deleted.
+  await alice(`/api/teams/${aliceTeam.id}/content/${item.id}`, { method: 'DELETE' });
+  await waitFor(3);
+  assert.strictEqual(received[2].headers['x-nova-event'], 'content.deleted');
+
+  receiver.close();
+});
+
+test('API keys: scoped access, approval rules, revocation', async () => {
+  const readKey = await (
+    await alice(`/api/teams/${aliceTeam.id}/api-keys`, { method: 'POST', body: { name: 'reader', scope: 'read' } })
+  ).json();
+  const writeKey = await (
+    await alice(`/api/teams/${aliceTeam.id}/api-keys`, { method: 'POST', body: { name: 'writer', scope: 'write' } })
+  ).json();
+  assert.ok(readKey.token.startsWith('nova_'));
+
+  const withKey = (token) => (path, options = {}) =>
+    fetch(`${base}${path}`, {
+      ...options,
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...options.headers },
+      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+    });
+
+  // Read key: GET works (drafts included), writes are rejected.
+  const list = await withKey(readKey.token)(`/api/teams/${aliceTeam.id}/content`);
+  assert.strictEqual(list.status, 200);
+  const writeAttempt = await withKey(readKey.token)(`/api/teams/${aliceTeam.id}/content`, {
+    method: 'POST',
+    body: { type: 'post', title: 'Nope' },
+  });
+  assert.strictEqual(writeAttempt.status, 403);
+
+  // Write key: creates content, but publishing still needs approval.
+  const draft = await withKey(writeKey.token)(`/api/teams/${aliceTeam.id}/content`, {
+    method: 'POST',
+    body: { type: 'post', title: 'From CI', status: 'pending' },
+  });
+  assert.strictEqual(draft.status, 201);
+  const publishAttempt = await withKey(writeKey.token)(`/api/teams/${aliceTeam.id}/content`, {
+    method: 'POST',
+    body: { type: 'post', title: 'Sneaky CI', status: 'published' },
+  });
+  assert.strictEqual(publishAttempt.status, 403);
+
+  // Keys can never do admin things or cross companies.
+  const adminAttempt = await withKey(writeKey.token)(`/api/teams/${aliceTeam.id}/members`);
+  assert.strictEqual(adminAttempt.status, 200); // members list is manager-level
+  const approveAttempt = await withKey(writeKey.token)(`/api/teams/${aliceTeam.id}/audit`);
+  assert.strictEqual(approveAttempt.status, 403);
+  const crossCompany = await withKey(writeKey.token)(`/api/teams/${seededTeamId}/content`);
+  assert.strictEqual(crossCompany.status, 403);
+
+  // Revocation cuts access immediately.
+  await alice(`/api/teams/${aliceTeam.id}/api-keys/${readKey.id}`, { method: 'DELETE' });
+  const afterRevoke = await withKey(readKey.token)(`/api/teams/${aliceTeam.id}/content`);
+  assert.strictEqual(afterRevoke.status, 401);
+});
+
+test('full company export contains content, settings, and members', async () => {
+  const res = await alice(`/api/teams/${aliceTeam.id}/export`);
+  assert.strictEqual(res.status, 200);
+  assert.ok((res.headers.get('content-disposition') || '').includes('acme-docs-export.json'));
+  const dump = await res.json();
+  assert.strictEqual(dump.format, 'nova-cms-export');
+  assert.ok(dump.content.some((c) => c.slug === 'launch-day'));
+  assert.ok(dump.settings.site_title);
+  assert.ok(dump.members.some((m) => m.username === 'alice' && m.role === 'admin'));
+  // Snapshots are internal — not exported.
+  assert.ok(dump.content.every((c) => c.published_snapshot === undefined));
+});
+
 test('health endpoint responds for load balancers', async () => {
   const res = await fetch(`${base}/api/health`);
   assert.strictEqual(res.status, 200);

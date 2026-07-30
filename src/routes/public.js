@@ -65,6 +65,7 @@ function layout({ title, siteTitle, siteDescription, homeHref, nav = '', content
 <meta property="og:type" content="${esc(meta.ogType || 'website')}">
 ${meta.ogImage ? `<meta property="og:image" content="${esc(meta.ogImage)}">` : ''}
 ${meta.feedHref ? `<link rel="alternate" type="application/rss+xml" title="${esc(siteTitle)}" href="${esc(meta.feedHref)}">` : ''}
+${(meta.alternates || []).map((a) => `<link rel="alternate" hreflang="${esc(a.lang)}" href="${esc(a.href)}">`).join('\n')}
 <style>
   @font-face { font-family: 'Geist Sans'; font-weight: 400; font-display: swap; src: url('/assets/fonts/geist-sans-latin-400-normal.woff2') format('woff2'); }
   @font-face { font-family: 'Geist Sans'; font-weight: 600; font-display: swap; src: url('/assets/fonts/geist-sans-latin-600-normal.woff2') format('woff2'); }
@@ -134,13 +135,23 @@ function teamBase(team, onDomain) {
   return onDomain ? '' : `/t/${team.slug}`;
 }
 
-function teamNav(team, base, onDomain) {
+function teamNav(team, base, onDomain, loc) {
   const pages = getDb()
-    .prepare(`SELECT * FROM content WHERE team_id = ? AND type = 'page' AND ${LIVE} ORDER BY title`)
-    .all(team.id)
+    .prepare(`SELECT * FROM content WHERE team_id = ? AND type = 'page' AND locale = ? AND ${LIVE} ORDER BY title`)
+    .all(team.id, loc)
     .map(liveRow);
-  const links = pages.map((p) => `<a href="${esc(base)}/${esc(p.slug)}">${esc(p.title)}</a>`).join('');
-  // On a company's own domain, don't advertise the platform directory.
+  let links = pages.map((p) => `<a href="${esc(base)}/${esc(p.slug)}">${esc(p.title)}</a>`).join('');
+  // Language switcher when the site publishes in several locales.
+  const locales = liveLocales(team.id);
+  if (locales.length > 1) {
+    const def = defaultLocale(team.id);
+    links += locales
+      .map((l) => {
+        const href = l === def ? base || '/' : `${base}/${l}`;
+        return `<a href="${esc(href)}" ${l === loc ? 'style="color:var(--accent)"' : ''}>${esc(l.toUpperCase())}</a>`;
+      })
+      .join('');
+  }
   return onDomain ? links : links + '<a href="/">All sites</a>';
 }
 
@@ -179,15 +190,16 @@ function fullArticle(team, row, base) {
   return `<article class="full">${cover}<h1>${esc(row.title)}</h1>${meta}${marked.parse(row.body)}</article>`;
 }
 
-function teamLayout(team, onDomain, { title, content, meta = {} }) {
+function teamLayout(team, onDomain, { title, content, meta = {}, locale }) {
   const s = teamSettings(team.id);
   const base = teamBase(team, onDomain);
+  const loc = locale || s.default_locale || 'en';
   return layout({
     title,
     siteTitle: s.site_title || team.name,
     siteDescription: s.site_description || '',
     homeHref: base || '/',
-    nav: teamNav(team, base, onDomain),
+    nav: teamNav(team, base, onDomain, loc),
     content,
     settings: s,
     meta: { feedHref: `${base}/feed.xml`, ...meta },
@@ -214,10 +226,35 @@ function liveRow(row) {
   }
 }
 
-function renderTeamHome(team, onDomain, req, res) {
+const LOCALE_RE = /^[a-z]{2,3}(-[a-z0-9]{2,8})?$/;
+
+function defaultLocale(teamId) {
+  return teamSettings(teamId).default_locale || 'en';
+}
+
+function liveLocales(teamId) {
+  return getDb()
+    .prepare(`SELECT DISTINCT locale FROM content WHERE team_id = ? AND ${LIVE} ORDER BY locale`)
+    .all(teamId)
+    .map((r) => r.locale);
+}
+
+/** Live translation-group siblings of a row (including itself). */
+function liveAlternates(teamId, row) {
+  const root = row.translation_of || row.id;
+  return getDb()
+    .prepare(
+      `SELECT id, locale, slug, title, type FROM content
+       WHERE team_id = ? AND (id = ? OR translation_of = ?) AND ${LIVE} ORDER BY locale`
+    )
+    .all(teamId, root, root, );
+}
+
+function renderTeamHome(team, onDomain, req, res, locale = null) {
   const s = teamSettings(team.id);
+  const loc = locale || s.default_locale || 'en';
   const { tag } = req.query;
-  const params = [team.id];
+  const params = [team.id, loc];
   let filter = '';
   if (tag) {
     filter =
@@ -226,7 +263,7 @@ function renderTeamHome(team, onDomain, req, res) {
   }
   const posts = getDb()
     .prepare(
-      `SELECT * FROM content WHERE team_id = ? AND type = 'post' AND ${LIVE} ${filter}
+      `SELECT * FROM content WHERE team_id = ? AND type = 'post' AND locale = ? AND ${LIVE} ${filter}
        ORDER BY published_at DESC`
     )
     .all(...params)
@@ -240,7 +277,7 @@ function renderTeamHome(team, onDomain, req, res) {
   const content = posts.length
     ? `${hero}<div class="cards">${posts.map((p) => postCard(team, p, base)).join('')}</div>`
     : `${hero}<p class="meta" style="margin-top:2rem">No posts yet.</p>`;
-  res.send(teamLayout(team, onDomain, { title: tag ? `Tag: ${tag}` : '', content }));
+  res.send(teamLayout(team, onDomain, { title: tag ? `Tag: ${tag}` : '', content, locale: loc }));
 }
 
 function absoluteUrl(req, path) {
@@ -259,14 +296,20 @@ function renderTeamPost(team, onDomain, slug, req, res) {
       .send(teamLayout(team, onDomain, { title: 'Not found', content: '<div class="hero"><h1>404</h1><p>Post not found.</p></div>' }));
   }
   const base = teamBase(team, onDomain);
+  const alternates = liveAlternates(team.id, row).map((a) => ({
+    lang: a.locale,
+    href: absoluteUrl(req, `${base}/posts/${a.slug}`),
+  }));
   res.send(
     teamLayout(team, onDomain, {
       title: row.title,
       content: fullArticle(team, row, base),
+      locale: row.locale,
       meta: {
         description: row.excerpt || undefined,
         ogType: 'article',
         ogImage: row.cover_image ? absoluteUrl(req, row.cover_image) : undefined,
+        alternates: alternates.length > 1 ? alternates : [],
       },
     })
   );
@@ -284,11 +327,16 @@ function renderTeamPage(team, onDomain, slug, req, res) {
       .send(teamLayout(team, onDomain, { title: 'Not found', content: '<div class="hero"><h1>404</h1><p>Page not found.</p></div>' }));
   }
   const base = teamBase(team, onDomain);
+  const alternates = liveAlternates(team.id, row).map((a) => ({
+    lang: a.locale,
+    href: absoluteUrl(req, `${base}/${a.slug}`),
+  }));
   res.send(
     teamLayout(team, onDomain, {
       title: row.title,
       content: fullArticle(team, row, base),
-      meta: { description: row.excerpt || undefined },
+      locale: row.locale,
+      meta: { description: row.excerpt || undefined, alternates: alternates.length > 1 ? alternates : [] },
     })
   );
 }
@@ -305,6 +353,7 @@ function publicContentRow(row, { withBody }) {
     type: row.type,
     title: row.title,
     slug: row.slug,
+    locale: row.locale,
     excerpt: row.excerpt,
     cover_image: row.cover_image,
     tags,
@@ -338,10 +387,12 @@ router.get('/api/public/:team', cors, (req, res) => {
 router.get('/api/public/:team/content', cors, (req, res) => {
   const team = findTeam(req.params.team);
   if (!team) return res.status(404).json({ error: 'Company not found' });
-  const { type, tag } = req.query;
+  const { type, tag, locale } = req.query;
   const where = ['team_id = ?', LIVE];
+
   const params = [team.id];
   if (type) { where.push('type = ?'); params.push(type); }
+  if (locale) { where.push('locale = ?'); params.push(String(locale).toLowerCase()); }
   if (tag) {
     where.push(
       'id IN (SELECT ct.content_id FROM content_tags ct JOIN tags t ON t.id = ct.tag_id WHERE t.team_id = ? AND t.slug = ?)'
@@ -364,7 +415,12 @@ router.get('/api/public/:team/content/:slug', cors, (req, res) => {
       .get(team.id, req.params.slug)
   );
   if (!row) return res.status(404).json({ error: 'Not found' });
-  res.json(publicContentRow(row, { withBody: true }));
+  const out = publicContentRow(row, { withBody: true });
+  out.locale = row.locale;
+  out.translations = liveAlternates(team.id, row)
+    .filter((a) => a.id !== row.id)
+    .map((a) => ({ locale: a.locale, slug: a.slug, title: a.title }));
+  res.json(out);
 });
 
 // ---------- custom-domain resolution ----------
@@ -399,7 +455,9 @@ function sendTeamFeed(team, onDomain, req, res) {
   const s = teamSettings(team.id);
   const origin = `${req.protocol}://${req.get('host')}`;
   const base = teamBase(team, onDomain);
+  const loc = String(req.query.locale || s.default_locale || 'en').toLowerCase();
   const items = livePosts(team.id)
+    .filter((p) => p.locale === loc)
     .map(
       (p) => `  <item>
     <title>${esc(p.title)}</title>
@@ -424,8 +482,10 @@ ${items}
 function sendTeamSitemap(team, onDomain, req, res) {
   const origin = `${req.protocol}://${req.get('host')}`;
   const base = teamBase(team, onDomain);
+  const def = defaultLocale(team.id);
   const urls = [
     `${origin}${base || '/'}`,
+    ...liveLocales(team.id).filter((l) => l !== def).map((l) => `${origin}${base}/${l}`),
     ...livePages(team.id).map((p) => `${origin}${base}/${p.slug}`),
     ...livePosts(team.id).map((p) => `${origin}${base}/posts/${p.slug}`),
   ];
@@ -535,10 +595,33 @@ router.get('/t/:team/posts/:slug', (req, res) => {
   renderTeamPost(team, false, req.params.slug, req, res);
 });
 
+// Locale homes: /t/acme/es — guarded so ordinary page slugs fall through.
+router.get('/t/:team/:loc', (req, res, next) => {
+  const team = findTeam(req.params.team);
+  if (!team) return res.status(404).send('Company not found');
+  const code = req.params.loc.toLowerCase();
+  if (!LOCALE_RE.test(code)) return next();
+  const def = defaultLocale(team.id);
+  if (code === def) return res.redirect(teamBase(team, false) || '/');
+  if (!liveLocales(team.id).includes(code)) return next();
+  renderTeamHome(team, false, req, res, code);
+});
+
 router.get('/t/:team/:slug', (req, res) => {
   const team = findTeam(req.params.team);
   if (!team) return res.status(404).send('Company not found');
   renderTeamPage(team, false, req.params.slug, req, res);
+});
+
+// Custom-domain locale homes: /es — guarded so page slugs fall through.
+router.get('/:loc', (req, res, next) => {
+  if (!req.domainTeam) return next();
+  const code = req.params.loc.toLowerCase();
+  if (!LOCALE_RE.test(code)) return next();
+  const def = defaultLocale(req.domainTeam.id);
+  if (code === def) return res.redirect('/');
+  if (!liveLocales(req.domainTeam.id).includes(code)) return next();
+  renderTeamHome(req.domainTeam, true, req, res, code);
 });
 
 // Custom-domain pages at the domain root: /about, /pricing, …
