@@ -69,6 +69,9 @@ The moat is other people's work running on Nova.
 - [x] Site search on every hosted site (`/search`, linked in the nav) and the headless API (`?q=`)
 - [x] Content trash: soft delete with restore, admin-only permanent purge; one-click duplicate-as-draft
 - [x] New-company onboarding: pick a business template, run the AI builder, or start blank — right at creation
+- [x] ⏱ Time machine: preview the whole site at any future moment (`?preview_at=`) — scheduled content shown, expiring content hidden; signed-in users only, never cached
+- [x] ✦ AI pre-review: Claude reviews every submission before human editors — change summary, concrete notes, looks-good/needs-attention verdict in the approvals queue
+- [x] ✦ AI translation: one-click translated drafts into i18n translation groups, markup preserved, human review required
 - [x] Starter kits: 41 business templates across six categories (hospitality, services, property, creative & retail, community & education, product & publishing) — theme + typography + real published starter content in one click, with custom content types where the business has structured data (hotel Rooms, brewery Taps, travel Trips, real-estate Properties, coworking Spaces, museum Exhibitions, gym/yoga Classes, school Courses, band Shows, food-truck Stops)
 - [x] AI site builder: describe the company, Claude designs the theme, writes the starter site, and defines custom content types when the business calls for them (`ANTHROPIC_API_KEY`, admin-only, rate-limited, offline mock mode for tests)
 - [ ] Theme system beyond presets: installable themes, template overrides

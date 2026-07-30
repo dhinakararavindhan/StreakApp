@@ -36,6 +36,7 @@ Users can belong to several companies (with different roles in each) and switch 
 
 - Every item has a **locale** (`en`, `es`, `pt-br`, …); each company sets its **default language**.
 - **Translation groups** link an original to its translations (one per locale, enforced) — created from the editor's Translations panel, which copies the source as a draft in the new locale.
+- **✦ AI translation**: one click translates title, body, and excerpt into a linked draft — Markdown structure, links, and code preserved. The result lands as a *draft* in the translation group, so a human reviews it before it goes anywhere near the site. (Rate-limited; requires `ANTHROPIC_API_KEY`.)
 - The site home shows the default locale; other locales live at `/t/<slug>/<locale>` (or `/<locale>` on a custom domain) with a **language switcher** in the nav. Posts and pages emit **`hreflang` alternates** for search engines.
 - Feeds accept `?locale=`, sitemaps include locale homes, and the headless API filters with `?locale=` and returns `translations` on single items.
 
@@ -55,6 +56,8 @@ Managers have full CRUD on content, but nothing they touch goes live on its own:
 - Admins and superadmins can still publish directly.
 - **Version history**: every save is recorded and restorable (restores obey the same workflow rules). **Comment threads** (Markdown supported) let reviewers and authors discuss an item in the editor and review screens. An **audit log** (Activity page) records approvals, rejections, restores, membership and settings changes.
 - **Scheduling**: set `publish_at` (go live later) and `expire_at` (come down later) — enforced everywhere published content is served, including feeds, sitemaps, and the headless API.
+- **⏱ Time machine**: preview the *whole site* as it will appear at any moment — `?preview_at=2031-06-01T09:00` on any public page (signed-in users only) shows scheduled content as live and expiring content as gone, with a banner and no caching. One click from the editor's scheduling fields. See tomorrow's launch today.
+- **✦ AI pre-review**: when anything is submitted for approval, Claude reviews it before your editors do — a one-line summary of what it is (or what changed vs the live version), concrete notes (typos, placeholder text, red flags), and a looks-good / needs-attention verdict shown in the approvals queue and the review screen. Fire-and-forget: authors are never blocked; failed reviews are simply absent. The human decision stays human. (Requires `ANTHROPIC_API_KEY`; disable with `NOVA_AI_REVIEW=0`.)
 
 ## Admin panel highlights
 
@@ -126,6 +129,7 @@ Or roll your own: `docker build -t nova-cms . && docker run -p 3000:3000 -v nova
 | `ANTHROPIC_API_KEY` | unset | Enables the AI site builder (without it the feature shows as unavailable) |
 | `NOVA_AI_MODEL` | `claude-opus-5` | Claude model used by the AI site builder |
 | `NOVA_LOG` | unset | Set `json` for structured one-line-per-request logs |
+| `NOVA_AI_REVIEW` | on when AI is configured | Set `0` to disable AI pre-review of submissions |
 
 ## API overview
 
@@ -151,6 +155,7 @@ All `/api` routes accept and return JSON. Authentication uses an httpOnly cookie
 | GET | `/api/teams/:id/content/trash` | member | List trashed items |
 | POST | `/api/teams/:id/content/:cid/untrash` | member | Restore from the trash |
 | POST | `/api/teams/:id/content/:cid/duplicate` | member | Duplicate as a fresh draft (tags + custom fields included) |
+| POST | `/api/teams/:id/content/:cid/ai-translate` | member | AI-translate into a linked draft (`{locale}`) |
 | POST | `/api/teams/:id/content/:cid/approve` | company admin | Approve pending content — goes live |
 | POST | `/api/teams/:id/content/:cid/reject` | company admin | Reject pending content back to draft (`{note}`) |
 | GET | `/api/teams/:id/content/:cid/versions` | member | Version history (newest first) |
@@ -177,7 +182,7 @@ All `/api` routes accept and return JSON. Authentication uses an httpOnly cookie
 npm test
 ```
 
-55 end-to-end tests (`node --test`, in-memory database): registration, company creation, the three-tier role model, cross-company isolation, content CRUD with cover images, per-company slug scoping, draft/pending/publish visibility, the approval workflow, custom content types with field validation, the WordPress/Markdown/Nova importers, feeds/sitemaps/SEO, rate limiting, theming, starter kits and the AI site builder (mock mode), custom-domain routing, the headless API, dashboards, and platform stats.
+58 end-to-end tests (`node --test`, in-memory database): registration, company creation, the three-tier role model, cross-company isolation, content CRUD with cover images, per-company slug scoping, draft/pending/publish visibility, the approval workflow, custom content types with field validation, the WordPress/Markdown/Nova importers, feeds/sitemaps/SEO, rate limiting, theming, starter kits and the AI site builder (mock mode), custom-domain routing, the headless API, dashboards, and platform stats.
 
 ## Project layout
 

@@ -1260,6 +1260,126 @@ test('trash: soft delete, restore, admin-only purge, and duplicate', async () =>
   assert.strictEqual(stats.posts, 1); // just the duplicate draft
 });
 
+test('time machine: signed-in users can preview the site at a future moment', async () => {
+  const owner = await registerAs('timelord', 'time-password-12');
+  const team = await (await owner('/api/teams', { method: 'POST', body: { name: 'Chrono Co' } })).json();
+  const mk = (body) => owner(`/api/teams/${team.id}/content`, { method: 'POST', body });
+  await mk({ type: 'post', title: 'Live today', body: 'Here now.', status: 'published' });
+  await mk({ type: 'post', title: 'Launch announcement', body: 'Coming soon.', status: 'published', publish_at: '2031-06-01 09:00' });
+  await mk({ type: 'post', title: 'Limited offer', body: 'Ends eventually.', status: 'published', expire_at: '2032-01-01 00:00' });
+
+  // Today: the scheduled post is hidden, the offer is up.
+  const today = await (await fetch(`${base}/t/${team.slug}`)).text();
+  assert.ok(!today.includes('Launch announcement') && today.includes('Limited offer'));
+
+  // Time machine to 2031: the launch is visible, with the preview banner, uncached.
+  const preview = await owner(`/t/${team.slug}?preview_at=2031-06-02T10:00`);
+  assert.ok((preview.headers.get('cache-control') || '').includes('no-store'));
+  const previewHtml = await preview.text();
+  assert.ok(previewHtml.includes('Launch announcement'));
+  assert.ok(previewHtml.includes('Time machine'));
+
+  // Time machine to 2033: the offer has expired.
+  const later = await (await owner(`/t/${team.slug}?preview_at=2033-01-01T00:00`)).text();
+  assert.ok(later.includes('Launch announcement') && !later.includes('Limited offer'));
+
+  // Anonymous visitors cannot time travel — the param is ignored.
+  const anon = await (await fetch(`${base}/t/${team.slug}?preview_at=2031-06-02T10:00`)).text();
+  assert.ok(!anon.includes('Launch announcement') && !anon.includes('Time machine'));
+});
+
+test('AI pre-review lands on pending submissions and clears on decision', async () => {
+  const savedMock = process.env.NOVA_AI_MOCK;
+  process.env.NOVA_AI_MOCK = '1';
+  try {
+    const owner = await loginAs('timelord', 'time-password-12');
+    const mgr = await registerAs('reviewmgr', 'review-password-1');
+    const team = await (await owner('/api/teams', { method: 'POST', body: { name: 'Review Co' } })).json();
+    await owner(`/api/teams/${team.id}/members`, { method: 'POST', body: { username: 'reviewmgr', role: 'manager' } });
+
+    const item = await (
+      await mgr(`/api/teams/${team.id}/content`, {
+        method: 'POST',
+        body: { type: 'post', title: 'Draft with issues', body: 'TODO finish this section later.', status: 'pending' },
+      })
+    ).json();
+
+    // The review is fire-and-forget — poll briefly for it to attach.
+    let review = null;
+    for (let i = 0; i < 20 && !review; i++) {
+      await new Promise((r) => setTimeout(r, 25));
+      review = (await (await owner(`/api/teams/${team.id}/content/${item.id}`)).json()).ai_review;
+    }
+    assert.ok(review, 'ai_review never attached');
+    assert.strictEqual(review.verdict, 'needs_attention');
+    assert.ok(review.notes.some((n) => n.includes('placeholder')));
+    assert.ok(review.summary.includes('Draft with issues'));
+
+    // The pending list (approvals queue) carries it too.
+    const queue = await (await owner(`/api/teams/${team.id}/content?status=pending`)).json();
+    assert.ok(queue.find((r) => r.id === item.id).ai_review);
+
+    // Approving clears the review.
+    await owner(`/api/teams/${team.id}/content/${item.id}/approve`, { method: 'POST' });
+    const after = await (await owner(`/api/teams/${team.id}/content/${item.id}`)).json();
+    assert.strictEqual(after.ai_review, null);
+  } finally {
+    if (savedMock === undefined) delete process.env.NOVA_AI_MOCK;
+    else process.env.NOVA_AI_MOCK = savedMock;
+  }
+});
+
+test('AI translation creates linked drafts in the translation group', async () => {
+  const owner = await loginAs('timelord', 'time-password-12');
+  const team = await (await owner('/api/teams', { method: 'POST', body: { name: 'Polyglot Co' } })).json();
+  const item = await (
+    await owner(`/api/teams/${team.id}/content`, {
+      method: 'POST',
+      body: { type: 'post', title: 'Our story', body: 'It began in a garage.', excerpt: 'How we started.', status: 'published' },
+    })
+  ).json();
+
+  // Unconfigured: clear 503.
+  const savedMock = process.env.NOVA_AI_MOCK;
+  const savedKey = process.env.ANTHROPIC_API_KEY;
+  delete process.env.NOVA_AI_MOCK;
+  delete process.env.ANTHROPIC_API_KEY;
+  try {
+    assert.strictEqual(
+      (await owner(`/api/teams/${team.id}/content/${item.id}/ai-translate`, { method: 'POST', body: { locale: 'es' } })).status,
+      503
+    );
+
+    process.env.NOVA_AI_MOCK = '1';
+    assert.strictEqual(
+      (await owner(`/api/teams/${team.id}/content/${item.id}/ai-translate`, { method: 'POST', body: { locale: 'en' } })).status,
+      400
+    );
+    const res = await owner(`/api/teams/${team.id}/content/${item.id}/ai-translate`, { method: 'POST', body: { locale: 'es' } });
+    assert.strictEqual(res.status, 201);
+    const draft = await res.json();
+    assert.strictEqual(draft.status, 'draft');
+    assert.strictEqual(draft.locale, 'es');
+    assert.strictEqual(draft.translation_of, item.id);
+    assert.ok(draft.title.startsWith('[es]'));
+
+    // Linked into the group: the source now lists the Spanish sibling.
+    const source = await (await owner(`/api/teams/${team.id}/content/${item.id}`)).json();
+    assert.ok(source.translations.some((t) => t.locale === 'es'));
+
+    // One translation per locale, still enforced.
+    assert.strictEqual(
+      (await owner(`/api/teams/${team.id}/content/${item.id}/ai-translate`, { method: 'POST', body: { locale: 'es' } })).status,
+      409
+    );
+  } finally {
+    if (savedMock === undefined) delete process.env.NOVA_AI_MOCK;
+    else process.env.NOVA_AI_MOCK = savedMock;
+    if (savedKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = savedKey;
+  }
+});
+
 test('health endpoint responds for load balancers', async () => {
   const res = await fetch(`${base}/api/health`);
   assert.strictEqual(res.status, 200);

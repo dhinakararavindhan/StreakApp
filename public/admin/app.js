@@ -685,6 +685,7 @@
           <input type="datetime-local" name="publish_at" value="${toLocalDT(item.publish_at)}">
           <label>Expire at (UTC — blank: never)</label>
           <input type="datetime-local" name="expire_at" value="${toLocalDT(item.expire_at)}">
+          <p style="margin:0.3rem 0 0"><button type="button" class="btn secondary sm" id="time-machine" title="Open the public site as it will appear at the scheduled moment — scheduled content shown, expired content hidden">⏱ Time machine</button></p>
           <label>Cover image (URL or pick an upload)</label>
           <input name="cover_image" list="media-list" value="${esc(item.cover_image)}" placeholder="/uploads/…">
           <datalist id="media-list"></datalist>
@@ -701,6 +702,12 @@
       <div class="card" style="margin-top:0.9rem"><b>Translations</b><div id="trans-host" style="margin-top:0.6rem">Loading…</div></div>
       <div class="card" style="margin-top:0.9rem"><b>Discussion</b><div id="comments-host" style="margin-top:0.5rem">Loading…</div></div>
       <div class="card" style="margin-top:0.9rem"><b>Version history</b><div id="history-host" style="margin-top:0.6rem">Loading…</div></div>` : ''}`);
+
+    // Time machine: open the public site as of the scheduled moment (or now).
+    page.querySelector('#time-machine').addEventListener('click', () => {
+      const at = page.querySelector('[name=publish_at]').value || new Date().toISOString().slice(0, 16);
+      window.open(`/t/${company.slug}?preview_at=${encodeURIComponent(at)}`, '_blank');
+    });
 
     // Cover preview + media suggestions for both cover picker and image insert.
     const coverInput = page.querySelector('[name=cover_image]');
@@ -943,6 +950,7 @@
         <form class="toolbar" style="margin-bottom:0" id="add-translation">
           <input name="locale" list="locale-list" placeholder="Locale, e.g. es" required style="max-width:140px">
           <button class="btn secondary sm">Create translation draft</button>
+          <button type="button" class="btn sm" id="ai-translate" title="Claude translates title, body, and excerpt into a linked draft">✦ Translate with AI</button>
         </form>`;
       transHost.querySelector('#add-translation').addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -964,6 +972,22 @@
           toast(`Translation draft created (${loc}).`);
           location.hash = `#/edit/${created.id}`;
         } catch (err) {
+          toast(err.message, 'error');
+        }
+      });
+      transHost.querySelector('#ai-translate').addEventListener('click', async (e) => {
+        const loc = transHost.querySelector('[name=locale]').value.trim();
+        if (!loc) return toast('Enter a target locale first (e.g. es).', 'error');
+        const btn = e.target;
+        btn.disabled = true;
+        btn.textContent = '✦ Translating…';
+        try {
+          const created = await capi(`/content/${id}/ai-translate`, { method: 'POST', body: { locale: loc } });
+          toast(`Translated into "${loc}" — review the draft before submitting.`);
+          location.hash = `#/edit/${created.id}`;
+        } catch (err) {
+          btn.disabled = false;
+          btn.textContent = '✦ Translate with AI';
           toast(err.message, 'error');
         }
       });
@@ -1119,7 +1143,8 @@
           <tbody>${rows
             .map(
               (r) => `<tr>
-                <td><a href="#/edit/${r.id}"><b>${esc(r.title)}</b></a><br><span class="path">${esc(r.excerpt || r.body.slice(0, 90))}</span></td>
+                <td><a href="#/edit/${r.id}"><b>${esc(r.title)}</b></a><br><span class="path">${esc(r.excerpt || r.body.slice(0, 90))}</span>
+                ${r.ai_review ? `<br><span class="ai-line ${r.ai_review.verdict === 'needs_attention' ? 'warn' : ''}">✦ ${esc(r.ai_review.summary)}${r.ai_review.verdict === 'needs_attention' ? ` — ${r.ai_review.notes.length} note${r.ai_review.notes.length === 1 ? '' : 's'}` : ''}</span>` : ''}</td>
                 <td>${esc(r.type)}</td>
                 <td>${esc(r.author || '—')}</td>
                 <td>${esc(r.updated_at.slice(0, 16))}</td>
@@ -1269,6 +1294,17 @@
           <button class="btn danger sm" id="rv-reject">Reject</button>` : `<span class="pill ${esc(item.status)}">${esc(item.status)}</span>`}
         </span>
       </h1>
+      ${item.ai_review ? `
+      <div class="card ai-review ${item.ai_review.verdict === 'needs_attention' ? 'warn' : ''}" style="margin-bottom:0.9rem">
+        <b>✦ Nova AI pre-review
+          <span class="pill ${item.ai_review.verdict === 'needs_attention' ? 'pending' : 'published'}" style="margin-left:0.4rem">${item.ai_review.verdict === 'needs_attention' ? 'needs attention' : 'looks good'}</span>
+        </b>
+        <p style="margin:0.35rem 0 0;font-size:0.85rem">${esc(item.ai_review.summary)}</p>
+        ${item.ai_review.notes && item.ai_review.notes.length
+          ? `<ul style="margin:0.4rem 0 0;padding-left:1.1rem;font-size:0.82rem;color:var(--muted)">${item.ai_review.notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>`
+          : ''}
+        <p class="path" style="margin:0.45rem 0 0">AI assistance for the reviewer — the decision is yours.</p>
+      </div>` : ''}
       <div id="view-diff" class="review-grid"></div>
       <div id="view-preview" class="review-grid" style="display:none"></div>
       <div class="card" style="margin-top:0.9rem"><b>Discussion</b><div id="comments-host" style="margin-top:0.5rem">Loading…</div></div>`);

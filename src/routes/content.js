@@ -6,6 +6,8 @@ const { audit } = require('../audit');
 const { deliver, contentPayload } = require('../webhooks');
 const { FORMATS, renderBody } = require('../render');
 const { isValidType, validateFields, parseFieldValues } = require('../content-types');
+const { aiAvailable, reviewContent, translateContent } = require('../ai');
+const { rateLimit } = require('../security');
 
 // Mounted at /api/teams/:teamId/content behind requireTeamRole('manager'),
 // which sets req.team and req.teamRole — every query below is scoped to
@@ -66,17 +68,24 @@ function setTags(teamId, contentId, tagNames) {
   }
 }
 
-function serialize(row, { withHtml = false } = {}) {
-  let live = null;
-  if (row.published_snapshot) {
-    try {
-      live = JSON.parse(row.published_snapshot);
-    } catch {
-      live = null;
-    }
+function safeJson(text) {
+  try {
+    return text ? JSON.parse(text) : null;
+  } catch {
+    return null;
   }
+}
+
+function serialize(row, { withHtml = false } = {}) {
+  const live = safeJson(row.published_snapshot);
   const { published_snapshot, ...rest } = row;
-  const out = { ...rest, fields: parseFieldValues(row.fields), live_version: live, tags: loadTags(row.id) };
+  const out = {
+    ...rest,
+    fields: parseFieldValues(row.fields),
+    ai_review: safeJson(row.ai_review),
+    live_version: live,
+    tags: loadTags(row.id),
+  };
   if (withHtml) {
     out.body_html = renderBody(row.format, row.body, row.excerpt);
     out.translations = groupMembers(row.team_id, groupRoot(row)).filter((t) => t.id !== row.id);
@@ -102,6 +111,26 @@ function saveVersion(row, userId) {
     `DELETE FROM content_versions WHERE content_id = ? AND id NOT IN
      (SELECT id FROM content_versions WHERE content_id = ? ORDER BY id DESC LIMIT ?)`
   ).run(row.id, row.id, MAX_VERSIONS);
+}
+
+/** Fire-and-forget AI pre-review of a pending submission. The admin sees
+    the result in the approvals queue when it lands; the author's save is
+    never blocked on it. Disable with NOVA_AI_REVIEW=0. */
+function scheduleAiReview(teamId, contentId) {
+  if (!aiAvailable() || process.env.NOVA_AI_REVIEW === '0') return;
+  const db = getDb();
+  const row = db.prepare('SELECT * FROM content WHERE id = ? AND team_id = ?').get(contentId, teamId);
+  if (!row || row.status !== 'pending') return;
+  const live = safeJson(row.published_snapshot);
+  reviewContent({ title: row.title, body: row.body, excerpt: row.excerpt, format: row.format, live })
+    .then((review) => {
+      // Only attach if the item is still awaiting review.
+      db.prepare("UPDATE content SET ai_review = ? WHERE id = ? AND status = 'pending'").run(
+        JSON.stringify({ ...review, at: new Date().toISOString() }),
+        row.id
+      );
+    })
+    .catch(() => {}); // a failed review is simply absent
 }
 
 /** Normalize a schedule datetime. Returns null (clear), a normalized
@@ -220,6 +249,7 @@ router.post('/', (req, res) => {
   saveVersion(row, req.user.id);
   audit(req.team.id, req.user, status === 'pending' ? 'content.submit' : 'content.create', title);
   if (row.status === 'published') deliver(req.team.id, 'content.published', contentPayload(req.team, row));
+  if (row.status === 'pending') scheduleAiReview(req.team.id, row.id);
   res.status(201).json(serialize(row));
 });
 
@@ -300,7 +330,7 @@ function applyUpdate(req, res, existing, fields) {
   db.prepare(
     `UPDATE content SET title = ?, slug = ?, body = ?, format = ?, excerpt = ?, cover_image = ?, status = ?,
      review_note = ?, published_snapshot = ?, publish_at = ?, expire_at = ?, published_at = ?,
-     locale = ?, fields = ?, updated_at = datetime('now') WHERE id = ?`
+     locale = ?, fields = ?, ai_review = ?, updated_at = datetime('now') WHERE id = ?`
   ).run(
     newTitle,
     newSlug,
@@ -316,11 +346,19 @@ function applyUpdate(req, res, existing, fields) {
     publishedAt,
     newLocale,
     fieldCheck.values !== undefined ? JSON.stringify(fieldCheck.values) : existing.fields,
+    newStatus === 'pending' ? existing.ai_review : '',
     existing.id
   );
   if (tags !== undefined) setTags(req.team.id, existing.id, tags);
   const updated = db.prepare('SELECT * FROM content WHERE id = ?').get(existing.id);
   saveVersion(updated, req.user.id);
+  // A fresh or changed submission gets a fresh AI pre-review.
+  if (
+    updated.status === 'pending' &&
+    (existing.status !== 'pending' || existing.body !== updated.body || existing.title !== updated.title)
+  ) {
+    scheduleAiReview(req.team.id, updated.id);
+  }
   return updated;
 }
 
@@ -406,7 +444,7 @@ router.post('/:id/approve', (req, res) => {
   if (row.status !== 'pending') return res.status(400).json({ error: 'Only pending content can be approved' });
   const hadLiveSnapshot = Boolean(row.published_snapshot);
   db.prepare(
-    `UPDATE content SET status = 'published', review_note = '', published_snapshot = '',
+    `UPDATE content SET status = 'published', review_note = '', published_snapshot = '', ai_review = '',
      published_at = COALESCE(published_at, datetime('now')), updated_at = datetime('now') WHERE id = ?`
   ).run(row.id);
   audit(req.team.id, req.user, 'content.approve', row.title);
@@ -425,7 +463,7 @@ router.post('/:id/reject', (req, res) => {
   const note = String((req.body || {}).note || '').slice(0, 500);
   // The live snapshot (if any) stays up — rejection only bounces the edits.
   db.prepare(
-    "UPDATE content SET status = 'draft', review_note = ?, updated_at = datetime('now') WHERE id = ?"
+    "UPDATE content SET status = 'draft', review_note = ?, ai_review = '', updated_at = datetime('now') WHERE id = ?"
   ).run(note, row.id);
   audit(req.team.id, req.user, 'content.reject', row.title, note);
   res.json(serialize(db.prepare('SELECT * FROM content WHERE id = ?').get(row.id)));
@@ -498,6 +536,56 @@ router.post('/:id/untrash', (req, res) => {
     deliver(req.team.id, 'content.published', contentPayload(req.team, fresh));
   }
   res.json(serialize(fresh));
+});
+
+// AI translation: create a translated draft linked into the item's
+// translation group. Drafts only — translations go through the same
+// approval workflow as everything else.
+const aiTranslateLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 20, name: 'AI translations' });
+router.post('/:id/ai-translate', aiTranslateLimiter, async (req, res, next) => {
+  try {
+    const db = getDb();
+    const source = db.prepare('SELECT * FROM content WHERE id = ? AND team_id = ?').get(req.params.id, req.team.id);
+    if (!source || source.deleted_at) return res.status(404).json({ error: 'Not found' });
+    if (!aiAvailable()) {
+      return res.status(503).json({ error: 'AI translation is not configured — set ANTHROPIC_API_KEY on the server' });
+    }
+    const target = String((req.body || {}).locale || '').toLowerCase().trim();
+    if (!LOCALE_RE.test(target)) {
+      return res.status(400).json({ error: 'locale must look like "en", "pt-br", or "zh-hans"' });
+    }
+    if (target === source.locale) return res.status(400).json({ error: 'That is already the source language' });
+    const rootId = groupRoot(source);
+    const members = groupMembers(req.team.id, rootId);
+    const rootLocale = db.prepare('SELECT locale FROM content WHERE id = ?').get(rootId).locale;
+    if (members.some((m) => m.locale === target) || target === rootLocale) {
+      return res.status(409).json({ error: `A "${target}" version already exists in this translation group` });
+    }
+
+    let translated;
+    try {
+      translated = await translateContent(source, target);
+    } catch (err) {
+      return res.status(502).json({ error: `AI translation failed: ${err.message}` });
+    }
+
+    const finalSlug = uniqueSlug(translated.title, req.team.id);
+    const result = db
+      .prepare(
+        `INSERT INTO content (team_id, type, title, slug, body, format, excerpt, cover_image, status, author_id, locale, translation_of, fields)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?)`
+      )
+      .run(
+        req.team.id, source.type, translated.title, finalSlug, translated.body, source.format,
+        translated.excerpt, source.cover_image, req.user.id, target, rootId, source.fields
+      );
+    const row = db.prepare('SELECT * FROM content WHERE id = ?').get(result.lastInsertRowid);
+    saveVersion(row, req.user.id);
+    audit(req.team.id, req.user, 'content.ai_translate', source.title, `${source.locale} → ${target}`);
+    res.status(201).json(serialize(row));
+  } catch (err) {
+    next(err);
+  }
 });
 
 // Duplicate an item as a fresh draft (fields, tags, and body included).

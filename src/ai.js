@@ -85,4 +85,100 @@ async function generateSite(prompt) {
   return normalizeSite(extractJson(text));
 }
 
-module.exports = { aiAvailable, generateSite, DEFAULT_MODEL };
+// ---------- AI pre-review (runs when content is submitted for approval) ----------
+
+const REVIEW_SYSTEM = `You are the pre-reviewer for a CMS approval queue. A manager submitted content;
+a human admin will approve or reject it. Give the admin a fast, honest read.
+Respond with ONLY a JSON object (no prose, no fences):
+{
+  "summary": "one sentence: what this content is, or what changed vs the live version",
+  "notes": ["up to 4 short, specific observations — typos, unclear passages, factual red flags, tone mismatches, missing pieces. Empty array if it's clean."],
+  "verdict": "looks_good" or "needs_attention"
+}
+Be concrete ("'recieve' misspelled in paragraph 2"), never generic ("consider improving clarity").
+Judge the writing, not the opinion. needs_attention only for real problems an admin should look at.`;
+
+function mockReview({ title, body }) {
+  const words = String(body || '').trim().split(/\s+/).filter(Boolean).length;
+  const notes = [];
+  if (/todo|tktk|xxx|lorem ipsum/i.test(`${title} ${body}`)) notes.push('Contains placeholder text (TODO/lorem) that should not go live.');
+  if (words < 20) notes.push(`Very short body (${words} words) — is it complete?`);
+  return {
+    summary: `Mock review of "${title}" — ${words} words.`,
+    notes,
+    verdict: notes.length ? 'needs_attention' : 'looks_good',
+  };
+}
+
+/** Review a pending submission. `live` is the still-published version, if any. */
+async function reviewContent({ title, body, excerpt, format, live }) {
+  if (process.env.NOVA_AI_MOCK === '1') return mockReview({ title, body });
+  const Anthropic = require('@anthropic-ai/sdk');
+  const client = new Anthropic();
+  const liveBlock = live
+    ? `\n\nThe currently LIVE version (for comparison — describe what changed):\nTitle: ${live.title}\n${String(live.body).slice(0, 6000)}`
+    : '';
+  const message = await client.messages
+    .stream({
+      model: process.env.NOVA_AI_MODEL || DEFAULT_MODEL,
+      max_tokens: 2000,
+      thinking: { type: 'adaptive' },
+      system: REVIEW_SYSTEM,
+      messages: [
+        {
+          role: 'user',
+          content: `Submitted for approval (format: ${format}):\nTitle: ${title}\nExcerpt: ${excerpt || '—'}\n\n${String(body).slice(0, 12000)}${liveBlock}`,
+        },
+      ],
+    })
+    .finalMessage();
+  const text = message.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n');
+  const parsed = extractJson(text);
+  return {
+    summary: String(parsed.summary || '').slice(0, 300),
+    notes: (Array.isArray(parsed.notes) ? parsed.notes : []).slice(0, 4).map((n) => String(n).slice(0, 300)),
+    verdict: parsed.verdict === 'needs_attention' ? 'needs_attention' : 'looks_good',
+  };
+}
+
+// ---------- AI translation (fills i18n translation groups) ----------
+
+const TRANSLATE_SYSTEM = `You translate CMS content. Respond with ONLY a JSON object (no prose, no fences):
+{ "title": "...", "body": "...", "excerpt": "..." }
+Rules: preserve Markdown/HTML structure exactly (headings, lists, links, code blocks — translate link text but never URLs or code).
+Keep proper nouns and brand names. Match the source register. Translate the excerpt too; keep it one sentence.`;
+
+function mockTranslate({ title, body, excerpt }, targetLocale) {
+  const tag = `[${targetLocale}]`;
+  return { title: `${tag} ${title}`, body: `${tag} ${body}`, excerpt: excerpt ? `${tag} ${excerpt}` : '' };
+}
+
+/** Translate title/body/excerpt into targetLocale, preserving markup. */
+async function translateContent(source, targetLocale) {
+  if (process.env.NOVA_AI_MOCK === '1') return mockTranslate(source, targetLocale);
+  const Anthropic = require('@anthropic-ai/sdk');
+  const client = new Anthropic();
+  const message = await client.messages
+    .stream({
+      model: process.env.NOVA_AI_MODEL || DEFAULT_MODEL,
+      max_tokens: 16000,
+      thinking: { type: 'adaptive' },
+      system: TRANSLATE_SYSTEM,
+      messages: [
+        {
+          role: 'user',
+          content: `Translate from "${source.locale}" to "${targetLocale}" (format: ${source.format}):\nTitle: ${source.title}\nExcerpt: ${source.excerpt || '—'}\n\n${String(source.body).slice(0, 30000)}`,
+        },
+      ],
+    })
+    .finalMessage();
+  const text = message.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n');
+  const parsed = extractJson(text);
+  return {
+    title: String(parsed.title || source.title).slice(0, 200),
+    body: String(parsed.body || ''),
+    excerpt: String(parsed.excerpt || '').slice(0, 500),
+  };
+}
+
+module.exports = { aiAvailable, generateSite, reviewContent, translateContent, DEFAULT_MODEL };

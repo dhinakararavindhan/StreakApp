@@ -434,3 +434,9 @@ td .path { color: var(--faint); font-size: 0.76rem; }
 }
 .ai-build textarea { width: 100%; }
 .setup-cols { display: flex; gap: 1.2rem; align-items: flex-start; flex-wrap: wrap; }
+
+/* Nova AI pre-review */
+.ai-line { font-size: 0.76rem; color: var(--a1); }
+.ai-line.warn { color: #e5a50a; }
+.ai-review { border-left: 3px solid var(--a1); }
+.ai-review.warn { border-left-color: #e5a50a; }

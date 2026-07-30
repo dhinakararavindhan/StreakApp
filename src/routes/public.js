@@ -17,6 +17,22 @@ router.use((req, res, next) => {
   next();
 });
 
+// Time machine: signed-in users can view any public page as it will look
+// at a future (or past) moment — scheduled posts appear, expiring ones
+// vanish. ?preview_at=YYYY-MM-DDTHH:MM anywhere on a site. Never cached.
+router.use((req, res, next) => {
+  previewNow = null; // reset the slot on every request
+  const at = req.query.preview_at;
+  if (at && req.user) {
+    const m = String(at).trim().replace('T', ' ').match(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2})(:\d{2})?$/);
+    if (m) {
+      previewNow = `${m[1]}${m[2] || ':00'}`;
+      res.set('Cache-Control', 'private, no-store');
+    }
+  }
+  next();
+});
+
 // Theme presets a company can pick for its site. 'default' follows the
 // visitor's light/dark preference; the rest are fixed brand looks.
 const THEMES = {
@@ -178,6 +194,7 @@ ${(meta.alternates || []).map((a) => `<link rel="alternate" hreflang="${esc(a.la
 </style>
 </head>
 <body>
+${previewNow ? `<div style="background:#f59e0b;color:#1a1200;font-weight:600;font-size:0.85rem;text-align:center;padding:0.45rem 1rem">⏱ Time machine — previewing this site as it will appear at ${esc(previewNow)} UTC. Scheduled content is shown; expired content is hidden.</div>` : ''}
 <header class="top"><div class="wrap">
   <h1 class="site"><a href="${esc(homeHref)}">${esc(siteTitle)}</a></h1>
   <nav>${nav}</nav>
@@ -195,7 +212,7 @@ function teamBase(team, onDomain) {
 
 function teamNav(team, base, onDomain, loc) {
   const pages = getDb()
-    .prepare(`SELECT * FROM content WHERE team_id = ? AND type = 'page' AND locale = ? AND ${LIVE} ORDER BY title`)
+    .prepare(`SELECT * FROM content WHERE team_id = ? AND type = 'page' AND locale = ? AND ${LIVE()} ORDER BY title`)
     .all(team.id, loc)
     .map(liveRow);
   let links = pages.map((p) => `<a href="${esc(base)}/${esc(p.slug)}">${esc(p.title)}</a>`).join('');
@@ -224,7 +241,7 @@ function liveTypes(teamId) {
     .prepare(
       `SELECT ct.key, ct.name, ct.name_plural FROM content_types ct
        WHERE ct.team_id = ? AND EXISTS (
-         SELECT 1 FROM content WHERE team_id = ct.team_id AND type = ct.key AND ${LIVE}
+         SELECT 1 FROM content WHERE team_id = ct.team_id AND type = ct.key AND ${LIVE()}
        ) ORDER BY ct.name`
     )
     .all(teamId);
@@ -314,11 +331,18 @@ function findTeam(slug) {
   return getDb().prepare('SELECT * FROM teams WHERE slug = ?').get(slug);
 }
 
+// Time machine: while serving a ?preview_at request from a signed-in user,
+// this holds the pretend "now" ('YYYY-MM-DD HH:MM:SS'). All public route
+// handlers are fully synchronous, so a module-level slot per request is
+// safe — it is reset at the start of every request by the middleware below.
+let previewNow = null;
+const NOW_SQL = () => (previewNow ? `datetime('${previewNow}')` : `datetime('now')`);
+
 // A row is publicly visible when published, or when a previously approved
 // version is still live while new edits await review (published_snapshot).
-const LIVE = `(deleted_at IS NULL AND ((status = 'published'
-  AND (publish_at IS NULL OR publish_at <= datetime('now'))
-  AND (expire_at IS NULL OR expire_at > datetime('now'))) OR published_snapshot != ''))`;
+const LIVE = () => `(deleted_at IS NULL AND ((status = 'published'
+  AND (publish_at IS NULL OR publish_at <= ${NOW_SQL()})
+  AND (expire_at IS NULL OR expire_at > ${NOW_SQL()})) OR published_snapshot != ''))`;
 
 /** The version of a row the public should see. */
 function liveRow(row) {
@@ -338,7 +362,7 @@ function defaultLocale(teamId) {
 
 function liveLocales(teamId) {
   return getDb()
-    .prepare(`SELECT DISTINCT locale FROM content WHERE team_id = ? AND ${LIVE} ORDER BY locale`)
+    .prepare(`SELECT DISTINCT locale FROM content WHERE team_id = ? AND ${LIVE()} ORDER BY locale`)
     .all(teamId)
     .map((r) => r.locale);
 }
@@ -349,7 +373,7 @@ function liveAlternates(teamId, row) {
   return getDb()
     .prepare(
       `SELECT id, locale, slug, title, type FROM content
-       WHERE team_id = ? AND (id = ? OR translation_of = ?) AND ${LIVE} ORDER BY locale`
+       WHERE team_id = ? AND (id = ? OR translation_of = ?) AND ${LIVE()} ORDER BY locale`
     )
     .all(teamId, root, root, );
 }
@@ -367,7 +391,7 @@ function renderTeamHome(team, onDomain, req, res, locale = null) {
   }
   const posts = getDb()
     .prepare(
-      `SELECT * FROM content WHERE team_id = ? AND type = 'post' AND locale = ? AND ${LIVE} ${filter}
+      `SELECT * FROM content WHERE team_id = ? AND type = 'post' AND locale = ? AND ${LIVE()} ${filter}
        ORDER BY published_at DESC`
     )
     .all(...params)
@@ -396,7 +420,7 @@ function absoluteUrl(req, path) {
 function renderTeamPost(team, onDomain, slug, req, res) {
   const row = liveRow(
     getDb()
-      .prepare(`SELECT * FROM content WHERE team_id = ? AND type = 'post' AND ${LIVE} AND slug = ?`)
+      .prepare(`SELECT * FROM content WHERE team_id = ? AND type = 'post' AND ${LIVE()} AND slug = ?`)
       .get(team.id, slug)
   );
   if (!row) {
@@ -433,7 +457,7 @@ function renderTeamSearch(team, onDomain, req, res) {
     const like = `%${q}%`;
     results = getDb()
       .prepare(
-        `SELECT * FROM content WHERE team_id = ? AND ${LIVE}
+        `SELECT * FROM content WHERE team_id = ? AND ${LIVE()}
          AND (title LIKE ? OR excerpt LIKE ? OR body LIKE ?)
          ORDER BY published_at DESC LIMIT 50`
       )
@@ -474,7 +498,7 @@ function renderTypeArchive(team, onDomain, typeKey, req, res) {
       .send(teamLayout(team, onDomain, { title: 'Not found', content: '<div class="hero"><h1>404</h1><p>Nothing here.</p></div>' }));
   }
   const rows = getDb()
-    .prepare(`SELECT * FROM content WHERE team_id = ? AND type = ? AND ${LIVE} ORDER BY published_at DESC`)
+    .prepare(`SELECT * FROM content WHERE team_id = ? AND type = ? AND ${LIVE()} ORDER BY published_at DESC`)
     .all(team.id, ct.key)
     .map(liveRow);
   const base = teamBase(team, onDomain);
@@ -521,7 +545,7 @@ function renderTeamPage(team, onDomain, slug, req, res) {
   // Pages and custom-type items both live at /<slug>; posts keep /posts/<slug>.
   const row = liveRow(
     getDb()
-      .prepare(`SELECT * FROM content WHERE team_id = ? AND type != 'post' AND ${LIVE} AND slug = ?`)
+      .prepare(`SELECT * FROM content WHERE team_id = ? AND type != 'post' AND ${LIVE()} AND slug = ?`)
       .get(team.id, slug)
   );
   if (!row) {
@@ -594,7 +618,7 @@ router.get('/api/public/:team/content', cors, (req, res) => {
   const team = findTeam(req.params.team);
   if (!team) return res.status(404).json({ error: 'Company not found' });
   const { type, tag, locale, q } = req.query;
-  const where = ['team_id = ?', LIVE];
+  const where = ['team_id = ?', LIVE()];
 
   const params = [team.id];
   if (type) { where.push('type = ?'); params.push(type); }
@@ -622,7 +646,7 @@ router.get('/api/public/:team/content/:slug', cors, (req, res) => {
   if (!team) return res.status(404).json({ error: 'Company not found' });
   const row = liveRow(
     getDb()
-      .prepare(`SELECT * FROM content WHERE team_id = ? AND ${LIVE} AND slug = ?`)
+      .prepare(`SELECT * FROM content WHERE team_id = ? AND ${LIVE()} AND slug = ?`)
       .get(team.id, req.params.slug)
   );
   if (!row) return res.status(404).json({ error: 'Not found' });
@@ -650,7 +674,7 @@ router.use((req, res, next) => {
 
 function livePosts(teamId) {
   return getDb()
-    .prepare(`SELECT * FROM content WHERE team_id = ? AND type = 'post' AND ${LIVE} ORDER BY published_at DESC LIMIT 50`)
+    .prepare(`SELECT * FROM content WHERE team_id = ? AND type = 'post' AND ${LIVE()} ORDER BY published_at DESC LIMIT 50`)
     .all(teamId)
     .map(liveRow);
 }
@@ -658,7 +682,7 @@ function livePosts(teamId) {
 // Pages and custom-type items — everything served at /<slug>.
 function livePages(teamId) {
   return getDb()
-    .prepare(`SELECT * FROM content WHERE team_id = ? AND type != 'post' AND ${LIVE} ORDER BY title`)
+    .prepare(`SELECT * FROM content WHERE team_id = ? AND type != 'post' AND ${LIVE()} ORDER BY title`)
     .all(teamId)
     .map(liveRow);
 }
