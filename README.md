@@ -24,8 +24,11 @@ Users can belong to several companies (with different roles in each) and switch 
 
 1. **Register** at `/admin` (self-serve; superadmins can switch the platform to invite-only).
 2. **Create the company workspace** — the creator becomes its admin and adds employees by username as managers (or co-admins).
-3. **Publish** from the admin panel; the site is immediately live at `/t/<slug>`.
-4. **Make it theirs** — two integration modes:
+3. **Start the site in one click** (optional, from the Company page):
+   - **Starter kits** — six pre-configured site templates (Personal blog, Product site, Documentation, Portfolio, Café & local shop, Changelog) that apply a matching theme + typography + layout and publish real, ready-to-edit starter pages and posts. Existing content is never touched.
+   - **AI site builder** — describe the company in a sentence and Claude designs the whole site: theme, headings typeface, layout, accent color, and written-in-your-voice starter pages and posts. Requires `ANTHROPIC_API_KEY` on the server (admin-only, rate-limited).
+4. **Publish** from the admin panel; the site is immediately live at `/t/<slug>`.
+5. **Make it theirs** — two integration modes:
    - **Hosted site**: pick from an **11-theme gallery** (Auto, Paper, Forest, Ocean, Mint, Lavender, Midnight, Slate, Noir, Sunset, Terminal) with visual swatches, choose a **headings typeface** (sans / serif / monospace) and a **home layout** (card grid or list), set a brand accent color and custom CSS, and connect a **custom domain** — point DNS at the server and the site is served at the domain root with no platform branding.
    - **Headless**: keep an existing website and pull published content as JSON from the public, CORS-open content API — `GET /api/public/<company>/content` and `…/content/<slug>` (raw Markdown + rendered HTML + cover image). Drafts are never exposed.
 
@@ -115,6 +118,8 @@ Or roll your own: `docker build -t nova-cms . && docker run -p 3000:3000 -v nova
 | `COOKIE_SECURE` | off | Set `1` when serving over HTTPS |
 | `TRUST_PROXY` | off | Set `1` behind a reverse proxy so client IPs and protocol are correct |
 | `RATE_LIMIT_LOGIN` / `RATE_LIMIT_REGISTER` | `30` / `30` | Auth attempts allowed per IP per window |
+| `ANTHROPIC_API_KEY` | unset | Enables the AI site builder (without it the feature shows as unavailable) |
+| `NOVA_AI_MODEL` | `claude-opus-5` | Claude model used by the AI site builder |
 
 ## API overview
 
@@ -132,6 +137,9 @@ All `/api` routes accept and return JSON. Authentication uses an httpOnly cookie
 | GET/POST | `/api/teams/:id/members` | member / admin | List / add by username (`{username, role: admin\|manager}`) |
 | PUT/DELETE | `/api/teams/:id/members/:userId` | admin (self-removal allowed) | Change role / remove or leave |
 | GET/PUT | `/api/teams/:id/settings` | member / admin | Site title, description, theme, accent color, custom CSS |
+| GET | `/api/site-templates` | ✓ | Starter-kit catalog + whether the AI builder is configured |
+| POST | `/api/teams/:id/apply-template` | company admin | Apply a starter kit (`{template}`) — settings + published starter content |
+| POST | `/api/teams/:id/ai-build` | company admin | AI site builder (`{prompt}`) — Claude designs theme + starter content |
 | GET/POST | `/api/teams/:id/content` | member | List (`?type=&status=&tag=&search=`) / create (incl. `cover_image`) |
 | GET/PUT/DELETE | `/api/teams/:id/content/:cid` | member | Read / update / delete one item (managers can't set `published`) |
 | POST | `/api/teams/:id/content/:cid/approve` | company admin | Approve pending content — goes live |
@@ -157,7 +165,7 @@ All `/api` routes accept and return JSON. Authentication uses an httpOnly cookie
 npm test
 ```
 
-46 end-to-end tests (`node --test`, in-memory database): registration, company creation, the three-tier role model, cross-company isolation, content CRUD with cover images, per-company slug scoping, draft/pending/publish visibility, the approval workflow, feeds/sitemaps/SEO, rate limiting, theming, custom-domain routing, the headless API, dashboards, and platform stats.
+49 end-to-end tests (`node --test`, in-memory database): registration, company creation, the three-tier role model, cross-company isolation, content CRUD with cover images, per-company slug scoping, draft/pending/publish visibility, the approval workflow, feeds/sitemaps/SEO, rate limiting, theming, starter kits and the AI site builder (mock mode), custom-domain routing, the headless API, dashboards, and platform stats.
 
 ## Project layout
 

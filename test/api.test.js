@@ -853,6 +853,105 @@ test('theme presets, heading fonts, and home layout apply to the site', async ()
   assert.ok(mint.includes('class="cards"'));
 });
 
+test('site templates are listed for authenticated users only', async () => {
+  assert.strictEqual((await fetch(`${base}/api/site-templates`)).status, 401);
+  const res = await alice('/api/site-templates');
+  assert.strictEqual(res.status, 200);
+  const body = await res.json();
+  assert.ok(Array.isArray(body.templates) && body.templates.length >= 5);
+  const docs = body.templates.find((t) => t.key === 'docs');
+  assert.ok(docs);
+  assert.strictEqual(docs.theme, 'terminal');
+  assert.ok(docs.pages > 0 && docs.posts > 0);
+  assert.strictEqual(typeof body.ai_available, 'boolean');
+});
+
+test('applying a starter kit sets the theme and publishes starter content', async () => {
+  const owner = await registerAs('tplowner', 'tpl-password-1');
+  const team = await (await owner('/api/teams', { method: 'POST', body: { name: 'Kit Co' } })).json();
+
+  // Unknown templates are rejected; managers cannot apply kits.
+  assert.strictEqual(
+    (await owner(`/api/teams/${team.id}/apply-template`, { method: 'POST', body: { template: 'nope' } })).status,
+    400
+  );
+  const mgr = await registerAs('tplmgr', 'tpl-password-2');
+  await owner(`/api/teams/${team.id}/members`, { method: 'POST', body: { username: 'tplmgr', role: 'manager' } });
+  assert.strictEqual(
+    (await mgr(`/api/teams/${team.id}/apply-template`, { method: 'POST', body: { template: 'docs' } })).status,
+    403
+  );
+
+  const res = await owner(`/api/teams/${team.id}/apply-template`, { method: 'POST', body: { template: 'docs' } });
+  assert.strictEqual(res.status, 200);
+  const result = await res.json();
+  assert.strictEqual(result.template, 'docs');
+  assert.ok(result.created >= 4);
+
+  const settings = await (await owner(`/api/teams/${team.id}/settings`)).json();
+  assert.strictEqual(settings.theme, 'terminal');
+  assert.strictEqual(settings.heading_font, 'mono');
+  assert.strictEqual(settings.layout, 'list');
+
+  // Starter content is live on the public site immediately.
+  const home = await (await fetch(`${base}/t/${team.slug}`)).text();
+  assert.ok(home.includes('Getting started'));
+  assert.ok(home.includes('v1.0 release notes'));
+  assert.ok(home.includes('--bg: #0a0f0a')); // terminal theme
+
+  const auditRows = await (await owner(`/api/teams/${team.id}/audit`)).json();
+  assert.ok(auditRows.some((r) => r.action === 'site.template'));
+});
+
+test('AI site builder: 503 when unconfigured, builds a site in mock mode', async () => {
+  const owner = await loginAs('tplowner', 'tpl-password-1');
+  const team = await (await owner('/api/teams', { method: 'POST', body: { name: 'AI Co' } })).json();
+
+  const savedKey = process.env.ANTHROPIC_API_KEY;
+  const savedMock = process.env.NOVA_AI_MOCK;
+  delete process.env.ANTHROPIC_API_KEY;
+  delete process.env.NOVA_AI_MOCK;
+  try {
+    const off = await owner(`/api/teams/${team.id}/ai-build`, {
+      method: 'POST',
+      body: { prompt: 'A tiny bakery in Lisbon' },
+    });
+    assert.strictEqual(off.status, 503);
+    assert.ok((await off.json()).error.includes('ANTHROPIC_API_KEY'));
+
+    process.env.NOVA_AI_MOCK = '1';
+    assert.strictEqual(
+      (await owner(`/api/teams/${team.id}/ai-build`, { method: 'POST', body: { prompt: 'x' } })).status,
+      400
+    );
+
+    const res = await owner(`/api/teams/${team.id}/ai-build`, {
+      method: 'POST',
+      body: { prompt: 'A tiny bakery in Lisbon famous for cinnamon rolls' },
+    });
+    assert.strictEqual(res.status, 200);
+    const built = await res.json();
+    assert.ok(built.ok);
+    assert.strictEqual(built.theme, 'ocean');
+    assert.ok(built.pages >= 1 && built.posts >= 1);
+
+    const settings = await (await owner(`/api/teams/${team.id}/settings`)).json();
+    assert.strictEqual(settings.theme, 'ocean');
+    assert.ok(settings.site_title.includes('bakery') || settings.site_title.includes('A tiny'));
+
+    const home = await (await fetch(`${base}/t/${team.slug}`)).text();
+    assert.ok(home.includes('Welcome to our new site'));
+
+    const auditRows = await (await owner(`/api/teams/${team.id}/audit`)).json();
+    assert.ok(auditRows.some((r) => r.action === 'site.ai_build'));
+  } finally {
+    if (savedKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = savedKey;
+    if (savedMock === undefined) delete process.env.NOVA_AI_MOCK;
+    else process.env.NOVA_AI_MOCK = savedMock;
+  }
+});
+
 test('health endpoint responds for load balancers', async () => {
   const res = await fetch(`${base}/api/health`);
   assert.strictEqual(res.status, 200);

@@ -4,6 +4,9 @@ const express = require('express');
 const { getDb, uniqueTeamSlug, setTeamDefaults } = require('../db');
 const { audit } = require('../audit');
 const { requireAuth, requireTeamRole } = require('../auth');
+const { getTemplate, applySite, normalizeSite } = require('../templates');
+const { aiAvailable, generateSite } = require('../ai');
+const { rateLimit } = require('../security');
 const contentRoutes = require('./content');
 const tagRoutes = require('./tags');
 const mediaRoutes = require('./media');
@@ -105,6 +108,57 @@ router.put('/:teamId', requireTeamRole('admin'), (req, res) => {
 router.delete('/:teamId', requireTeamRole('admin'), (req, res) => {
   getDb().prepare('DELETE FROM teams WHERE id = ?').run(req.team.id);
   res.json({ ok: true });
+});
+
+// ---------- site templates + AI site builder ----------
+
+// Apply a pre-configured starter kit: theme settings + published starter
+// pages and posts. Admin-only — inserting published content is an admin right.
+router.post('/:teamId/apply-template', requireTeamRole('admin'), (req, res) => {
+  const template = getTemplate(String((req.body || {}).template || ''));
+  if (!template) return res.status(400).json({ error: 'Unknown template' });
+  const result = applySite(req.team.id, template, req.user);
+  audit(req.team.id, req.user, 'site.template', template.name, `${result.created} items`);
+  res.json({ ok: true, template: template.key, ...result });
+});
+
+// Describe the company; Claude designs the theme and writes the starter site.
+const aiLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, name: 'AI builds' });
+router.post('/:teamId/ai-build', requireTeamRole('admin'), aiLimiter, async (req, res, next) => {
+  try {
+    if (!aiAvailable()) {
+      return res.status(503).json({
+        error: 'AI builder is not configured — set ANTHROPIC_API_KEY on the server to enable it',
+      });
+    }
+    const prompt = String((req.body || {}).prompt || '').trim();
+    if (prompt.length < 8) {
+      return res.status(400).json({ error: 'Describe your company in a sentence or two' });
+    }
+    let spec;
+    try {
+      spec = normalizeSite(await generateSite(prompt.slice(0, 1000)));
+    } catch (err) {
+      return res.status(502).json({ error: `AI generation failed: ${err.message}` });
+    }
+    if (!spec.site_title) delete spec.site_title;
+    if (!spec.site_description) delete spec.site_description;
+    const result = applySite(req.team.id, spec, req.user);
+    audit(req.team.id, req.user, 'site.ai_build', spec.site_title || req.team.name, `${result.created} items`);
+    res.json({
+      ok: true,
+      site_title: spec.site_title || req.team.name,
+      theme: spec.theme,
+      heading_font: spec.heading_font,
+      layout: spec.layout,
+      accent_color: spec.accent_color,
+      pages: spec.pages.length,
+      posts: spec.posts.length,
+      ...result,
+    });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // ---------- dashboard stats ----------

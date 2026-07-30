@@ -3,7 +3,9 @@ const express = require('express');
 const cookieParser = require('cookie-parser');
 
 const { init } = require('./db');
-const { attachUser } = require('./auth');
+const { attachUser, requireAuth } = require('./auth');
+const { templateSummaries } = require('./templates');
+const { aiAvailable } = require('./ai');
 const { securityHeaders } = require('./security');
 const { version } = require('../package.json');
 const authRoutes = require('./routes/auth');
@@ -27,6 +29,11 @@ function createApp(options = {}) {
 
   // For load balancers and uptime monitors.
   app.get('/api/health', (req, res) => res.json({ ok: true, version }));
+
+  // Starter kits for new sites + whether the AI builder is configured.
+  app.get('/api/site-templates', requireAuth, (req, res) =>
+    res.json({ templates: templateSummaries(), ai_available: aiAvailable() })
+  );
 
   // REST API — content, tags, and media are nested under their team:
   // /api/teams/:teamId/{content,tags,media,members,settings}

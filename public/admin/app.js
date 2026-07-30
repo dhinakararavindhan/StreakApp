@@ -1147,6 +1147,24 @@
         <input name="custom_domain" placeholder="www.yourcompany.com" value="${esc(info.custom_domain || '')}">
         <p><button class="btn">Save</button></p>
       </form>
+      <div class="card" id="starter-card" style="max-width:520px;margin-top:1.4rem">
+        <b>Start your site</b>
+        <p style="color:var(--muted);font-size:0.82rem;margin:0.3rem 0 0.6rem">
+          Apply a starter kit — theme, typography, layout, and real starter pages and posts,
+          published instantly. Your existing content is never touched.
+        </p>
+        <div class="tpl-grid" id="tpl-grid">Loading…</div>
+        <div class="ai-build" id="ai-build">
+          <b style="font-size:0.85rem">✦ AI site builder</b>
+          <p style="color:var(--muted);font-size:0.82rem;margin:0.2rem 0 0.5rem">
+            Describe your company in a sentence — Claude picks the theme, typography, and layout,
+            and writes your starter pages and posts.
+          </p>
+          <textarea id="ai-prompt" rows="2" placeholder="A tiny bakery in Lisbon famous for cinnamon rolls and slow mornings"></textarea>
+          <p style="margin:0.5rem 0 0"><button type="button" class="btn" id="ai-go">Build my site</button>
+          <span id="ai-status" style="color:var(--muted);font-size:0.8rem;margin-left:0.5rem"></span></p>
+        </div>
+      </div>
       <form class="card" id="site-form" style="max-width:520px;margin-top:1.4rem">
         <b>Public site</b>
         <label>Site title</label><input name="site_title" id="ts-title">
@@ -1301,6 +1319,63 @@
       page.querySelector('#ts-accent').value = settings.accent_color || '';
       page.querySelector('#ts-css').value = settings.custom_css || '';
       page.querySelector('#ts-locale').value = settings.default_locale || 'en';
+
+      // Starter kits + AI site builder
+      const galleryColors = Object.fromEntries(
+        THEME_GALLERY.map(([key, , bg, fg, accent]) => [key, { bg, fg, accent }])
+      );
+      api('/site-templates').then(({ templates, ai_available }) => {
+        page.querySelector('#tpl-grid').innerHTML = templates
+          .map((t) => {
+            const c = galleryColors[t.theme] || galleryColors.default;
+            return `<div class="tpl">
+              <div class="tpl-swatch" style="background:${c.bg};color:${c.fg}">
+                <span class="dot" style="background:${t.accent_color || c.accent}"></span>Aa</div>
+              <div class="tpl-info"><b>${esc(t.name)}</b><span>${esc(t.description)}</span>
+                <span class="tpl-meta">${t.pages} page${t.pages === 1 ? '' : 's'} · ${t.posts} post${t.posts === 1 ? '' : 's'}</span></div>
+              <button type="button" class="btn secondary sm" data-tpl="${t.key}">Apply</button>
+            </div>`;
+          })
+          .join('');
+        page.querySelectorAll('[data-tpl]').forEach((btn) =>
+          btn.addEventListener('click', async () => {
+            if (!confirm('Apply this starter kit? It updates your site theme and publishes its starter pages and posts. Existing content is untouched.')) return;
+            btn.disabled = true;
+            try {
+              const r = await api(`/teams/${company.id}/apply-template`, {
+                method: 'POST',
+                body: { template: btn.dataset.tpl },
+              });
+              toast(`Starter kit applied — ${r.created} items published.`);
+              render();
+            } catch (err) {
+              toast(err.message, 'error');
+              btn.disabled = false;
+            }
+          })
+        );
+        const aiStatus = page.querySelector('#ai-status');
+        const aiGo = page.querySelector('#ai-go');
+        if (!ai_available) {
+          aiGo.disabled = true;
+          aiStatus.textContent = 'Set ANTHROPIC_API_KEY on the server to enable.';
+        }
+        aiGo.addEventListener('click', async () => {
+          const prompt = page.querySelector('#ai-prompt').value.trim();
+          if (prompt.length < 8) return toast('Describe your company in a sentence or two.', 'error');
+          aiGo.disabled = true;
+          aiStatus.textContent = 'Claude is designing your site — this takes a minute…';
+          try {
+            const r = await api(`/teams/${company.id}/ai-build`, { method: 'POST', body: { prompt } });
+            toast(`Site built: ${r.pages} pages + ${r.posts} posts, "${r.theme}" theme.`);
+            render();
+          } catch (err) {
+            aiGo.disabled = false;
+            aiStatus.textContent = '';
+            toast(err.message, 'error');
+          }
+        });
+      });
 
       page.querySelector('#company-form').addEventListener('submit', async (e) => {
         e.preventDefault();
