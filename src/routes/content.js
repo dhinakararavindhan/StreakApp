@@ -67,7 +67,7 @@ router.get('/:id', (req, res) => {
 });
 
 router.post('/', (req, res) => {
-  const { type = 'post', title, slug, body = '', excerpt = '', status = 'draft', tags } = req.body || {};
+  const { type = 'post', title, slug, body = '', excerpt = '', cover_image = '', status = 'draft', tags } = req.body || {};
   if (!title) return res.status(400).json({ error: 'title is required' });
   if (!['post', 'page'].includes(type)) return res.status(400).json({ error: 'type must be post or page' });
   if (!['draft', 'published'].includes(status)) return res.status(400).json({ error: 'status must be draft or published' });
@@ -76,10 +76,10 @@ router.post('/', (req, res) => {
   const finalSlug = uniqueSlug(slug || title, req.team.id);
   const result = db
     .prepare(
-      `INSERT INTO content (team_id, type, title, slug, body, excerpt, status, author_id, published_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? = 'published' THEN datetime('now') ELSE NULL END)`
+      `INSERT INTO content (team_id, type, title, slug, body, excerpt, cover_image, status, author_id, published_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? = 'published' THEN datetime('now') ELSE NULL END)`
     )
-    .run(req.team.id, type, title, finalSlug, body, excerpt, status, req.user.id, status);
+    .run(req.team.id, type, title, finalSlug, body, excerpt, String(cover_image), status, req.user.id, status);
   setTags(req.team.id, result.lastInsertRowid, tags);
   const row = db.prepare('SELECT * FROM content WHERE id = ?').get(result.lastInsertRowid);
   res.status(201).json(serialize(row));
@@ -92,7 +92,7 @@ router.put('/:id', (req, res) => {
     .get(req.params.id, req.team.id);
   if (!existing) return res.status(404).json({ error: 'Not found' });
 
-  const { title, slug, body, excerpt, status, tags } = req.body || {};
+  const { title, slug, body, excerpt, cover_image, status, tags } = req.body || {};
   if (status && !['draft', 'published'].includes(status)) {
     return res.status(400).json({ error: 'status must be draft or published' });
   }
@@ -107,13 +107,14 @@ router.put('/:id', (req, res) => {
       : null;
 
   db.prepare(
-    `UPDATE content SET title = ?, slug = ?, body = ?, excerpt = ?, status = ?,
+    `UPDATE content SET title = ?, slug = ?, body = ?, excerpt = ?, cover_image = ?, status = ?,
      published_at = ?, updated_at = datetime('now') WHERE id = ?`
   ).run(
     newTitle,
     newSlug,
     body !== undefined ? body : existing.body,
     excerpt !== undefined ? excerpt : existing.excerpt,
+    cover_image !== undefined ? String(cover_image) : existing.cover_image,
     newStatus,
     publishedAt,
     existing.id

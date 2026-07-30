@@ -24,12 +24,15 @@ function init(options = {}) {
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
 
+  // Role model: platform-level users.role is 'superadmin' (runs the
+  // platform) or 'user'; company-level team_members.role is 'admin'
+  // (company owner) or 'manager' (company employee).
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT NOT NULL UNIQUE,
       password_hash TEXT NOT NULL,
-      role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('admin', 'user')),
+      role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('superadmin', 'user')),
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
@@ -44,7 +47,7 @@ function init(options = {}) {
     CREATE TABLE IF NOT EXISTS team_members (
       team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      role TEXT NOT NULL DEFAULT 'editor' CHECK (role IN ('owner', 'editor')),
+      role TEXT NOT NULL DEFAULT 'manager' CHECK (role IN ('admin', 'manager')),
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       PRIMARY KEY (team_id, user_id)
     );
@@ -57,6 +60,7 @@ function init(options = {}) {
       slug TEXT NOT NULL,
       body TEXT NOT NULL DEFAULT '',
       excerpt TEXT NOT NULL DEFAULT '',
+      cover_image TEXT NOT NULL DEFAULT '',
       status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published')),
       author_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -103,17 +107,73 @@ function init(options = {}) {
     );
   `);
 
-  // Migration for databases created before custom domains existed.
-  const teamCols = db.prepare('PRAGMA table_info(teams)').all();
-  if (!teamCols.some((c) => c.name === 'custom_domain')) {
+  migrate();
+  seed();
+  return db;
+}
+
+/** Bring databases created under older schemas up to date. */
+function migrate() {
+  const tableSql = (name) =>
+    (db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?").get(name) || {}).sql || '';
+
+  // teams.custom_domain (pre-domain databases)
+  if (!db.prepare('PRAGMA table_info(teams)').all().some((c) => c.name === 'custom_domain')) {
     db.exec('ALTER TABLE teams ADD COLUMN custom_domain TEXT');
   }
   db.exec(
     'CREATE UNIQUE INDEX IF NOT EXISTS idx_teams_custom_domain ON teams(custom_domain) WHERE custom_domain IS NOT NULL'
   );
 
-  seed();
-  return db;
+  // content.cover_image (pre-cover databases)
+  if (!db.prepare('PRAGMA table_info(content)').all().some((c) => c.name === 'cover_image')) {
+    db.exec("ALTER TABLE content ADD COLUMN cover_image TEXT NOT NULL DEFAULT ''");
+  }
+
+  // Role vocabulary: platform admin -> superadmin. Old CHECK constraints
+  // block in-place updates, so rebuild the table.
+  if (!tableSql('users').includes("'superadmin'")) {
+    db.pragma('foreign_keys = OFF');
+    db.exec(`
+      CREATE TABLE users_migrated (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('superadmin', 'user')),
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      INSERT INTO users_migrated (id, username, password_hash, role, created_at)
+        SELECT id, username, password_hash,
+               CASE WHEN role = 'admin' THEN 'superadmin' ELSE 'user' END,
+               created_at
+        FROM users;
+      DROP TABLE users;
+      ALTER TABLE users_migrated RENAME TO users;
+    `);
+    db.pragma('foreign_keys = ON');
+  }
+
+  // Role vocabulary: owner -> admin, editor -> manager.
+  if (tableSql('team_members').includes("'owner'")) {
+    db.pragma('foreign_keys = OFF');
+    db.exec(`
+      CREATE TABLE team_members_migrated (
+        team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        role TEXT NOT NULL DEFAULT 'manager' CHECK (role IN ('admin', 'manager')),
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (team_id, user_id)
+      );
+      INSERT INTO team_members_migrated (team_id, user_id, role, created_at)
+        SELECT team_id, user_id,
+               CASE WHEN role = 'owner' THEN 'admin' ELSE 'manager' END,
+               created_at
+        FROM team_members;
+      DROP TABLE team_members;
+      ALTER TABLE team_members_migrated RENAME TO team_members;
+    `);
+    db.pragma('foreign_keys = ON');
+  }
 }
 
 function seed() {
@@ -122,38 +182,37 @@ function seed() {
     const password = process.env.ADMIN_PASSWORD || 'admin123';
     const result = db
       .prepare('INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)')
-      .run(process.env.ADMIN_USERNAME || 'admin', bcrypt.hashSync(password, 10), 'admin');
+      .run(process.env.ADMIN_USERNAME || 'admin', bcrypt.hashSync(password, 10), 'superadmin');
     if (!process.env.ADMIN_PASSWORD) {
-      console.log('Created default admin user — username: admin, password: admin123 (change it!)');
+      console.log('Created default superadmin — username: admin, password: admin123 (change it!)');
     }
 
-    // Give the first admin a starter team with a welcome post.
-    const team = db.prepare('INSERT INTO teams (name, slug) VALUES (?, ?)').run('My Team', 'my-team');
+    const team = db.prepare('INSERT INTO teams (name, slug) VALUES (?, ?)').run('My Company', 'my-company');
     db.prepare('INSERT INTO team_members (team_id, user_id, role) VALUES (?, ?, ?)').run(
       team.lastInsertRowid,
       result.lastInsertRowid,
-      'owner'
+      'admin'
     );
-    setTeamDefaults(team.lastInsertRowid, 'My Team');
+    setTeamDefaults(team.lastInsertRowid, 'My Company');
     db.prepare(`
       INSERT INTO content (team_id, type, title, slug, body, excerpt, status, author_id, published_at)
-      VALUES (?, 'post', 'Welcome to your CMS', 'welcome-to-your-cms',
-        '# Welcome\n\nThis is your team''s first post. Log in to the [admin panel](/admin) to edit or delete it, and to start publishing your own content.',
-        'Your team site is up and running.', 'published', ?, datetime('now'))
+      VALUES (?, 'post', 'Welcome to Nova', 'welcome-to-nova',
+        '# Welcome\n\nThis is your company''s first post. Open the [admin panel](/admin) to edit it, invite your team, brand your site, and start publishing.',
+        'Your company site is live.', 'published', ?, datetime('now'))
     `).run(team.lastInsertRowid, result.lastInsertRowid);
   }
 
   const setting = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
-  setting.run('site_title', 'CMS');
-  setting.run('site_description', 'A multi-team content platform');
+  setting.run('site_title', 'Nova');
+  setting.run('site_description', 'The multi-company content platform');
   setting.run('allow_registration', 'true');
 }
 
-/** Seed default per-team settings; used at team creation. */
+/** Seed default per-company settings; used at company creation. */
 function setTeamDefaults(teamId, name) {
   const stmt = db.prepare('INSERT OR IGNORE INTO team_settings (team_id, key, value) VALUES (?, ?, ?)');
   stmt.run(teamId, 'site_title', name);
-  stmt.run(teamId, 'site_description', `${name} on CMS`);
+  stmt.run(teamId, 'site_description', `${name} on Nova`);
 }
 
 function getDb() {
@@ -161,7 +220,7 @@ function getDb() {
   return db;
 }
 
-/** Ensure a content slug is unique within a team, appending -2, -3, … if needed. */
+/** Ensure a content slug is unique within a company, appending -2, -3, … if needed. */
 function uniqueSlug(base, teamId, excludeId = null) {
   const candidateBase = slugify(base);
   let candidate = candidateBase;
@@ -175,7 +234,7 @@ function uniqueSlug(base, teamId, excludeId = null) {
   return candidate;
 }
 
-/** Ensure a team slug is unique, appending -2, -3, … if needed. */
+/** Ensure a company slug is unique, appending -2, -3, … if needed. */
 function uniqueTeamSlug(base, excludeId = null) {
   const candidateBase = slugify(base);
   let candidate = candidateBase;

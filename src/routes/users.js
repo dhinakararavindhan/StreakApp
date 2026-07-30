@@ -2,13 +2,13 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 
 const { getDb } = require('../db');
-const { requireAdmin } = require('../auth');
+const { requireSuperadmin } = require('../auth');
 
-// Platform-level user administration (admins only). Team membership is
-// managed per team under /api/teams/:teamId/members.
+// Platform-level user administration (superadmins only). Company
+// membership is managed per company under /api/teams/:teamId/members.
 const router = express.Router();
 
-router.get('/', requireAdmin, (req, res) => {
+router.get('/', requireSuperadmin, (req, res) => {
   const rows = getDb()
     .prepare(
       `SELECT u.id, u.username, u.role, u.created_at,
@@ -20,7 +20,7 @@ router.get('/', requireAdmin, (req, res) => {
   res.json(rows);
 });
 
-router.post('/', requireAdmin, (req, res) => {
+router.post('/', requireSuperadmin, (req, res) => {
   const { username, password, role = 'user' } = req.body || {};
   if (!username || !password) {
     return res.status(400).json({ error: 'username and password are required' });
@@ -28,8 +28,8 @@ router.post('/', requireAdmin, (req, res) => {
   if (String(password).length < 8) {
     return res.status(400).json({ error: 'Password must be at least 8 characters' });
   }
-  if (!['admin', 'user'].includes(role)) {
-    return res.status(400).json({ error: 'role must be admin or user' });
+  if (!['superadmin', 'user'].includes(role)) {
+    return res.status(400).json({ error: 'role must be superadmin or user' });
   }
   const db = getDb();
   if (db.prepare('SELECT 1 FROM users WHERE username = ?').get(username)) {
@@ -44,7 +44,7 @@ router.post('/', requireAdmin, (req, res) => {
   res.status(201).json(row);
 });
 
-router.delete('/:id', requireAdmin, (req, res) => {
+router.delete('/:id', requireSuperadmin, (req, res) => {
   const id = Number(req.params.id);
   if (id === req.user.id) return res.status(400).json({ error: 'Cannot delete your own account' });
   const result = getDb().prepare('DELETE FROM users WHERE id = ?').run(id);

@@ -5,7 +5,7 @@ const { getDb } = require('../db');
 
 const router = express.Router();
 
-// Theme presets a team can pick for its site. 'default' follows the
+// Theme presets a company can pick for its site. 'default' follows the
 // visitor's light/dark preference; the rest are fixed brand looks.
 const THEMES = {
   default: null, // handled via prefers-color-scheme below
@@ -45,7 +45,7 @@ function themeCss(settings = {}) {
     :root { --fg: #e5e5e5; --muted: #999; --accent: ${accent || '#60a5fa'}; --bg: #111; --border: #333; }
   }`;
   }
-  // Per-team CSS is scoped to that team's own pages; just prevent tag breakout.
+  // Per-company CSS is scoped to that company's own pages; just prevent tag breakout.
   const custom = String(settings.custom_css || '').replace(/<\/(style|script)/gi, '');
   return `${css}\n${custom}`;
 }
@@ -60,29 +60,55 @@ function layout({ title, siteTitle, siteDescription, homeHref, nav = '', content
 <style>
   ${themeCss(settings)}
   * { box-sizing: border-box; }
-  body { margin: 0; font-family: system-ui, sans-serif; color: var(--fg); background: var(--bg); line-height: 1.6; }
-  header { border-bottom: 1px solid var(--border); }
-  .wrap { max-width: 720px; margin: 0 auto; padding: 1rem 1.25rem; }
-  header .wrap { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; flex-wrap: wrap; }
+  body { margin: 0; font-family: system-ui, sans-serif; color: var(--fg); background: var(--bg); line-height: 1.65; }
+  header.top {
+    position: sticky; top: 0; z-index: 10;
+    background: color-mix(in srgb, var(--bg) 82%, transparent);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .wrap { max-width: 820px; margin: 0 auto; padding: 1rem 1.5rem; }
+  header.top .wrap { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; flex-wrap: wrap; padding-top: 0.85rem; padding-bottom: 0.85rem; }
   a { color: var(--accent); text-decoration: none; }
   a:hover { text-decoration: underline; }
-  h1.site { font-size: 1.25rem; margin: 0; }
+  h1.site { font-size: 1.15rem; margin: 0; letter-spacing: -0.01em; }
   h1.site a { color: var(--fg); }
-  nav a { margin-left: 1rem; color: var(--muted); }
-  main.wrap { padding-top: 2rem; padding-bottom: 3rem; }
-  article + article { margin-top: 2.5rem; }
-  .meta { color: var(--muted); font-size: 0.875rem; }
-  .tag { display: inline-block; background: var(--border); color: var(--fg); border-radius: 999px; padding: 0 0.6em; font-size: 0.8rem; margin-right: 0.35em; }
-  img { max-width: 100%; }
-  pre { overflow-x: auto; background: var(--border); padding: 1rem; border-radius: 6px; }
+  nav a { margin-left: 1.1rem; color: var(--muted); font-size: 0.95rem; }
+  .hero { padding: 3.25rem 0 0.5rem; }
+  .hero h1 { font-size: clamp(1.8rem, 5vw, 2.6rem); margin: 0 0 0.4rem; letter-spacing: -0.03em; line-height: 1.15; }
+  .hero p { color: var(--muted); font-size: 1.05rem; margin: 0; }
+  .hero .rule { height: 3px; width: 64px; background: var(--accent); border-radius: 2px; margin-top: 1.5rem; }
+  main.wrap { padding-top: 1rem; padding-bottom: 4rem; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 1.25rem; margin-top: 2rem; }
+  .card {
+    border: 1px solid var(--border); border-radius: 14px; overflow: hidden;
+    background: color-mix(in srgb, var(--fg) 3%, var(--bg));
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    display: flex; flex-direction: column;
+  }
+  .card:hover { transform: translateY(-3px); box-shadow: 0 12px 32px color-mix(in srgb, var(--fg) 10%, transparent); }
+  .card .cover { width: 100%; height: 140px; object-fit: cover; display: block; background: var(--border); }
+  .card .cover.placeholder { display: grid; place-items: center; color: var(--muted); font-size: 1.6rem; background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 22%, var(--bg)), color-mix(in srgb, var(--accent) 6%, var(--bg))); }
+  .card .pad { padding: 1rem 1.1rem 1.15rem; display: flex; flex-direction: column; gap: 0.4rem; flex: 1; }
+  .card h2 { font-size: 1.05rem; margin: 0; letter-spacing: -0.01em; }
+  .card h2 a { color: var(--fg); }
+  .card p { margin: 0; color: var(--muted); font-size: 0.9rem; flex: 1; }
+  .meta { color: var(--muted); font-size: 0.85rem; }
+  .tag { display: inline-block; background: color-mix(in srgb, var(--accent) 14%, var(--bg)); color: var(--accent); border-radius: 999px; padding: 0.05rem 0.65em; font-size: 0.78rem; margin-right: 0.35em; }
+  article.full { padding-top: 2.5rem; }
+  article.full .cover-hero { width: 100%; max-height: 340px; object-fit: cover; border-radius: 16px; margin-bottom: 2rem; }
+  article.full h1 { font-size: clamp(1.7rem, 4.5vw, 2.4rem); letter-spacing: -0.03em; margin: 0 0 0.5rem; line-height: 1.15; }
+  article.full .meta { margin-bottom: 2rem; }
+  article.full img { max-width: 100%; border-radius: 10px; }
+  pre { overflow-x: auto; background: color-mix(in srgb, var(--fg) 6%, var(--bg)); border: 1px solid var(--border); padding: 1rem; border-radius: 10px; }
+  code { background: color-mix(in srgb, var(--fg) 6%, var(--bg)); border-radius: 4px; padding: 0.1em 0.35em; font-size: 0.9em; }
+  pre code { background: none; padding: 0; }
+  blockquote { border-left: 3px solid var(--accent); margin-left: 0; padding-left: 1.25rem; color: var(--muted); }
   footer { border-top: 1px solid var(--border); color: var(--muted); font-size: 0.875rem; }
-  ul.teams { list-style: none; padding: 0; }
-  ul.teams li { border: 1px solid var(--border); border-radius: 8px; padding: 0.9rem 1.1rem; margin-bottom: 0.75rem; }
-  ul.teams .meta { margin-top: 0.15rem; }
 </style>
 </head>
 <body>
-<header><div class="wrap">
+<header class="top"><div class="wrap">
   <h1 class="site"><a href="${esc(homeHref)}">${esc(siteTitle)}</a></h1>
   <nav>${nav}</nav>
 </div></header>
@@ -92,7 +118,7 @@ function layout({ title, siteTitle, siteDescription, homeHref, nav = '', content
 </html>`;
 }
 
-/** Base path for a team's links: '' on its custom domain, /t/<slug> otherwise. */
+/** Base path for a company's links: '' on its custom domain, /t/<slug> otherwise. */
 function teamBase(team, onDomain) {
   return onDomain ? '' : `/t/${team.slug}`;
 }
@@ -105,27 +131,42 @@ function teamNav(team, base, onDomain) {
     .all(team.id);
   const links = pages.map((p) => `<a href="${esc(base)}/${esc(p.slug)}">${esc(p.title)}</a>`).join('');
   // On a company's own domain, don't advertise the platform directory.
-  return onDomain ? links : links + '<a href="/">All teams</a>';
+  return onDomain ? links : links + '<a href="/">All sites</a>';
 }
 
-function renderArticle(team, row, { full, base }) {
+function tagLinks(row, base) {
   const tags = getDb()
     .prepare(
       'SELECT t.name, t.slug FROM tags t JOIN content_tags ct ON ct.tag_id = t.id WHERE ct.content_id = ?'
     )
     .all(row.id);
-  const date = (row.published_at || row.created_at || '').slice(0, 10);
-  const tagHtml = tags
+  return tags
     .map((t) => `<a class="tag" href="${esc(base)}${base ? '' : '/'}?tag=${esc(t.slug)}">${esc(t.name)}</a>`)
     .join('');
-  const heading = full
-    ? `<h1>${esc(row.title)}</h1>`
-    : `<h2><a href="${esc(base)}/posts/${esc(row.slug)}">${esc(row.title)}</a></h2>`;
-  const body = full
-    ? marked.parse(row.body)
-    : `<p>${esc(row.excerpt || row.body.replace(/[#*_`>\[\]]/g, '').slice(0, 200))}</p>`;
-  const meta = row.type === 'post' ? `<div class="meta">${esc(date)} ${tagHtml}</div>` : '';
-  return `<article>${heading}${meta}${body}</article>`;
+}
+
+function postCard(team, row, base) {
+  const date = (row.published_at || row.created_at || '').slice(0, 10);
+  const href = `${base}/posts/${row.slug}`;
+  const cover = row.cover_image
+    ? `<img class="cover" src="${esc(row.cover_image)}" alt="">`
+    : `<div class="cover placeholder">✶</div>`;
+  const excerpt = row.excerpt || row.body.replace(/[#*_`>\[\]]/g, '').slice(0, 140);
+  return `<div class="card">
+    <a href="${esc(href)}">${cover}</a>
+    <div class="pad">
+      <h2><a href="${esc(href)}">${esc(row.title)}</a></h2>
+      <p>${esc(excerpt)}</p>
+      <div class="meta">${esc(date)} ${tagLinks(row, base)}</div>
+    </div>
+  </div>`;
+}
+
+function fullArticle(team, row, base) {
+  const date = (row.published_at || row.created_at || '').slice(0, 10);
+  const cover = row.cover_image ? `<img class="cover-hero" src="${esc(row.cover_image)}" alt="">` : '';
+  const meta = row.type === 'post' ? `<div class="meta">${esc(date)} ${tagLinks(row, base)}</div>` : '';
+  return `<article class="full">${cover}<h1>${esc(row.title)}</h1>${meta}${marked.parse(row.body)}</article>`;
 }
 
 function teamLayout(team, onDomain, { title, content }) {
@@ -147,6 +188,7 @@ function findTeam(slug) {
 }
 
 function renderTeamHome(team, onDomain, req, res) {
+  const s = teamSettings(team.id);
   const { tag } = req.query;
   const params = [team.id];
   let filter = '';
@@ -162,9 +204,14 @@ function renderTeamHome(team, onDomain, req, res) {
     )
     .all(...params);
   const base = teamBase(team, onDomain);
+  const hero = `<div class="hero">
+    <h1>${esc(s.site_title || team.name)}</h1>
+    <p>${esc(tag ? `Tagged “${tag}”` : s.site_description || '')}</p>
+    <div class="rule"></div>
+  </div>`;
   const content = posts.length
-    ? posts.map((p) => renderArticle(team, p, { full: false, base })).join('')
-    : '<p>No posts yet.</p>';
+    ? `${hero}<div class="cards">${posts.map((p) => postCard(team, p, base)).join('')}</div>`
+    : `${hero}<p class="meta" style="margin-top:2rem">No posts yet.</p>`;
   res.send(teamLayout(team, onDomain, { title: tag ? `Tag: ${tag}` : '', content }));
 }
 
@@ -175,10 +222,10 @@ function renderTeamPost(team, onDomain, slug, res) {
   if (!row) {
     return res
       .status(404)
-      .send(teamLayout(team, onDomain, { title: 'Not found', content: '<h1>404</h1><p>Post not found.</p>' }));
+      .send(teamLayout(team, onDomain, { title: 'Not found', content: '<div class="hero"><h1>404</h1><p>Post not found.</p></div>' }));
   }
   const base = teamBase(team, onDomain);
-  res.send(teamLayout(team, onDomain, { title: row.title, content: renderArticle(team, row, { full: true, base }) }));
+  res.send(teamLayout(team, onDomain, { title: row.title, content: fullArticle(team, row, base) }));
 }
 
 function renderTeamPage(team, onDomain, slug, res) {
@@ -188,10 +235,10 @@ function renderTeamPage(team, onDomain, slug, res) {
   if (!row) {
     return res
       .status(404)
-      .send(teamLayout(team, onDomain, { title: 'Not found', content: '<h1>404</h1><p>Page not found.</p>' }));
+      .send(teamLayout(team, onDomain, { title: 'Not found', content: '<div class="hero"><h1>404</h1><p>Page not found.</p></div>' }));
   }
   const base = teamBase(team, onDomain);
-  res.send(teamLayout(team, onDomain, { title: row.title, content: renderArticle(team, row, { full: true, base }) }));
+  res.send(teamLayout(team, onDomain, { title: row.title, content: fullArticle(team, row, base) }));
 }
 
 // ---------- headless content API (public, CORS-open, published only) ----------
@@ -207,6 +254,7 @@ function publicContentRow(row, { withBody }) {
     title: row.title,
     slug: row.slug,
     excerpt: row.excerpt,
+    cover_image: row.cover_image,
     tags,
     published_at: row.published_at,
     updated_at: row.updated_at,
@@ -225,7 +273,7 @@ const cors = (req, res, next) => {
 
 router.get('/api/public/:team', cors, (req, res) => {
   const team = findTeam(req.params.team);
-  if (!team) return res.status(404).json({ error: 'Team not found' });
+  if (!team) return res.status(404).json({ error: 'Company not found' });
   const s = teamSettings(team.id);
   res.json({
     name: team.name,
@@ -237,7 +285,7 @@ router.get('/api/public/:team', cors, (req, res) => {
 
 router.get('/api/public/:team/content', cors, (req, res) => {
   const team = findTeam(req.params.team);
-  if (!team) return res.status(404).json({ error: 'Team not found' });
+  if (!team) return res.status(404).json({ error: 'Company not found' });
   const { type, tag } = req.query;
   const where = ["team_id = ?", "status = 'published'"];
   const params = [team.id];
@@ -256,7 +304,7 @@ router.get('/api/public/:team/content', cors, (req, res) => {
 
 router.get('/api/public/:team/content/:slug', cors, (req, res) => {
   const team = findTeam(req.params.team);
-  if (!team) return res.status(404).json({ error: 'Team not found' });
+  if (!team) return res.status(404).json({ error: 'Company not found' });
   const row = getDb()
     .prepare("SELECT * FROM content WHERE team_id = ? AND status = 'published' AND slug = ?")
     .get(team.id, req.params.slug);
@@ -265,8 +313,8 @@ router.get('/api/public/:team/content/:slug', cors, (req, res) => {
 });
 
 // ---------- custom-domain resolution ----------
-// A request whose Host matches a team's connected domain serves that
-// team's site at the domain root.
+// A request whose Host matches a company's connected domain serves that
+// company's site at the domain root.
 
 router.use((req, res, next) => {
   const host = String(req.hostname || '').toLowerCase();
@@ -278,7 +326,7 @@ router.use((req, res, next) => {
 
 // ---------- HTML site ----------
 
-// Root: a company's site home on its own domain, the team directory otherwise.
+// Root: a company's site home on its own domain, the directory otherwise.
 router.get('/', (req, res) => {
   if (req.domainTeam) return renderTeamHome(req.domainTeam, true, req, res);
 
@@ -291,16 +339,25 @@ router.get('/', (req, res) => {
     )
     .all();
   const content = `
-    <h1>Team sites</h1>
+    <div class="hero">
+      <h1>${esc(s.site_title)}</h1>
+      <p>${esc(s.site_description)}</p>
+      <div class="rule"></div>
+    </div>
     ${teams.length
-      ? `<ul class="teams">${teams
+      ? `<div class="cards">${teams
           .map(
-            (t) => `<li><a href="/t/${esc(t.slug)}"><b>${esc(t.name)}</b></a>
-              <div class="meta">${t.published_count} published item(s)</div></li>`
+            (t) => `<div class="card">
+              <a href="/t/${esc(t.slug)}"><div class="cover placeholder">◈</div></a>
+              <div class="pad">
+                <h2><a href="/t/${esc(t.slug)}">${esc(t.name)}</a></h2>
+                <p>${t.published_count} published item(s)</p>
+              </div>
+            </div>`
           )
-          .join('')}</ul>`
-      : '<p>No teams yet.</p>'}
-    <p class="meta">Have a team? <a href="/admin">Sign in or create an account</a> to start publishing.</p>`;
+          .join('')}</div>`
+      : '<p class="meta" style="margin-top:2rem">No companies yet.</p>'}
+    <p class="meta" style="margin-top:2.5rem">Have a company? <a href="/admin">Sign in or create an account</a> to start publishing.</p>`;
   res.send(
     layout({
       title: '',
@@ -320,22 +377,22 @@ router.get('/posts/:slug', (req, res, next) => {
   renderTeamPost(req.domainTeam, true, req.params.slug, res);
 });
 
-// Path-based team sites (always available, custom domain or not).
+// Path-based company sites (always available, custom domain or not).
 router.get('/t/:team', (req, res) => {
   const team = findTeam(req.params.team);
-  if (!team) return res.status(404).send('Team not found');
+  if (!team) return res.status(404).send('Company not found');
   renderTeamHome(team, false, req, res);
 });
 
 router.get('/t/:team/posts/:slug', (req, res) => {
   const team = findTeam(req.params.team);
-  if (!team) return res.status(404).send('Team not found');
+  if (!team) return res.status(404).send('Company not found');
   renderTeamPost(team, false, req.params.slug, res);
 });
 
 router.get('/t/:team/:slug', (req, res) => {
   const team = findTeam(req.params.team);
-  if (!team) return res.status(404).send('Team not found');
+  if (!team) return res.status(404).send('Company not found');
   renderTeamPage(team, false, req.params.slug, res);
 });
 

@@ -1,7 +1,7 @@
 const express = require('express');
 
 const { getDb } = require('../db');
-const { requireAdmin } = require('../auth');
+const { requireSuperadmin } = require('../auth');
 
 const router = express.Router();
 
@@ -13,7 +13,7 @@ router.get('/', (req, res) => {
   res.json(Object.fromEntries(rows.map((r) => [r.key, r.value])));
 });
 
-router.put('/', requireAdmin, (req, res) => {
+router.put('/', requireSuperadmin, (req, res) => {
   const db = getDb();
   const stmt = db.prepare(
     'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'

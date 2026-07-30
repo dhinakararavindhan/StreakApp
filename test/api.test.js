@@ -60,7 +60,7 @@ let admin; // platform admin client
 let alice; // regular user client
 let bob; // regular user client
 let aliceTeam; // team owned by alice
-let seededTeamId; // "my-team" seeded for admin
+let seededTeamId; // "my-company" seeded for admin
 
 test('unauthenticated API access is rejected', async () => {
   const res = await client()('/api/teams');
@@ -78,8 +78,8 @@ test('login fails with wrong password', async () => {
 test('admin login works and sees the seeded team', async () => {
   admin = await loginAs('admin', 'test-password-123');
   const teams = await (await admin('/api/teams')).json();
-  assert.ok(teams.some((t) => t.slug === 'my-team'));
-  seededTeamId = teams.find((t) => t.slug === 'my-team').id;
+  assert.ok(teams.some((t) => t.slug === 'my-company'));
+  seededTeamId = teams.find((t) => t.slug === 'my-company').id;
 });
 
 test('registration rejects short passwords and bad usernames', async () => {
@@ -101,7 +101,7 @@ test('users can self-register and create a team', async () => {
   assert.strictEqual(res.status, 201);
   aliceTeam = await res.json();
   assert.strictEqual(aliceTeam.slug, 'acme-docs');
-  assert.strictEqual(aliceTeam.my_role, 'owner');
+  assert.strictEqual(aliceTeam.my_role, 'admin');
 });
 
 test('non-members cannot access another team', async () => {
@@ -112,7 +112,7 @@ test('non-members cannot access another team', async () => {
 
 let postId;
 
-test('team owner can create content with tags', async () => {
+test('company admin can create content with tags', async () => {
   const res = await alice(`/api/teams/${aliceTeam.id}/content`, {
     method: 'POST',
     body: { type: 'post', title: 'Hello World!', body: '# Hi\n\nFirst post.', tags: ['News'] },
@@ -159,7 +159,7 @@ test('publishing makes a post public on the team site with rendered markdown', a
 });
 
 test("one team's content does not leak onto another team's site", async () => {
-  const other = await fetch(`${base}/t/my-team/posts/hello-world`);
+  const other = await fetch(`${base}/t/my-company/posts/hello-world`);
   assert.strictEqual(other.status, 404);
 });
 
@@ -180,10 +180,10 @@ test('team pages are served at the team root', async () => {
   assert.ok((await res.text()).includes('About Acme Docs.'));
 });
 
-test('owner can add a member; editors can write content but not manage members', async () => {
+test('admin can add a member; managers can write content but not manage members', async () => {
   const add = await alice(`/api/teams/${aliceTeam.id}/members`, {
     method: 'POST',
-    body: { username: 'bob', role: 'editor' },
+    body: { username: 'bob', role: 'manager' },
   });
   assert.strictEqual(add.status, 201);
 
@@ -200,10 +200,10 @@ test('owner can add a member; editors can write content but not manage members',
   assert.strictEqual(manage.status, 403);
 });
 
-test('the last owner cannot be removed or demoted', async () => {
+test('the last company admin cannot be removed or demoted', async () => {
   const demote = await alice(`/api/teams/${aliceTeam.id}/members/${(await (await alice('/api/auth/me')).json()).id}`, {
     method: 'PUT',
-    body: { role: 'editor' },
+    body: { role: 'manager' },
   });
   assert.strictEqual(demote.status, 400);
 });
@@ -226,7 +226,47 @@ test('team settings change the public site title', async () => {
   assert.ok((await home.text()).includes('Acme Knowledge Base'));
 });
 
-test('platform admin can access any team; regular users cannot administer users', async () => {
+test('cover images are stored and exposed on cards and the headless API', async () => {
+  const created = await alice(`/api/teams/${aliceTeam.id}/content`, {
+    method: 'POST',
+    body: {
+      type: 'post',
+      title: 'Covered story',
+      cover_image: '/uploads/cover-demo.png',
+      status: 'published',
+    },
+  });
+  assert.strictEqual(created.status, 201);
+  assert.strictEqual((await created.json()).cover_image, '/uploads/cover-demo.png');
+
+  const home = await (await fetch(`${base}/t/acme-docs`)).text();
+  assert.ok(home.includes('/uploads/cover-demo.png'));
+
+  const api = await (await fetch(`${base}/api/public/acme-docs/content/covered-story`)).json();
+  assert.strictEqual(api.cover_image, '/uploads/cover-demo.png');
+});
+
+test('company dashboard stats are available to members', async () => {
+  const res = await alice(`/api/teams/${aliceTeam.id}/stats`);
+  assert.strictEqual(res.status, 200);
+  const stats = await res.json();
+  assert.ok(stats.posts >= 1);
+  assert.ok(stats.published >= 1);
+  assert.ok(Array.isArray(stats.recent) && stats.recent.length > 0);
+});
+
+test('platform stats are superadmin-only', async () => {
+  const forbidden = await alice('/api/platform/stats');
+  assert.strictEqual(forbidden.status, 403);
+  const res = await admin('/api/platform/stats');
+  assert.strictEqual(res.status, 200);
+  const stats = await res.json();
+  assert.ok(stats.companies >= 2);
+  assert.ok(stats.users >= 3);
+  assert.ok(Array.isArray(stats.recent_companies));
+});
+
+test('superadmin can access any company; regular users cannot administer users', async () => {
   const res = await admin(`/api/teams/${aliceTeam.id}/content`);
   assert.strictEqual(res.status, 200);
 
@@ -316,7 +356,7 @@ test('a connected custom domain serves the team site at its root', async () => {
 
   // The platform host still serves the directory.
   const directory = await fetch(`${base}/`);
-  assert.ok((await directory.text()).includes('Team sites'));
+  assert.ok((await directory.text()).includes('Sign in or create an account'));
 });
 
 test('deleting a team removes its content everywhere', async () => {

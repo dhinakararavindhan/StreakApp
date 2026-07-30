@@ -1,21 +1,47 @@
-# CMS
+# Nova CMS ✦
 
-A lightweight multi-team content management system built with Node.js, Express, and SQLite. Any company or team can onboard itself and use the CMS to power its website — with its own look, its own domain, and fully isolated content.
+A multi-company content platform built with Node.js, Express, and SQLite. Any company can onboard itself and use Nova to power its website — with its own look, its own domain, its own people, and fully isolated content.
 
 It ships three things in one small app:
 
-- **REST API** (`/api/…`) — auth, teams, members, content, tags, media, settings
-- **Admin panel** (`/admin`) — sign up, create teams, write and manage content in the browser
-- **Public sites** — `/` is a directory of team sites; each team publishes at `/t/<team-slug>` or on its own custom domain
+- **REST API** (`/api/…`) — auth, companies, members, content, tags, media, settings, platform stats
+- **Admin panel** (`/admin`) — a futuristic dark UI with a live dashboard, command palette (Ctrl/⌘+K), Markdown editor with cover images, and per-company branding controls
+- **Public sites** — `/` is a directory of company sites; each company publishes at `/t/<slug>` or on its own custom domain
+
+## The three-tier role architecture
+
+| Tier | Role | Who | Can do |
+| --- | --- | --- | --- |
+| Platform | **superadmin** | us — the platform operators | Everything: platform dashboard and stats, all companies, user administration, platform settings (title, open/closed registration) |
+| Company | **admin** | company owners | Run their company: profile, URL slug, custom domain, theme and branding, members and their roles, deletion — plus everything managers can do |
+| Company | **manager** | company employees | Day-to-day content work: posts, pages, media, tags, dashboard |
+
+Users can belong to several companies (with different roles in each) and switch between them in the sidebar. A company always keeps at least one admin. Superadmins pass through any company as an admin.
 
 ## Onboarding a company
 
-1. **Register** at `/admin` (self-serve; the platform admin can switch to invite-only).
-2. **Create a team** — the company workspace. The creator becomes its owner and can add teammates by username as editors or co-owners.
-3. **Publish** posts and pages from the admin panel; the site is immediately live at `/t/<slug>`.
-4. **Make it theirs** — pick one of two integration modes:
-   - **Hosted site**: choose a theme preset (Default, Midnight, Paper, Forest, Ocean), set a brand accent color and custom CSS, and connect a **custom domain** — point the domain's DNS at the server and the site is served at the domain root (`www.company.com`, `/posts/<slug>`, `/about`), with no platform branding.
-   - **Headless**: keep their existing website and pull published content as JSON from the public, CORS-open content API — `GET /api/public/<team>/content` and `GET /api/public/<team>/content/<slug>` (includes both raw Markdown and rendered HTML). No auth or API key needed for published content; drafts are never exposed.
+1. **Register** at `/admin` (self-serve; superadmins can switch the platform to invite-only).
+2. **Create the company workspace** — the creator becomes its admin and adds employees by username as managers (or co-admins).
+3. **Publish** from the admin panel; the site is immediately live at `/t/<slug>`.
+4. **Make it theirs** — two integration modes:
+   - **Hosted site**: pick a theme preset (Default, Midnight, Paper, Forest, Ocean), set a brand accent color and custom CSS, and connect a **custom domain** — point DNS at the server and the site is served at the domain root with no platform branding.
+   - **Headless**: keep an existing website and pull published content as JSON from the public, CORS-open content API — `GET /api/public/<company>/content` and `…/content/<slug>` (raw Markdown + rendered HTML + cover image). Drafts are never exposed.
+
+## Admin panel highlights
+
+- **Dashboard** — per-company KPIs (published, drafts, posts, pages, media, members) and recently updated content.
+- **Command palette** — Ctrl/⌘+K anywhere: jump between pages, create content, switch companies, and search content by title.
+- **Editor** — Markdown body, excerpt, tags, slug control, and a cover image picker fed by the company's media library with live preview.
+- **Company page** — profile, custom domain, theme/branding, headless API reference, and member management with role control.
+- **Platform page** (superadmins) — platform-wide KPIs, newest companies, user administration, and platform settings.
+
+## Content features
+
+- **Posts and pages** with Markdown bodies, drafts and publishing, excerpts, and **cover images** (shown on site cards, post heroes, and in the headless API).
+- **Slugs** auto-generated from titles and de-duplicated *within each company*.
+- **Tags** per company, with filtering on the public site and in the admin.
+- **Media library** per company — images and files up to 10 MB, served from `/uploads`.
+- **Public sites** with hero sections, card grids, sticky blurred navigation, and per-company theming.
 
 ## Quick start
 
@@ -24,34 +50,18 @@ npm install
 npm start
 ```
 
-Then open:
-
-- Team directory: http://localhost:3000
+- Company directory: http://localhost:3000
 - Admin panel: http://localhost:3000/admin
 
-On first run a platform admin is created — username `admin`, password `admin123` — along with a starter team. **Change the password immediately** in Settings, or set `ADMIN_USERNAME` / `ADMIN_PASSWORD` before the first start.
+On first run a **superadmin** is created — username `admin`, password `admin123` — along with a starter company. **Change the password immediately**, or set `ADMIN_USERNAME` / `ADMIN_PASSWORD` before the first start.
 
-## How teams work
+To fill the platform with realistic demo companies and content (Northwind Coffee, Orbital Labs, Fern & Field):
 
-- **Anyone can register** (toggleable by the platform admin) and create teams; the creator becomes the team's **owner**.
-- **Owners** manage the team: rename it, change its URL slug, edit site settings, add/remove members, promote owners, delete the team. A team always keeps at least one owner.
-- **Editors** manage the team's content, media, and tags.
-- Members are added by username; users can belong to many teams and switch between them in the admin panel.
-- **Platform admins** oversee everything: all teams, platform-wide user administration, and platform settings (title, description, whether registration is open).
-- Each team's public site lives at `/t/<team-slug>` — posts at `/t/<team-slug>/posts/<slug>`, pages at `/t/<team-slug>/<slug>`, tag filtering with `/t/<team-slug>?tag=<tag>`.
-
-## Content features
-
-- **Posts and pages** with Markdown bodies, drafts and publishing, excerpts.
-- **Slugs** auto-generated from titles and de-duplicated *within each team*.
-- **Tags** per team, with filtering on the public site and in the admin list.
-- **Media library** per team — images and files up to 10 MB, served from `/uploads`.
-- **Per-team site settings** — title, description, theme preset, accent color, and custom CSS, so every site can look different.
-- **Custom domains** — one per team, validated and unique, serving the team's site at the domain root.
+```bash
+node scripts/seed-demo.js          # against http://localhost:3000
+```
 
 ## Configuration
-
-Everything is optional; sensible defaults apply.
 
 | Env var | Default | Purpose |
 | --- | --- | --- |
@@ -59,34 +69,33 @@ Everything is optional; sensible defaults apply.
 | `DATA_DIR` | `./data` | Where the SQLite database lives |
 | `UPLOAD_DIR` | `./uploads` | Where uploaded media is stored |
 | `JWT_SECRET` | random per boot | Auth token signing key — set this in production so logins survive restarts |
-| `ADMIN_USERNAME` / `ADMIN_PASSWORD` | `admin` / `admin123` | First-run platform admin account |
+| `ADMIN_USERNAME` / `ADMIN_PASSWORD` | `admin` / `admin123` | First-run superadmin account |
 
 ## API overview
 
-All `/api` routes accept and return JSON. Authentication uses an httpOnly cookie set by login/register. Team-scoped routes require membership in that team; platform admins can access any team.
+All `/api` routes accept and return JSON. Authentication uses an httpOnly cookie set by login/register. Company-scoped routes require membership; superadmins can access any company.
 
 | Method | Route | Access | Description |
 | --- | --- | --- | --- |
 | POST | `/api/auth/register` | — | Create an account (`{username, password}`) |
-| POST | `/api/auth/login` | — | Log in |
-| POST | `/api/auth/logout` | ✓ | Log out |
+| POST | `/api/auth/login` / `/logout` | — / ✓ | Session management |
 | GET | `/api/auth/me` | ✓ | Current user |
 | POST | `/api/auth/password` | ✓ | Change own password |
-| GET | `/api/teams` | ✓ | My teams (admins: all teams) |
-| POST | `/api/teams` | ✓ | Create a team (`{name, slug?}`) — creator becomes owner |
-| GET/PUT/DELETE | `/api/teams/:id` | member / owner / owner | Read / update / delete a team |
-| GET | `/api/teams/:id/members` | member | List members |
-| POST | `/api/teams/:id/members` | owner | Add a member by username (`{username, role}`) |
-| PUT/DELETE | `/api/teams/:id/members/:userId` | owner (self-removal allowed) | Change role / remove or leave |
-| GET/PUT | `/api/teams/:id/settings` | member / owner | Site title, description, theme, accent color, custom CSS |
-| GET | `/api/public/:team` | — | Public team profile (JSON, CORS-open) |
-| GET | `/api/public/:team/content[/:slug]` | — | Published content as JSON — list (`?type=&tag=`) or single item with `body_html` |
-| GET/POST | `/api/teams/:id/content` | member | List (`?type=&status=&tag=&search=`) / create |
+| GET/POST | `/api/teams` | ✓ | My companies (superadmin: all) / create one — creator becomes its admin |
+| GET/PUT/DELETE | `/api/teams/:id` | member / admin / admin | Read / update (name, slug, custom_domain) / delete |
+| GET | `/api/teams/:id/stats` | member | Dashboard KPIs + recent content |
+| GET/POST | `/api/teams/:id/members` | member / admin | List / add by username (`{username, role: admin\|manager}`) |
+| PUT/DELETE | `/api/teams/:id/members/:userId` | admin (self-removal allowed) | Change role / remove or leave |
+| GET/PUT | `/api/teams/:id/settings` | member / admin | Site title, description, theme, accent color, custom CSS |
+| GET/POST | `/api/teams/:id/content` | member | List (`?type=&status=&tag=&search=`) / create (incl. `cover_image`) |
 | GET/PUT/DELETE | `/api/teams/:id/content/:cid` | member | Read / update / delete one item |
 | GET/DELETE | `/api/teams/:id/tags[/:tagId]` | member | List / delete tags |
 | GET/POST/DELETE | `/api/teams/:id/media[/:mid]` | member | List / upload (multipart `file`) / delete |
-| GET/POST/DELETE | `/api/users[/:id]` | platform admin | Platform-wide user administration |
-| GET/PUT | `/api/settings` | — / platform admin | Platform settings incl. `allow_registration` |
+| GET | `/api/platform/stats` | superadmin | Platform-wide KPIs and newest companies |
+| GET/POST/DELETE | `/api/users[/:id]` | superadmin | Platform-wide user administration |
+| GET/PUT | `/api/settings` | — / superadmin | Platform settings incl. `allow_registration` |
+| GET | `/api/public/:company` | — | Public company profile (JSON, CORS-open) |
+| GET | `/api/public/:company/content[/:slug]` | — | Published content as JSON — list (`?type=&tag=`) or single with `body_html` |
 
 ## Tests
 
@@ -94,17 +103,18 @@ All `/api` routes accept and return JSON. Authentication uses an httpOnly cookie
 npm test
 ```
 
-Runs an end-to-end suite (`node --test`) against an in-memory database: registration, team creation, membership and role enforcement, cross-team isolation, content CRUD, per-team slug scoping, draft/publish visibility, public site rendering, and platform administration.
+27 end-to-end tests (`node --test`, in-memory database): registration, company creation, the three-tier role model, cross-company isolation, content CRUD with cover images, per-company slug scoping, draft/publish visibility, theming, custom-domain routing, the headless API, dashboards, and platform stats.
 
 ## Project layout
 
 ```
 server.js            entry point
 src/app.js           express app wiring
-src/db.js            schema, seed data, slug helpers
-src/auth.js          JWT cookie auth + team role middleware
-src/routes/teams.js  teams, members, team settings + nested content/tags/media
-src/routes/          auth, users, platform settings, public sites
-public/admin/        admin panel SPA
+src/db.js            schema, migrations, seed, slug helpers
+src/auth.js          JWT cookie auth + role middleware (superadmin/admin/manager)
+src/routes/teams.js  companies, members, settings, stats + nested content/tags/media
+src/routes/          auth, users, platform stats, platform settings, public sites
+public/admin/        Nova admin panel SPA
+scripts/seed-demo.js demo companies + content
 test/                end-to-end API tests
 ```

@@ -1,14 +1,23 @@
-/* CMS admin panel — a small hash-routed SPA over the REST API.
-   Multi-team: users pick an active team; content, media, tags, and
-   team settings are all scoped to it. */
+/* Nova CMS admin — hash-routed SPA over the REST API.
+   Roles: superadmin (platform) > admin (company owner) > manager (employee). */
 (() => {
   const app = document.getElementById('app');
   let me = null;
-  let teams = [];
-  let team = null; // active team
+  let companies = [];
+  let company = null; // active company
 
   const esc = (s) =>
     String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+  const ICONS = {
+    dashboard: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5"/></svg>',
+    content: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="3" width="14" height="18" rx="2"/><line x1="9" y1="9" x2="15" y2="9"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>',
+    media: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M21 15.5l-4.5-4.5L6 21"/></svg>',
+    tags: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.6 13.4L11 3.8H4v7l9.6 9.6a2 2 0 002.8 0l4.2-4.2a2 2 0 000-2.8z"/><circle cx="7.5" cy="7.3" r="1.2"/></svg>',
+    company: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><path d="M3.5 20c0-3 2.5-5 5.5-5s5.5 2 5.5 5"/><circle cx="17" cy="9" r="2.3"/><path d="M17 14.5c2.3 0 4 1.6 4 3.8"/></svg>',
+    platform: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 010 18M12 3a14 14 0 000 18"/></svg>',
+    account: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/></svg>',
+  };
 
   async function api(path, options = {}) {
     const res = await fetch(`/api${path}`, {
@@ -26,25 +35,37 @@
     return data;
   }
 
-  const tapi = (path, options) => api(`/teams/${team.id}${path}`, options);
+  const capi = (path, options) => api(`/teams/${company.id}${path}`, options);
 
-  function flash(el, text, kind = 'ok') {
-    el.innerHTML = `<div class="msg ${kind}">${esc(text)}</div>`;
-    if (kind === 'ok') setTimeout(() => (el.innerHTML = ''), 2500);
+  // ---------- toasts ----------
+
+  function toast(text, kind = 'ok') {
+    let host = document.getElementById('toasts');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'toasts';
+      document.body.appendChild(host);
+    }
+    const el = document.createElement('div');
+    el.className = `toast ${kind}`;
+    el.textContent = text;
+    host.appendChild(el);
+    setTimeout(() => el.remove(), kind === 'ok' ? 2600 : 5000);
   }
+  const flash = (el, text, kind = 'ok') => toast(text, kind);
 
-  // ---------- login / register ----------
+  // ---------- auth screens ----------
 
   function renderLogin(mode = 'login') {
     const isLogin = mode === 'login';
     app.innerHTML = `
       <div class="login-wrap"><form class="login-box" id="login-form">
-        <h1>${isLogin ? 'Sign in' : 'Create account'}</h1>
-        <div id="login-msg"></div>
-        <label>Username</label><input name="username" required autofocus>
-        <label>Password${isLogin ? '' : ' (min 8 chars)'}</label><input name="password" type="password" required>
+        <div class="brand brand-lg">NOVA<span class="spark"> ✦</span></div>
+        <p class="tagline">${isLogin ? 'The multi-company content platform.' : 'Create your account — then launch your company workspace.'}</p>
+        <label>Username</label><input name="username" required autofocus autocomplete="username">
+        <label>Password${isLogin ? '' : ' (min 8 chars)'}</label><input name="password" type="password" required autocomplete="${isLogin ? 'current-password' : 'new-password'}">
         <p><button class="btn" style="width:100%">${isLogin ? 'Sign in' : 'Create account'}</button></p>
-        <p style="text-align:center;font-size:0.85rem">
+        <p style="text-align:center;font-size:0.85rem;color:var(--muted)">
           ${isLogin
             ? 'New here? <a href="#" id="switch">Create an account</a>'
             : 'Already registered? <a href="#" id="switch">Sign in</a>'}
@@ -62,24 +83,21 @@
           method: 'POST',
           body: { username: f.get('username'), password: f.get('password') },
         });
-        location.hash = '#/content';
+        location.hash = '#/dashboard';
         boot();
       } catch (err) {
-        flash(document.getElementById('login-msg'), err.message, 'error');
+        toast(err.message, 'error');
       }
     });
   }
 
-  // ---------- first-run: create a team ----------
-
-  function renderCreateTeam() {
+  function renderCreateCompany() {
     app.innerHTML = `
-      <div class="login-wrap"><form class="login-box" id="team-form">
-        <h1>Create your team</h1>
-        <p style="color:var(--muted);font-size:0.9rem">Teams keep their own content, media, members, and public site.</p>
-        <div id="team-msg"></div>
-        <label>Team name</label><input name="name" required autofocus placeholder="e.g. Marketing">
-        <p><button class="btn" style="width:100%">Create team</button></p>
+      <div class="login-wrap"><form class="login-box" id="company-form">
+        <div class="brand brand-lg">NOVA<span class="spark"> ✦</span></div>
+        <p class="tagline">Launch your company workspace — content, media, members, and a public site, fully yours.</p>
+        <label>Company name</label><input name="name" required autofocus placeholder="e.g. Acme Inc.">
+        <p><button class="btn" style="width:100%">Create company</button></p>
         <p style="text-align:center;font-size:0.85rem"><a href="#" id="logout">Sign out</a></p>
       </form></div>`;
     document.getElementById('logout').addEventListener('click', async (e) => {
@@ -88,84 +106,125 @@
       me = null;
       renderLogin();
     });
-    document.getElementById('team-form').addEventListener('submit', async (e) => {
+    document.getElementById('company-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const f = new FormData(e.target);
       try {
         const created = await api('/teams', { method: 'POST', body: { name: f.get('name') } });
-        teams.push(created);
-        setActiveTeam(created);
+        companies.push(created);
+        setActiveCompany(created);
+        location.hash = '#/dashboard';
         render();
       } catch (err) {
-        flash(document.getElementById('team-msg'), err.message, 'error');
+        toast(err.message, 'error');
       }
     });
   }
 
-  function setActiveTeam(t) {
-    team = t;
-    localStorage.setItem('cms_active_team', String(t.id));
+  function setActiveCompany(c) {
+    company = c;
+    localStorage.setItem('cms_active_team', String(c.id));
   }
 
   // ---------- shell ----------
 
   const NAV = [
-    ['#/content', 'Content'],
-    ['#/media', 'Media'],
-    ['#/tags', 'Tags'],
-    ['#/team', 'Team'],
-    ['#/users', 'Users', 'admin'],
-    ['#/settings', 'Settings'],
+    ['#/dashboard', 'Dashboard', 'dashboard'],
+    ['#/content', 'Content', 'content'],
+    ['#/media', 'Media', 'media'],
+    ['#/tags', 'Tags', 'tags'],
+    ['#/company', 'Company', 'company'],
+    ['#/platform', 'Platform', 'platform', 'superadmin'],
+    ['#/account', 'Account', 'account'],
   ];
 
   function shell(active, inner) {
-    const links = NAV.filter(([, , role]) => !role || me.role === role)
-      .map(([href, label]) => `<a class="navlink ${active === href ? 'active' : ''}" href="${href}">${label}</a>`)
+    const links = NAV.filter(([, , , need]) => !need || me.role === need)
+      .map(
+        ([href, label, icon]) =>
+          `<a class="navlink ${active === href ? 'active' : ''}" href="${href}">${ICONS[icon]}${label}</a>`
+      )
       .join('');
-    const teamOptions = teams
-      .map((t) => `<option value="${t.id}" ${team && t.id === team.id ? 'selected' : ''}>${esc(t.name)}</option>`)
+    const options = companies
+      .map((c) => `<option value="${c.id}" ${company && c.id === company.id ? 'selected' : ''}>${esc(c.name)}</option>`)
       .join('');
+    const roleChip =
+      me.role === 'superadmin'
+        ? '<span class="role-chip super">SUPERADMIN</span>'
+        : `<span class="role-chip">${esc((company && company.my_role) || 'member').toUpperCase()}</span>`;
     app.innerHTML = `
       <div class="shell">
         <div class="sidebar">
-          <div class="brand">CMS</div>
-          <select id="team-switch" title="Active team">${teamOptions}</select>
-          <a class="navlink" href="#" id="new-team" style="font-size:0.8rem;color:var(--muted)">+ New team</a>
+          <div class="brand">NOVA<span class="spark"> ✦</span></div>
+          <select class="switcher" id="company-switch" title="Active company">${options}</select>
+          <a class="new-co" href="#" id="new-company">+ New company</a>
           ${links}
           <div class="spacer"></div>
-          <div class="who">Signed in as <b>${esc(me.username)}</b>${me.role === 'admin' ? ' (platform admin)' : ''}</div>
-          <a class="navlink" href="/t/${esc(team.slug)}" target="_blank">View site ↗</a>
-          <a class="navlink" href="#" id="logout">Sign out</a>
+          <div class="kbd-hint"><kbd>Ctrl</kbd> + <kbd>K</kbd> command palette</div>
+          <div class="who"><b>${esc(me.username)}</b> ${roleChip}</div>
+          <a class="navlink" href="/t/${esc(company.slug)}" target="_blank">${ICONS.platform}View site ↗</a>
+          <a class="navlink" href="#" id="logout">${ICONS.account}Sign out</a>
         </div>
         <div class="content" id="page">${inner}</div>
       </div>`;
-    document.getElementById('team-switch').addEventListener('change', (e) => {
-      const next = teams.find((t) => t.id === Number(e.target.value));
+    document.getElementById('company-switch').addEventListener('change', (e) => {
+      const next = companies.find((c) => c.id === Number(e.target.value));
       if (next) {
-        setActiveTeam(next);
+        setActiveCompany(next);
         render();
       }
     });
-    document.getElementById('new-team').addEventListener('click', (e) => {
+    document.getElementById('new-company').addEventListener('click', (e) => {
       e.preventDefault();
-      const name = prompt('Team name:');
+      const name = prompt('Company name:');
       if (!name) return;
       api('/teams', { method: 'POST', body: { name } })
         .then((created) => {
-          teams.push(created);
-          setActiveTeam(created);
+          companies.push(created);
+          setActiveCompany(created);
+          toast(`Company "${created.name}" created.`);
           render();
         })
-        .catch((err) => alert(err.message));
+        .catch((err) => toast(err.message, 'error'));
     });
     document.getElementById('logout').addEventListener('click', async (e) => {
       e.preventDefault();
       await api('/auth/logout', { method: 'POST' });
       me = null;
-      team = null;
+      company = null;
       renderLogin();
     });
     return document.getElementById('page');
+  }
+
+  // ---------- dashboard ----------
+
+  async function renderDashboard() {
+    const page = shell('#/dashboard', `<h1>Dashboard <span class="sub">${esc(company.name)}</span></h1><div id="body">Loading…</div>`);
+    const s = await capi('/stats');
+    const kpi = (n, l) => `<div class="kpi"><div class="n">${n}</div><div class="l">${l}</div></div>`;
+    page.querySelector('#body').innerHTML = `
+      <div class="kpis">
+        ${kpi(s.published, 'Published')}${kpi(s.drafts, 'Drafts')}${kpi(s.posts, 'Posts')}${kpi(s.pages, 'Pages')}${kpi(s.media, 'Media files')}${kpi(s.members, 'Members')}
+      </div>
+      <div class="toolbar">
+        <a class="btn" href="#/edit/new">+ New content</a>
+        <a class="btn secondary" href="/t/${esc(company.slug)}" target="_blank">Open public site ↗</a>
+      </div>
+      <h1 style="font-size:1.05rem;margin-top:1.6rem">Recently updated</h1>
+      ${s.recent.length ? `
+      <table><thead><tr><th>Title</th><th>Type</th><th>Status</th><th>By</th><th>Updated</th></tr></thead>
+      <tbody>${s.recent
+        .map(
+          (r) => `<tr>
+            <td><a href="#/edit/${r.id}"><b>${esc(r.title)}</b></a></td>
+            <td>${esc(r.type)}</td>
+            <td><span class="pill ${esc(r.status)}">${esc(r.status)}</span></td>
+            <td>${esc(r.author || '—')}</td>
+            <td>${esc(r.updated_at.slice(0, 16))}</td>
+          </tr>`
+        )
+        .join('')}</tbody></table>` : '<p style="color:var(--muted)">Nothing yet — create your first piece of content.</p>'}`;
   }
 
   // ---------- content list ----------
@@ -177,7 +236,7 @@
 
     async function load() {
       const q = new URLSearchParams(Object.entries(state).filter(([, v]) => v));
-      const rows = await tapi(`/content?${q}`);
+      const rows = await capi(`/content?${q}`);
       listEl.innerHTML = `
         <div class="toolbar">
           <select id="f-type"><option value="">All types</option><option value="post">Posts</option><option value="page">Pages</option></select>
@@ -188,11 +247,11 @@
         <tbody>${rows
           .map(
             (r) => `<tr>
-              <td><a href="#/edit/${r.id}"><b>${esc(r.title)}</b></a><br><span style="color:var(--muted);font-size:0.8rem">/${esc(r.slug)}</span></td>
+              <td><a href="#/edit/${r.id}"><b>${esc(r.title)}</b></a><br><span style="color:var(--muted);font-size:0.78rem">/${esc(r.slug)}</span></td>
               <td>${esc(r.type)}</td>
               <td><span class="pill ${esc(r.status)}">${esc(r.status)}</span></td>
               <td>${esc(r.updated_at.slice(0, 16))}</td>
-              <td><button class="btn danger" data-del="${r.id}" style="padding:0.25rem 0.6rem">Delete</button></td>
+              <td><button class="btn danger sm" data-del="${r.id}">Delete</button></td>
             </tr>`
           )
           .join('') || '<tr><td colspan="5">Nothing here yet.</td></tr>'}</tbody></table>`;
@@ -204,7 +263,8 @@
       listEl.querySelectorAll('[data-del]').forEach((btn) =>
         btn.addEventListener('click', async () => {
           if (!confirm('Delete this item permanently?')) return;
-          await tapi(`/content/${btn.dataset.del}`, { method: 'DELETE' });
+          await capi(`/content/${btn.dataset.del}`, { method: 'DELETE' });
+          toast('Deleted.');
           load();
         })
       );
@@ -217,12 +277,11 @@
   async function renderEditor(id) {
     const isNew = id === 'new';
     const item = isNew
-      ? { type: 'post', title: '', slug: '', body: '', excerpt: '', status: 'draft', tags: [] }
-      : await tapi(`/content/${id}`);
+      ? { type: 'post', title: '', slug: '', body: '', excerpt: '', cover_image: '', status: 'draft', tags: [] }
+      : await capi(`/content/${id}`);
 
     const page = shell('#/content', `
-      <h1>${isNew ? 'New content' : 'Edit content'}</h1>
-      <div id="msg"></div>
+      <h1>${isNew ? 'New content' : 'Edit content'} <span class="sub">${esc(company.name)}</span></h1>
       <form id="editor" class="editor-grid">
         <div class="card">
           <label>Title</label><input name="title" required value="${esc(item.title)}">
@@ -240,14 +299,37 @@
             <option value="draft" ${item.status === 'draft' ? 'selected' : ''}>Draft</option>
             <option value="published" ${item.status === 'published' ? 'selected' : ''}>Published</option>
           </select>
+          <label>Cover image (URL or pick an upload)</label>
+          <input name="cover_image" list="media-list" value="${esc(item.cover_image)}" placeholder="/uploads/…">
+          <datalist id="media-list"></datalist>
+          <img class="cover-preview" id="cover-preview" alt="">
           <label>Slug (blank = from title)</label><input name="slug" value="${esc(item.slug)}">
           <label>Tags (comma-separated)</label><input name="tags" value="${esc(item.tags.map((t) => t.name).join(', '))}">
-          <p style="display:flex;gap:0.5rem">
+          <p style="display:flex;gap:0.5rem;margin-top:1.2rem">
             <button class="btn">Save</button>
             <a class="btn secondary" href="#/content">Back</a>
           </p>
         </div>
       </form>`);
+
+    // Offer uploaded images as cover suggestions + live preview.
+    const coverInput = page.querySelector('[name=cover_image]');
+    const preview = page.querySelector('#cover-preview');
+    const updatePreview = () => {
+      const v = coverInput.value.trim();
+      preview.src = v || '';
+      preview.style.display = v ? 'block' : 'none';
+    };
+    coverInput.addEventListener('input', updatePreview);
+    updatePreview();
+    capi('/media')
+      .then((rows) => {
+        page.querySelector('#media-list').innerHTML = rows
+          .filter((m) => m.mime_type.startsWith('image/'))
+          .map((m) => `<option value="${esc(m.url)}">${esc(m.original_name)}</option>`)
+          .join('');
+      })
+      .catch(() => {});
 
     page.querySelector('#editor').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -256,6 +338,7 @@
         title: f.get('title'),
         body: f.get('body'),
         excerpt: f.get('excerpt'),
+        cover_image: f.get('cover_image'),
         status: f.get('status'),
         slug: f.get('slug'),
         tags: f.get('tags').split(',').map((t) => t.trim()).filter(Boolean),
@@ -263,16 +346,16 @@
       if (isNew) body.type = f.get('type');
       try {
         const saved = isNew
-          ? await tapi('/content', { method: 'POST', body })
-          : await tapi(`/content/${id}`, { method: 'PUT', body });
+          ? await capi('/content', { method: 'POST', body })
+          : await capi(`/content/${id}`, { method: 'PUT', body });
+        toast('Saved.');
         if (isNew) {
           location.hash = `#/edit/${saved.id}`;
         } else {
-          flash(page.querySelector('#msg'), 'Saved.');
           e.target.querySelector('[name=slug]').value = saved.slug;
         }
       } catch (err) {
-        flash(page.querySelector('#msg'), err.message, 'error');
+        toast(err.message, 'error');
       }
     });
   }
@@ -281,28 +364,28 @@
 
   async function renderMedia() {
     const page = shell('#/media', `
-      <h1>Media</h1>
-      <div id="msg"></div>
-      <div class="toolbar"><input type="file" id="file"><button class="btn" id="upload">Upload</button></div>
+      <h1>Media <span class="sub">${esc(company.name)}</span></h1>
+      <div class="toolbar"><input type="file" id="file" style="max-width:280px"><button class="btn" id="upload">Upload</button></div>
       <div class="media-grid" id="grid">Loading…</div>`);
 
     async function load() {
-      const rows = await tapi('/media');
+      const rows = await capi('/media');
       page.querySelector('#grid').innerHTML =
         rows
           .map(
             (m) => `<div class="card">
-              ${m.mime_type.startsWith('image/') ? `<img src="${esc(m.url)}" alt="">` : '📄'}
-              <div><a href="${esc(m.url)}" target="_blank">${esc(m.original_name)}</a></div>
+              ${m.mime_type.startsWith('image/') ? `<img src="${esc(m.url)}" alt="">` : '<div style="font-size:1.6rem">📄</div>'}
+              <div style="margin-top:0.4rem"><a href="${esc(m.url)}" target="_blank">${esc(m.original_name)}</a></div>
               <div style="color:var(--muted)">${(m.size / 1024).toFixed(1)} KB</div>
-              <button class="btn danger" data-del="${m.id}" style="padding:0.2rem 0.5rem;margin-top:0.4rem">Delete</button>
+              <button class="btn danger sm" data-del="${m.id}" style="margin-top:0.5rem">Delete</button>
             </div>`
           )
-          .join('') || '<p>No files uploaded yet.</p>';
+          .join('') || '<p style="color:var(--muted)">No files uploaded yet.</p>';
       page.querySelectorAll('[data-del]').forEach((btn) =>
         btn.addEventListener('click', async () => {
           if (!confirm('Delete this file?')) return;
-          await tapi(`/media/${btn.dataset.del}`, { method: 'DELETE' });
+          await capi(`/media/${btn.dataset.del}`, { method: 'DELETE' });
+          toast('Deleted.');
           load();
         })
       );
@@ -313,12 +396,12 @@
       const fd = new FormData();
       fd.append('file', input.files[0]);
       try {
-        await tapi('/media', { method: 'POST', body: fd });
+        await capi('/media', { method: 'POST', body: fd });
         input.value = '';
-        flash(page.querySelector('#msg'), 'Uploaded.');
+        toast('Uploaded.');
         load();
       } catch (err) {
-        flash(page.querySelector('#msg'), err.message, 'error');
+        toast(err.message, 'error');
       }
     });
     await load();
@@ -327,21 +410,22 @@
   // ---------- tags ----------
 
   async function renderTags() {
-    const page = shell('#/tags', '<h1>Tags</h1><div id="list">Loading…</div>');
+    const page = shell('#/tags', `<h1>Tags <span class="sub">${esc(company.name)}</span></h1><div id="list">Loading…</div>`);
     async function load() {
-      const rows = await tapi('/tags');
+      const rows = await capi('/tags');
       page.querySelector('#list').innerHTML = `
         <table><thead><tr><th>Name</th><th>Slug</th><th>Used by</th><th></th></tr></thead>
         <tbody>${rows
           .map(
             (t) => `<tr><td>${esc(t.name)}</td><td>${esc(t.slug)}</td><td>${t.content_count} item(s)</td>
-            <td><button class="btn danger" data-del="${t.id}" style="padding:0.25rem 0.6rem">Delete</button></td></tr>`
+            <td><button class="btn danger sm" data-del="${t.id}">Delete</button></td></tr>`
           )
           .join('') || '<tr><td colspan="4">No tags yet — add them when editing content.</td></tr>'}</tbody></table>`;
       page.querySelectorAll('[data-del]').forEach((btn) =>
         btn.addEventListener('click', async () => {
           if (!confirm('Delete this tag? It will be removed from all content.')) return;
-          await tapi(`/tags/${btn.dataset.del}`, { method: 'DELETE' });
+          await capi(`/tags/${btn.dataset.del}`, { method: 'DELETE' });
+          toast('Deleted.');
           load();
         })
       );
@@ -349,24 +433,23 @@
     await load();
   }
 
-  // ---------- team (members + team settings) ----------
+  // ---------- company (profile, branding, members) ----------
 
-  async function renderTeam() {
-    const info = await api(`/teams/${team.id}`);
-    const isOwner = info.my_role === 'owner';
-    const page = shell('#/team', `
-      <h1>Team: ${esc(info.name)}</h1>
-      <div id="msg"></div>
-      ${isOwner ? `
-      <form class="card" id="team-form" style="max-width:480px">
-        <b>Team profile</b>
+  async function renderCompany() {
+    const info = await api(`/teams/${company.id}`);
+    const isAdmin = info.my_role === 'admin';
+    const page = shell('#/company', `
+      <h1>Company <span class="sub">${esc(info.name)}</span></h1>
+      ${isAdmin ? `
+      <form class="card" id="company-form" style="max-width:520px">
+        <b>Profile</b>
         <label>Name</label><input name="name" value="${esc(info.name)}">
         <label>URL slug — site lives at /t/&lt;slug&gt;</label><input name="slug" value="${esc(info.slug)}">
         <label>Custom domain — serve your site at its root (point the domain's DNS at this server first)</label>
         <input name="custom_domain" placeholder="www.yourcompany.com" value="${esc(info.custom_domain || '')}">
         <p><button class="btn">Save</button></p>
       </form>
-      <form class="card" id="site-form" style="max-width:480px;margin-top:1.5rem">
+      <form class="card" id="site-form" style="max-width:520px;margin-top:1.4rem">
         <b>Public site</b>
         <label>Site title</label><input name="site_title" id="ts-title">
         <label>Site description</label><input name="site_description" id="ts-desc">
@@ -384,7 +467,7 @@
         <textarea name="custom_css" id="ts-css" rows="5" placeholder="h1 { letter-spacing: -0.02em; }"></textarea>
         <p><button class="btn">Save</button></p>
       </form>
-      <div class="card" style="max-width:480px;margin-top:1.5rem">
+      <div class="card" style="max-width:520px;margin-top:1.4rem">
         <b>Headless API</b>
         <p style="color:var(--muted);font-size:0.85rem;margin-bottom:0">
           Using your own website frontend? Pull published content as JSON (CORS-open, no auth needed):<br>
@@ -392,33 +475,31 @@
           <code>GET /api/public/${esc(info.slug)}/content/&lt;slug&gt;</code>
         </p>
       </div>` : ''}
-      <div style="margin-top:1.5rem"><b>Members</b>
-        ${isOwner ? `
+      <div style="margin-top:1.6rem"><b>Members</b>
+        ${isAdmin ? `
         <form class="toolbar" id="add-member">
-          <input name="username" placeholder="Username of an existing account" required>
-          <select name="role"><option value="editor">Editor</option><option value="owner">Owner</option></select>
+          <input name="username" placeholder="Username of an existing account" required style="max-width:280px">
+          <select name="role"><option value="manager">Manager</option><option value="admin">Admin</option></select>
           <button class="btn">Add member</button>
         </form>` : ''}
-        <div id="members">Loading…</div>
+        <div id="members" style="margin-top:0.8rem">Loading…</div>
       </div>
-      ${isOwner ? `<p style="margin-top:2rem"><button class="btn danger" id="delete-team">Delete team…</button></p>` : ''}`);
-
-    const msg = page.querySelector('#msg');
+      ${isAdmin ? `<p style="margin-top:2rem"><button class="btn danger" id="delete-company">Delete company…</button></p>` : ''}`);
 
     async function loadMembers() {
-      const rows = await api(`/teams/${team.id}/members`);
+      const rows = await api(`/teams/${company.id}/members`);
       page.querySelector('#members').innerHTML = `
         <table><thead><tr><th>Username</th><th>Role</th><th>Since</th><th></th></tr></thead>
         <tbody>${rows
           .map((m) => {
-            const roleCell = isOwner
-              ? `<select data-role="${m.id}"><option value="editor" ${m.role === 'editor' ? 'selected' : ''}>Editor</option><option value="owner" ${m.role === 'owner' ? 'selected' : ''}>Owner</option></select>`
+            const roleCell = isAdmin
+              ? `<select data-role="${m.id}" style="width:auto"><option value="manager" ${m.role === 'manager' ? 'selected' : ''}>Manager</option><option value="admin" ${m.role === 'admin' ? 'selected' : ''}>Admin</option></select>`
               : esc(m.role);
             const action =
               m.id === me.id
-                ? `<button class="btn secondary" data-rm="${m.id}" style="padding:0.25rem 0.6rem">Leave</button>`
-                : isOwner
-                  ? `<button class="btn danger" data-rm="${m.id}" style="padding:0.25rem 0.6rem">Remove</button>`
+                ? `<button class="btn secondary sm" data-rm="${m.id}">Leave</button>`
+                : isAdmin
+                  ? `<button class="btn danger sm" data-rm="${m.id}">Remove</button>`
                   : '';
             return `<tr><td>${esc(m.username)}${m.id === me.id ? ' <span style="color:var(--muted)">(you)</span>' : ''}</td>
               <td>${roleCell}</td><td>${esc(m.created_at.slice(0, 10))}</td><td>${action}</td></tr>`;
@@ -427,10 +508,10 @@
       page.querySelectorAll('[data-role]').forEach((sel) =>
         sel.addEventListener('change', async () => {
           try {
-            await api(`/teams/${team.id}/members/${sel.dataset.role}`, { method: 'PUT', body: { role: sel.value } });
-            flash(msg, 'Role updated.');
+            await api(`/teams/${company.id}/members/${sel.dataset.role}`, { method: 'PUT', body: { role: sel.value } });
+            toast('Role updated.');
           } catch (err) {
-            flash(msg, err.message, 'error');
+            toast(err.message, 'error');
           }
           loadMembers();
         })
@@ -438,48 +519,48 @@
       page.querySelectorAll('[data-rm]').forEach((btn) =>
         btn.addEventListener('click', async () => {
           const leaving = Number(btn.dataset.rm) === me.id;
-          if (!confirm(leaving ? 'Leave this team?' : 'Remove this member?')) return;
+          if (!confirm(leaving ? 'Leave this company?' : 'Remove this member?')) return;
           try {
-            await api(`/teams/${team.id}/members/${btn.dataset.rm}`, { method: 'DELETE' });
+            await api(`/teams/${company.id}/members/${btn.dataset.rm}`, { method: 'DELETE' });
             if (leaving) return boot();
             loadMembers();
           } catch (err) {
-            flash(msg, err.message, 'error');
+            toast(err.message, 'error');
           }
         })
       );
     }
     await loadMembers();
 
-    if (isOwner) {
-      const settings = await api(`/teams/${team.id}/settings`);
+    if (isAdmin) {
+      const settings = await api(`/teams/${company.id}/settings`);
       page.querySelector('#ts-title').value = settings.site_title || '';
       page.querySelector('#ts-desc').value = settings.site_description || '';
       page.querySelector('#ts-theme').value = settings.theme || 'default';
       page.querySelector('#ts-accent').value = settings.accent_color || '';
       page.querySelector('#ts-css').value = settings.custom_css || '';
 
-      page.querySelector('#team-form').addEventListener('submit', async (e) => {
+      page.querySelector('#company-form').addEventListener('submit', async (e) => {
         e.preventDefault();
         const f = new FormData(e.target);
         try {
-          const updated = await api(`/teams/${team.id}`, {
+          const updated = await api(`/teams/${company.id}`, {
             method: 'PUT',
             body: { name: f.get('name'), slug: f.get('slug'), custom_domain: f.get('custom_domain') },
           });
-          Object.assign(team, updated);
-          teams = teams.map((t) => (t.id === team.id ? { ...t, ...updated } : t));
-          flash(msg, 'Team saved.');
+          Object.assign(company, updated);
+          companies = companies.map((c) => (c.id === company.id ? { ...c, ...updated } : c));
+          toast('Company saved.');
           render();
         } catch (err) {
-          flash(msg, err.message, 'error');
+          toast(err.message, 'error');
         }
       });
       page.querySelector('#site-form').addEventListener('submit', async (e) => {
         e.preventDefault();
         const f = new FormData(e.target);
         try {
-          await api(`/teams/${team.id}/settings`, {
+          await api(`/teams/${company.id}/settings`, {
             method: 'PUT',
             body: {
               site_title: f.get('site_title'),
@@ -489,70 +570,105 @@
               custom_css: f.get('custom_css'),
             },
           });
-          flash(msg, 'Site settings saved.');
+          toast('Site settings saved.');
         } catch (err) {
-          flash(msg, err.message, 'error');
+          toast(err.message, 'error');
         }
       });
       page.querySelector('#add-member').addEventListener('submit', async (e) => {
         e.preventDefault();
         const f = new FormData(e.target);
         try {
-          await api(`/teams/${team.id}/members`, {
+          await api(`/teams/${company.id}/members`, {
             method: 'POST',
             body: { username: f.get('username'), role: f.get('role') },
           });
           e.target.reset();
-          flash(msg, 'Member added.');
+          toast('Member added.');
           loadMembers();
         } catch (err) {
-          flash(msg, err.message, 'error');
+          toast(err.message, 'error');
         }
       });
-      page.querySelector('#delete-team').addEventListener('click', async () => {
-        if (!confirm(`Delete team "${info.name}" and ALL of its content? This cannot be undone.`)) return;
+      page.querySelector('#delete-company').addEventListener('click', async () => {
+        if (!confirm(`Delete company "${info.name}" and ALL of its content? This cannot be undone.`)) return;
         try {
-          await api(`/teams/${team.id}`, { method: 'DELETE' });
+          await api(`/teams/${company.id}`, { method: 'DELETE' });
+          toast('Company deleted.');
           boot();
         } catch (err) {
-          flash(msg, err.message, 'error');
+          toast(err.message, 'error');
         }
       });
     }
   }
 
-  // ---------- users (platform admin) ----------
+  // ---------- platform (superadmin) ----------
 
-  async function renderUsers() {
-    const page = shell('#/users', `
-      <h1>Users <span style="font-size:0.8rem;color:var(--muted)">platform-wide</span></h1>
-      <div id="msg"></div>
+  async function renderPlatform() {
+    const page = shell('#/platform', '<h1>Platform <span class="sub">superadmin</span></h1><div id="body">Loading…</div>');
+    const [stats, users, settings] = await Promise.all([
+      api('/platform/stats'),
+      api('/users'),
+      api('/settings'),
+    ]);
+    const kpi = (n, l) => `<div class="kpi"><div class="n">${n}</div><div class="l">${l}</div></div>`;
+    page.querySelector('#body').innerHTML = `
+      <div class="kpis">
+        ${kpi(stats.companies, 'Companies')}${kpi(stats.users, 'Users')}${kpi(stats.content, 'Content items')}${kpi(stats.published, 'Published')}${kpi(stats.custom_domains, 'Custom domains')}
+      </div>
+
+      <h1 style="font-size:1.05rem">Newest companies</h1>
+      <table><thead><tr><th>Company</th><th>Members</th><th>Published</th><th>Created</th></tr></thead>
+      <tbody>${stats.recent_companies
+        .map(
+          (c) => `<tr><td><a href="/t/${esc(c.slug)}" target="_blank"><b>${esc(c.name)}</b></a></td>
+          <td>${c.member_count}</td><td>${c.published_count}</td><td>${esc(c.created_at.slice(0, 10))}</td></tr>`
+        )
+        .join('')}</tbody></table>
+
+      <h1 style="font-size:1.05rem;margin-top:1.8rem">Users</h1>
       <form class="toolbar" id="add-user">
-        <input name="username" placeholder="Username" required>
-        <input name="password" type="password" placeholder="Password (min 8 chars)" required>
-        <select name="role"><option value="user">User</option><option value="admin">Platform admin</option></select>
+        <input name="username" placeholder="Username" required style="max-width:200px">
+        <input name="password" type="password" placeholder="Password (min 8 chars)" required style="max-width:230px">
+        <select name="role"><option value="user">User</option><option value="superadmin">Superadmin</option></select>
         <button class="btn">Add user</button>
       </form>
-      <div id="list">Loading…</div>`);
+      <div id="user-list"></div>
 
-    async function load() {
-      const rows = await api('/users');
-      page.querySelector('#list').innerHTML = `
-        <table><thead><tr><th>Username</th><th>Role</th><th>Teams</th><th>Created</th><th></th></tr></thead>
+      <h1 style="font-size:1.05rem;margin-top:1.8rem">Platform settings</h1>
+      <form class="card" id="platform-form" style="max-width:520px">
+        <label>Platform title</label><input name="site_title" value="${esc(settings.site_title)}">
+        <label>Platform description</label><input name="site_description" value="${esc(settings.site_description)}">
+        <label style="display:flex;align-items:center;gap:0.5rem;margin-top:1rem;font-size:0.9rem;color:var(--fg)">
+          <input type="checkbox" name="allow_registration" style="width:auto" ${settings.allow_registration === 'true' ? 'checked' : ''}>
+          Allow anyone to create an account
+        </label>
+        <p><button class="btn">Save</button></p>
+      </form>`;
+
+    function renderUserRows(rows) {
+      page.querySelector('#user-list').innerHTML = `
+        <table><thead><tr><th>Username</th><th>Role</th><th>Companies</th><th>Created</th><th></th></tr></thead>
         <tbody>${rows
           .map(
-            (u) => `<tr><td>${esc(u.username)}</td><td>${esc(u.role)}</td><td>${u.team_count}</td><td>${esc(u.created_at.slice(0, 10))}</td>
-            <td>${u.id === me.id ? '' : `<button class="btn danger" data-del="${u.id}" style="padding:0.25rem 0.6rem">Delete</button>`}</td></tr>`
+            (u) => `<tr><td>${esc(u.username)}</td>
+            <td>${u.role === 'superadmin' ? '<span class="role-chip super">SUPERADMIN</span>' : 'user'}</td>
+            <td>${u.team_count}</td><td>${esc(u.created_at.slice(0, 10))}</td>
+            <td>${u.id === me.id ? '' : `<button class="btn danger sm" data-del="${u.id}">Delete</button>`}</td></tr>`
           )
           .join('')}</tbody></table>`;
-      page.querySelectorAll('[data-del]').forEach((btn) =>
+      page.querySelectorAll('#user-list [data-del]').forEach((btn) =>
         btn.addEventListener('click', async () => {
           if (!confirm('Delete this user account?')) return;
           await api(`/users/${btn.dataset.del}`, { method: 'DELETE' });
-          load();
+          toast('User deleted.');
+          renderUserRows(await api('/users'));
         })
       );
     }
+    renderUserRows(users);
+
     page.querySelector('#add-user').addEventListener('submit', async (e) => {
       e.preventDefault();
       const f = new FormData(e.target);
@@ -562,60 +678,42 @@
           body: { username: f.get('username'), password: f.get('password'), role: f.get('role') },
         });
         e.target.reset();
-        flash(page.querySelector('#msg'), 'User added.');
-        load();
+        toast('User added.');
+        renderUserRows(await api('/users'));
       } catch (err) {
-        flash(page.querySelector('#msg'), err.message, 'error');
+        toast(err.message, 'error');
       }
     });
-    await load();
+    page.querySelector('#platform-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const f = new FormData(e.target);
+      try {
+        await api('/settings', {
+          method: 'PUT',
+          body: {
+            site_title: f.get('site_title'),
+            site_description: f.get('site_description'),
+            allow_registration: String(f.get('allow_registration') === 'on'),
+          },
+        });
+        toast('Platform settings saved.');
+      } catch (err) {
+        toast(err.message, 'error');
+      }
+    });
   }
 
-  // ---------- settings (my account + platform) ----------
+  // ---------- account ----------
 
-  async function renderSettings() {
-    const isAdmin = me.role === 'admin';
-    const s = isAdmin ? await api('/settings') : null;
-    const page = shell('#/settings', `
-      <h1>Settings</h1>
-      <div id="msg"></div>
-      ${isAdmin ? `
-      <form class="card" id="platform-form" style="max-width:480px">
-        <b>Platform</b>
-        <label>Platform title</label><input name="site_title" value="${esc(s.site_title)}">
-        <label>Platform description</label><input name="site_description" value="${esc(s.site_description)}">
-        <label style="display:flex;align-items:center;gap:0.5rem;margin-top:1rem">
-          <input type="checkbox" name="allow_registration" style="width:auto" ${s.allow_registration === 'true' ? 'checked' : ''}>
-          Allow anyone to create an account
-        </label>
-        <p><button class="btn">Save</button></p>
-      </form>` : ''}
-      <form class="card" id="password-form" style="max-width:480px;${isAdmin ? 'margin-top:1.5rem' : ''}">
+  async function renderAccount() {
+    const page = shell('#/account', `
+      <h1>Account <span class="sub">${esc(me.username)}</span></h1>
+      <form class="card" id="password-form" style="max-width:480px">
         <b>Change my password</b>
-        <label>Current password</label><input name="currentPassword" type="password" required>
-        <label>New password (min 8 chars)</label><input name="newPassword" type="password" required>
+        <label>Current password</label><input name="currentPassword" type="password" required autocomplete="current-password">
+        <label>New password (min 8 chars)</label><input name="newPassword" type="password" required autocomplete="new-password">
         <p><button class="btn">Update password</button></p>
       </form>`);
-
-    if (isAdmin) {
-      page.querySelector('#platform-form').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const f = new FormData(e.target);
-        try {
-          await api('/settings', {
-            method: 'PUT',
-            body: {
-              site_title: f.get('site_title'),
-              site_description: f.get('site_description'),
-              allow_registration: String(f.get('allow_registration') === 'on'),
-            },
-          });
-          flash(page.querySelector('#msg'), 'Platform settings saved.');
-        } catch (err) {
-          flash(page.querySelector('#msg'), err.message, 'error');
-        }
-      });
-    }
     page.querySelector('#password-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const f = new FormData(e.target);
@@ -625,52 +723,162 @@
           body: { currentPassword: f.get('currentPassword'), newPassword: f.get('newPassword') },
         });
         e.target.reset();
-        flash(page.querySelector('#msg'), 'Password updated.');
+        toast('Password updated.');
       } catch (err) {
-        flash(page.querySelector('#msg'), err.message, 'error');
+        toast(err.message, 'error');
       }
     });
   }
+
+  // ---------- command palette ----------
+
+  let paletteOpen = false;
+
+  function openPalette() {
+    if (paletteOpen || !me || !company) return;
+    paletteOpen = true;
+    const overlay = document.createElement('div');
+    overlay.id = 'palette-overlay';
+    overlay.innerHTML = `
+      <div id="palette">
+        <input placeholder="Type a command or search content…" autocomplete="off">
+        <div class="results"></div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const input = overlay.querySelector('input');
+    const results = overlay.querySelector('.results');
+    let items = [];
+    let sel = 0;
+    let searchTimer = null;
+
+    const staticActions = [
+      { label: 'Go to Dashboard', k: 'nav', run: () => (location.hash = '#/dashboard') },
+      { label: 'Go to Content', k: 'nav', run: () => (location.hash = '#/content') },
+      { label: 'Go to Media', k: 'nav', run: () => (location.hash = '#/media') },
+      { label: 'Go to Tags', k: 'nav', run: () => (location.hash = '#/tags') },
+      { label: 'Go to Company', k: 'nav', run: () => (location.hash = '#/company') },
+      ...(me.role === 'superadmin' ? [{ label: 'Go to Platform', k: 'nav', run: () => (location.hash = '#/platform') }] : []),
+      { label: 'New content', k: 'create', run: () => (location.hash = '#/edit/new') },
+      { label: 'Open public site', k: 'open', run: () => window.open(`/t/${company.slug}`, '_blank') },
+      ...companies
+        .filter((c) => c.id !== company.id)
+        .map((c) => ({ label: `Switch to ${c.name}`, k: 'company', run: () => { setActiveCompany(c); render(); } })),
+    ];
+
+    function draw() {
+      results.innerHTML = items.length
+        ? items
+            .map(
+              (it, i) =>
+                `<div class="item ${i === sel ? 'sel' : ''}" data-i="${i}">${esc(it.label)}<span class="k">${esc(it.k)}</span></div>`
+            )
+            .join('')
+        : '<div class="empty">No matches.</div>';
+      results.querySelectorAll('.item').forEach((el) =>
+        el.addEventListener('click', () => pick(Number(el.dataset.i)))
+      );
+    }
+
+    function pick(i) {
+      const it = items[i];
+      close();
+      if (it) it.run();
+    }
+
+    function update(q) {
+      const needle = q.trim().toLowerCase();
+      items = staticActions.filter((a) => a.label.toLowerCase().includes(needle));
+      sel = 0;
+      draw();
+      clearTimeout(searchTimer);
+      if (needle.length >= 2) {
+        searchTimer = setTimeout(async () => {
+          try {
+            const rows = await capi(`/content?search=${encodeURIComponent(needle)}`);
+            items = [
+              ...items,
+              ...rows.slice(0, 6).map((r) => ({
+                label: `Edit: ${r.title}`,
+                k: r.type,
+                run: () => (location.hash = `#/edit/${r.id}`),
+              })),
+            ];
+            draw();
+          } catch {
+            /* company access may have changed; ignore */
+          }
+        }, 180);
+      }
+    }
+
+    function close() {
+      paletteOpen = false;
+      overlay.remove();
+    }
+
+    input.addEventListener('input', () => update(input.value));
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown') { e.preventDefault(); sel = Math.min(sel + 1, items.length - 1); draw(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); sel = Math.max(sel - 1, 0); draw(); }
+      else if (e.key === 'Enter') { e.preventDefault(); pick(sel); }
+      else if (e.key === 'Escape') close();
+    });
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) close();
+    });
+    update('');
+    input.focus();
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      openPalette();
+    }
+  });
 
   // ---------- router ----------
 
   async function render() {
     if (!me) return boot();
-    if (!team) return renderCreateTeam();
-    const hash = location.hash || '#/content';
+    if (!company) return renderCreateCompany();
+    const hash = location.hash || '#/dashboard';
     const editMatch = hash.match(/^#\/edit\/(\w+)/);
     try {
       if (editMatch) return await renderEditor(editMatch[1]);
+      if (hash.startsWith('#/content')) return await renderContentList();
       if (hash.startsWith('#/media')) return await renderMedia();
       if (hash.startsWith('#/tags')) return await renderTags();
-      if (hash.startsWith('#/team')) return await renderTeam();
-      if (hash.startsWith('#/users')) return await renderUsers();
-      if (hash.startsWith('#/settings')) return await renderSettings();
-      return await renderContentList();
+      if (hash.startsWith('#/company')) return await renderCompany();
+      if (hash.startsWith('#/platform') && me.role === 'superadmin') return await renderPlatform();
+      if (hash.startsWith('#/account')) return await renderAccount();
+      return await renderDashboard();
     } catch (err) {
       if (String(err.message).includes('Authentication')) {
         me = null;
         return renderLogin();
       }
-      app.innerHTML = `<div class="content"><div class="msg error">${esc(err.message)}</div></div>`;
+      toast(err.message, 'error');
+      const page = document.getElementById('page');
+      if (page) page.innerHTML = `<div class="msg error">${esc(err.message)}</div>`;
     }
   }
 
-  /** Load session + teams, pick the active team, then render. */
+  /** Load session + companies, pick the active company, then render. */
   async function boot() {
     try {
       me = me || (await api('/auth/me'));
     } catch {
       return renderLogin();
     }
-    teams = await api('/teams');
-    if (teams.length === 0) {
-      team = null;
-      return renderCreateTeam();
+    companies = await api('/teams');
+    if (companies.length === 0) {
+      company = null;
+      return renderCreateCompany();
     }
     const savedId = Number(localStorage.getItem('cms_active_team'));
-    team = teams.find((t) => t.id === savedId) || teams[0];
-    setActiveTeam(team);
+    company = companies.find((c) => c.id === savedId) || companies[0];
+    setActiveCompany(company);
     render();
   }
 

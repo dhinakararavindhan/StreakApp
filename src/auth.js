@@ -43,36 +43,38 @@ function requireAuth(req, res, next) {
   next();
 }
 
-/** Platform administrators only. */
-function requireAdmin(req, res, next) {
+/** Platform operators only. */
+function requireSuperadmin(req, res, next) {
   if (!req.user) return res.status(401).json({ error: 'Authentication required' });
-  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
+  if (req.user.role !== 'superadmin') {
+    return res.status(403).json({ error: 'Superadmin access required' });
+  }
   next();
 }
 
 /**
- * Gate a route on membership in the team named by :teamId.
- * Sets req.team and req.teamRole. Platform admins pass as 'owner'.
- * requiredRole: 'editor' (any member) or 'owner'.
+ * Gate a route on membership in the company named by :teamId.
+ * Sets req.team and req.teamRole. Superadmins pass as 'admin'.
+ * requiredRole: 'manager' (any member) or 'admin' (company owner).
  */
-function requireTeamRole(requiredRole = 'editor') {
+function requireTeamRole(requiredRole = 'manager') {
   return (req, res, next) => {
     if (!req.user) return res.status(401).json({ error: 'Authentication required' });
     const db = getDb();
     const team = db.prepare('SELECT * FROM teams WHERE id = ?').get(req.params.teamId);
-    if (!team) return res.status(404).json({ error: 'Team not found' });
+    if (!team) return res.status(404).json({ error: 'Company not found' });
     req.team = team;
 
-    if (req.user.role === 'admin') {
-      req.teamRole = 'owner';
+    if (req.user.role === 'superadmin') {
+      req.teamRole = 'admin';
       return next();
     }
     const membership = db
       .prepare('SELECT role FROM team_members WHERE team_id = ? AND user_id = ?')
       .get(team.id, req.user.id);
-    if (!membership) return res.status(403).json({ error: 'You are not a member of this team' });
-    if (requiredRole === 'owner' && membership.role !== 'owner') {
-      return res.status(403).json({ error: 'Team owner access required' });
+    if (!membership) return res.status(403).json({ error: 'You are not a member of this company' });
+    if (requiredRole === 'admin' && membership.role !== 'admin') {
+      return res.status(403).json({ error: 'Company admin access required' });
     }
     req.teamRole = membership.role;
     next();
@@ -85,6 +87,6 @@ module.exports = {
   clearAuthCookie,
   attachUser,
   requireAuth,
-  requireAdmin,
+  requireSuperadmin,
   requireTeamRole,
 };

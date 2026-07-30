@@ -8,6 +8,7 @@ const authRoutes = require('./routes/auth');
 const teamRoutes = require('./routes/teams');
 const userRoutes = require('./routes/users');
 const settingsRoutes = require('./routes/settings');
+const platformRoutes = require('./routes/platform');
 const publicRoutes = require('./routes/public');
 
 function createApp(options = {}) {
@@ -24,6 +25,7 @@ function createApp(options = {}) {
   app.use('/api/teams', teamRoutes);
   app.use('/api/users', userRoutes);
   app.use('/api/settings', settingsRoutes);
+  app.use('/api/platform', platformRoutes);
 
   // Admin panel (static SPA)
   app.use('/admin', express.static(path.join(__dirname, '..', 'public', 'admin')));
