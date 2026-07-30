@@ -696,12 +696,27 @@
             <button class="btn">Save</button>
             <a class="btn secondary" href="#/content">Back</a>
           </p>
+          ${!isNew ? `
+          <label style="margin-top:0.9rem">Check your changes</label>
+          <p style="display:flex;gap:0.5rem;flex-wrap:wrap;margin:0.2rem 0 0">
+            <a class="btn secondary sm" id="preview-draft" target="_blank" title="See this exact saved version on your real site — visible only to team members">Preview on site ↗</a>
+            <a class="btn secondary sm" href="#/review/${id}" title="Side-by-side diff against the live version">Compare with live</a>
+          </p>` : ''}
         </div>
       </form>
       ${!isNew ? `
       <div class="card" style="margin-top:0.9rem"><b>Translations</b><div id="trans-host" style="margin-top:0.6rem">Loading…</div></div>
       <div class="card" style="margin-top:0.9rem"><b>Discussion</b><div id="comments-host" style="margin-top:0.5rem">Loading…</div></div>
       <div class="card" style="margin-top:0.9rem"><b>Version history</b><div id="history-host" style="margin-top:0.6rem">Loading…</div></div>` : ''}`);
+
+    // Draft preview: the item's site URL with ?preview=draft (member-only view).
+    const previewLink = page.querySelector('#preview-draft');
+    const updatePreviewLink = (slug) => {
+      if (!previewLink) return;
+      const path = item.type === 'post' ? `/posts/${slug}` : `/${slug}`;
+      previewLink.href = `/t/${company.slug}${path}?preview=draft`;
+    };
+    if (!isNew) updatePreviewLink(item.slug);
 
     // Time machine: open the public site as of the scheduled moment (or now).
     page.querySelector('#time-machine').addEventListener('click', () => {
@@ -907,6 +922,7 @@
           location.hash = `#/edit/${saved.id}`;
         } else {
           e.target.querySelector('[name=slug]').value = saved.slug;
+          updatePreviewLink(saved.slug);
         }
       } catch (err) {
         toast(err.message, 'error');
@@ -924,6 +940,7 @@
           try {
             const saved = await capi(`/content/${id}`, { method: 'PUT', body: collect(new FormData(form)) });
             form.querySelector('[name=slug]').value = saved.slug;
+            updatePreviewLink(saved.slug);
             const state = page.querySelector('#autosave-state');
             if (state) state.textContent = `Autosaved ${new Date().toLocaleTimeString()}`;
           } catch {
@@ -1289,8 +1306,8 @@
             <button type="button" data-v="diff" class="on">Diff</button>
             <button type="button" data-v="preview">Preview</button>
           </span>
-          <a class="btn secondary sm" href="#/approvals">Back</a>
-          ${isPending ? `<button class="btn sm" id="rv-approve">Approve</button>
+          <a class="btn secondary sm" href="${isCompanyAdmin() ? '#/approvals' : `#/edit/${item.id}`}">Back</a>
+          ${isPending && isCompanyAdmin() ? `<button class="btn sm" id="rv-approve">Approve</button>
           <button class="btn danger sm" id="rv-reject">Reject</button>` : `<span class="pill ${esc(item.status)}">${esc(item.status)}</span>`}
         </span>
       </h1>
@@ -1351,7 +1368,7 @@
       })
     );
 
-    if (isPending) {
+    if (isPending && isCompanyAdmin()) {
       page.querySelector('#rv-approve').addEventListener('click', async () => {
         try {
           await capi(`/content/${item.id}/approve`, { method: 'POST' });
@@ -2097,7 +2114,7 @@
       if (hash.startsWith('#/media')) return await renderMedia();
       if (hash.startsWith('#/tags')) return await renderTags();
       const reviewMatch = hash.match(/^#\/review\/(\d+)/);
-      if (reviewMatch && isCompanyAdmin()) return await renderReview(reviewMatch[1]);
+      if (reviewMatch) return await renderReview(reviewMatch[1]);
       if (hash.startsWith('#/approvals') && isCompanyAdmin()) return await renderApprovals();
       if (hash.startsWith('#/activity') && isCompanyAdmin()) return await renderActivity();
       if (hash.startsWith('#/setup')) return await renderSetup();

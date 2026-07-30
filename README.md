@@ -56,6 +56,7 @@ Managers have full CRUD on content, but nothing they touch goes live on its own:
 - Admins and superadmins can still publish directly.
 - **Version history**: every save is recorded and restorable (restores obey the same workflow rules). **Comment threads** (Markdown supported) let reviewers and authors discuss an item in the editor and review screens. An **audit log** (Activity page) records approvals, rejections, restores, membership and settings changes.
 - **Scheduling**: set `publish_at` (go live later) and `expire_at` (come down later) — enforced everywhere published content is served, including feeds, sitemaps, and the headless API.
+- **Check your changes** before anyone else sees them: every editor gets a **Preview on site ↗** button that opens the item's real public URL with `?preview=draft` — rendering the latest *saved* version (draft or pending) in the site's actual theme, marked with a banner, never cached, and visible only to signed-in team members (drafts can never leak). **Compare with live** opens the same side-by-side word-level diff admins use for review — now available read-only to managers, so authors see exactly what they changed before submitting.
 - **⏱ Time machine**: preview the *whole site* as it will appear at any moment — `?preview_at=2031-06-01T09:00` on any public page (signed-in users only) shows scheduled content as live and expiring content as gone, with a banner and no caching. One click from the editor's scheduling fields. See tomorrow's launch today.
 - **✦ AI pre-review**: when anything is submitted for approval, Claude reviews it before your editors do — a one-line summary of what it is (or what changed vs the live version), concrete notes (typos, placeholder text, red flags), and a looks-good / needs-attention verdict shown in the approvals queue and the review screen. Fire-and-forget: authors are never blocked; failed reviews are simply absent. The human decision stays human. (Requires `ANTHROPIC_API_KEY`; disable with `NOVA_AI_REVIEW=0`.)
 
@@ -182,7 +183,7 @@ All `/api` routes accept and return JSON. Authentication uses an httpOnly cookie
 npm test
 ```
 
-58 end-to-end tests (`node --test`, in-memory database): registration, company creation, the three-tier role model, cross-company isolation, content CRUD with cover images, per-company slug scoping, draft/pending/publish visibility, the approval workflow, custom content types with field validation, the WordPress/Markdown/Nova importers, feeds/sitemaps/SEO, rate limiting, theming, starter kits and the AI site builder (mock mode), custom-domain routing, the headless API, dashboards, and platform stats.
+59 end-to-end tests (`node --test`, in-memory database): registration, company creation, the three-tier role model, cross-company isolation, content CRUD with cover images, per-company slug scoping, draft/pending/publish visibility, the approval workflow, custom content types with field validation, the WordPress/Markdown/Nova importers, feeds/sitemaps/SEO, rate limiting, theming, starter kits and the AI site builder (mock mode), custom-domain routing, the headless API, dashboards, and platform stats.
 
 ## Project layout
 

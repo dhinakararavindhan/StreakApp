@@ -21,7 +21,8 @@ router.use((req, res, next) => {
 // at a future (or past) moment — scheduled posts appear, expiring ones
 // vanish. ?preview_at=YYYY-MM-DDTHH:MM anywhere on a site. Never cached.
 router.use((req, res, next) => {
-  previewNow = null; // reset the slot on every request
+  previewNow = null; // reset the per-request slots
+  draftPreview = false;
   const at = req.query.preview_at;
   if (at && req.user) {
     const m = String(at).trim().replace('T', ' ').match(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2})(:\d{2})?$/);
@@ -195,6 +196,7 @@ ${(meta.alternates || []).map((a) => `<link rel="alternate" hreflang="${esc(a.la
 </head>
 <body>
 ${previewNow ? `<div style="background:#f59e0b;color:#1a1200;font-weight:600;font-size:0.85rem;text-align:center;padding:0.45rem 1rem">⏱ Time machine — previewing this site as it will appear at ${esc(previewNow)} UTC. Scheduled content is shown; expired content is hidden.</div>` : ''}
+${draftPreview ? `<div style="background:#3b82f6;color:#fff;font-weight:600;font-size:0.85rem;text-align:center;padding:0.45rem 1rem">📝 Draft preview — this is the latest saved version, not what visitors see. Only signed-in team members can view this page.</div>` : ''}
 <header class="top"><div class="wrap">
   <h1 class="site"><a href="${esc(homeHref)}">${esc(siteTitle)}</a></h1>
   <nav>${nav}</nav>
@@ -338,6 +340,19 @@ function findTeam(slug) {
 let previewNow = null;
 const NOW_SQL = () => (previewNow ? `datetime('${previewNow}')` : `datetime('now')`);
 
+// Draft preview: true while a team member is viewing their own not-yet-live
+// version of an item (?preview=draft). Same per-request slot pattern.
+let draftPreview = false;
+
+/** May this request preview unpublished content for this company? */
+function memberCanPreview(req, teamId) {
+  if (!req.user || !req.user.id) return false;
+  if (req.user.role === 'superadmin') return true;
+  return Boolean(
+    getDb().prepare('SELECT 1 FROM team_members WHERE team_id = ? AND user_id = ?').get(teamId, req.user.id)
+  );
+}
+
 // A row is publicly visible when published, or when a previously approved
 // version is still live while new edits await review (published_snapshot).
 const LIVE = () => `(deleted_at IS NULL AND ((status = 'published'
@@ -418,11 +433,25 @@ function absoluteUrl(req, path) {
 }
 
 function renderTeamPost(team, onDomain, slug, req, res) {
-  const row = liveRow(
-    getDb()
-      .prepare(`SELECT * FROM content WHERE team_id = ? AND type = 'post' AND ${LIVE()} AND slug = ?`)
-      .get(team.id, slug)
-  );
+  // ?preview=draft: a team member checks their latest saved version — the
+  // working row itself, not the live snapshot. Never cached, never public.
+  let row = null;
+  if (req.query.preview === 'draft' && memberCanPreview(req, team.id)) {
+    row = getDb()
+      .prepare("SELECT * FROM content WHERE team_id = ? AND type = 'post' AND deleted_at IS NULL AND slug = ?")
+      .get(team.id, slug);
+    if (row) {
+      draftPreview = true;
+      res.set('Cache-Control', 'private, no-store');
+    }
+  }
+  if (!row) {
+    row = liveRow(
+      getDb()
+        .prepare(`SELECT * FROM content WHERE team_id = ? AND type = 'post' AND ${LIVE()} AND slug = ?`)
+        .get(team.id, slug)
+    );
+  }
   if (!row) {
     return res
       .status(404)
@@ -543,11 +572,23 @@ function renderTypeArchive(team, onDomain, typeKey, req, res) {
 
 function renderTeamPage(team, onDomain, slug, req, res) {
   // Pages and custom-type items both live at /<slug>; posts keep /posts/<slug>.
-  const row = liveRow(
-    getDb()
-      .prepare(`SELECT * FROM content WHERE team_id = ? AND type != 'post' AND ${LIVE()} AND slug = ?`)
-      .get(team.id, slug)
-  );
+  let row = null;
+  if (req.query.preview === 'draft' && memberCanPreview(req, team.id)) {
+    row = getDb()
+      .prepare("SELECT * FROM content WHERE team_id = ? AND type != 'post' AND deleted_at IS NULL AND slug = ?")
+      .get(team.id, slug);
+    if (row) {
+      draftPreview = true;
+      res.set('Cache-Control', 'private, no-store');
+    }
+  }
+  if (!row) {
+    row = liveRow(
+      getDb()
+        .prepare(`SELECT * FROM content WHERE team_id = ? AND type != 'post' AND ${LIVE()} AND slug = ?`)
+        .get(team.id, slug)
+    );
+  }
   if (!row) {
     return res
       .status(404)

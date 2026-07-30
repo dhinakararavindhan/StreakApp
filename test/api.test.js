@@ -1380,6 +1380,52 @@ test('AI translation creates linked drafts in the translation group', async () =
   }
 });
 
+test('draft preview: members check unpublished changes on the real site', async () => {
+  const owner = await registerAs('previewer', 'preview-password-1');
+  const outsider = await registerAs('outsider9', 'outside-password-1');
+  const team = await (await owner('/api/teams', { method: 'POST', body: { name: 'Preview Co' } })).json();
+
+  // A never-published draft: invisible publicly, previewable by a member.
+  const draft = await (
+    await owner(`/api/teams/${team.id}/content`, {
+      method: 'POST',
+      body: { type: 'post', title: 'Unfinished thoughts', body: 'Still cooking.', status: 'draft' },
+    })
+  ).json();
+  const url = `/t/${team.slug}/posts/${draft.slug}`;
+  assert.strictEqual((await fetch(`${base}${url}`)).status, 404);
+  assert.strictEqual((await fetch(`${base}${url}?preview=draft`)).status, 404); // anonymous: no leak
+  assert.strictEqual((await outsider(`${url}?preview=draft`)).status, 404); // non-member: no leak
+  const preview = await owner(`${url}?preview=draft`);
+  assert.strictEqual(preview.status, 200);
+  assert.ok((preview.headers.get('cache-control') || '').includes('no-store'));
+  const html = await preview.text();
+  assert.ok(html.includes('Still cooking.') && html.includes('Draft preview'));
+
+  // Pending edits to live content: the public sees the old version, the
+  // author's preview shows the new one.
+  await owner(`/api/teams/${team.id}/content/${draft.id}`, { method: 'PUT', body: { status: 'published' } });
+  await owner(`/api/teams/${team.id}/content/${draft.id}`, {
+    method: 'PUT',
+    body: { body: 'Fully baked now.', status: 'pending' },
+  });
+  const publicView = await (await fetch(`${base}${url}`)).text();
+  assert.ok(publicView.includes('Still cooking.') && !publicView.includes('Fully baked now.'));
+  const memberView = await (await owner(`${url}?preview=draft`)).text();
+  assert.ok(memberView.includes('Fully baked now.') && memberView.includes('Draft preview'));
+
+  // Pages work the same way.
+  const page = await (
+    await owner(`/api/teams/${team.id}/content`, {
+      method: 'POST',
+      body: { type: 'page', title: 'Hidden page', body: 'Not yet public.', status: 'draft' },
+    })
+  ).json();
+  assert.strictEqual((await fetch(`${base}/t/${team.slug}/${page.slug}`)).status, 404);
+  const pagePreview = await (await owner(`/t/${team.slug}/${page.slug}?preview=draft`)).text();
+  assert.ok(pagePreview.includes('Not yet public.'));
+});
+
 test('health endpoint responds for load balancers', async () => {
   const res = await fetch(`${base}/api/health`);
   assert.strictEqual(res.status, 200);

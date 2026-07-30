@@ -69,6 +69,7 @@ The moat is other people's work running on Nova.
 - [x] Site search on every hosted site (`/search`, linked in the nav) and the headless API (`?q=`)
 - [x] Content trash: soft delete with restore, admin-only permanent purge; one-click duplicate-as-draft
 - [x] New-company onboarding: pick a business template, run the AI builder, or start blank — right at creation
+- [x] Draft preview on the real site (`?preview=draft`, member-only, banner, uncached) + read-only change diff for authors — check your changes before submitting
 - [x] ⏱ Time machine: preview the whole site at any future moment (`?preview_at=`) — scheduled content shown, expiring content hidden; signed-in users only, never cached
 - [x] ✦ AI pre-review: Claude reviews every submission before human editors — change summary, concrete notes, looks-good/needs-attention verdict in the approvals queue
 - [x] ✦ AI translation: one-click translated drafts into i18n translation groups, markup preserved, human review required
