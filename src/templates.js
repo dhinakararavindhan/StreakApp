@@ -453,6 +453,385 @@ const TEMPLATES = [
       { title: 'What I read this month', tags: ['Reading'], excerpt: 'Three books, one regret, and a recommendation.', body: "## The list\n\n1. **A book I loved** — couldn't put it down\n2. **A book I respected** — dense but worth it\n3. **A book I abandoned** — life is short\n\nThe monthly reading post is a habit I'm stealing from better bloggers. It keeps me honest about actually finishing things." },
     ],
   },
+
+  // ---------- More Food & Hospitality ----------
+  {
+    key: 'bakery',
+    name: 'Bakery',
+    category: 'Food & Hospitality',
+    description: 'Morning-warm and simple — what came out of the oven, and when to come get it.',
+    settings: { theme: 'paper', heading_font: 'serif', layout: 'cards', accent_color: '#b45309', site_description: 'Bread out at eight, gone by noon.' },
+    pages: [
+      { title: "What's baking", body: "## Every day\n\n- Country sourdough — 6.50\n- Baguette — 3.50\n- Morning buns — 4.00\n- Chocolate chip cookies, sea salt — 2.50\n\n## By the day\n\n- **Wednesday**: rye day\n- **Friday**: challah, braided and shiny\n- **Weekends**: croissants (plain, almond, the good chocolate)\n\nLarge orders and whole cakes: two days' notice, one phone call." },
+      { title: 'Visit', body: "**Hours**: Wed–Sun, 8am until sold out — which is usually early afternoon and we're only slightly sorry.\n\n5 Mill Street, the shop with the flour dust on the windows. Follow the smell." },
+    ],
+    posts: [
+      { title: 'The rye is back', tags: ['News'], excerpt: 'By popular demand, Wednesday is rye day again.', body: "We rested the rye over the summer (the starter deserved a holiday). It's back: **every Wednesday**, a dense, dark loaf with caraway, out of the oven at nine.\n\nIt keeps for a week and toasts like a dream. The regulars know to reserve one; now you do too." },
+    ],
+  },
+  {
+    key: 'brewery',
+    name: 'Bar & brewery',
+    category: 'Food & Hospitality',
+    description: 'A taproom site with the tap list as structured content — style, ABV, price.',
+    settings: { theme: 'midnight', heading_font: 'sans', layout: 'cards', accent_color: '#f59e0b', site_description: 'Small-batch beer, long communal tables.' },
+    content_types: [
+      {
+        key: 'tap',
+        name: 'Tap',
+        name_plural: 'On tap',
+        schema: [
+          { label: 'Style', kind: 'text' },
+          { label: 'ABV %', kind: 'number' },
+          { label: 'Price', kind: 'number' },
+        ],
+      },
+    ],
+    items: [
+      { type: 'tap', title: 'Harbor Lights', excerpt: 'Our flagship pale — citrus up front, clean finish.', fields: { style: 'Pale Ale', abv: 5.2, price: 7 }, body: "The one that pays the rent: a bright, citrusy pale ale that plays well with everything on the food menu. First beer we ever brewed here, still the last one standing at closing." },
+      { type: 'tap', title: 'Fog Bank', excerpt: 'Hazy, soft, dangerously drinkable.', fields: { style: 'Hazy IPA', abv: 6.8, price: 8 }, body: "Double dry-hopped and pillow-soft. Mango and pine, almost no bitterness, and a body like orange juice's cooler sibling. Rotates hop varieties batch to batch — ask what this one is." },
+      { type: 'tap', title: 'Night Shift', excerpt: 'A dry stout for people who think they don’t like stouts.', fields: { style: 'Dry Stout', abv: 4.4, price: 7 }, body: "Black as the harbor at midnight, light as a session beer. Coffee and cocoa from the malt alone. The nitro pour takes ninety seconds; they're worth it." },
+    ],
+    pages: [
+      { title: 'Visit the taproom', body: "**Hours**\n\n- Wed–Fri: 4pm – 11pm\n- Sat: noon – 11pm\n- Sun: noon – 8pm\n\nLong tables, board games, a rotating food truck out front (see the board for who's parked). Kids and dogs welcome until 8." },
+      { title: 'Private events', body: "The barrel room seats 40 for private events — tastings, birthdays, the office party that people actually attend.\n\nFlat room fee, beer by consumption, food truck arranged on request. Write to events@example.com." },
+    ],
+    posts: [
+      { title: 'Fresh batch: Fog Bank v12', tags: ['Releases'], excerpt: 'This round: Citra and Nelson. The haze abides.', body: "Fog Bank batch twelve goes on tap Friday — this round hopped with **Citra and Nelson Sauvin**, so expect white grape over the usual mango.\n\nCrowlers filled while it lasts, which history suggests is nine days." },
+    ],
+  },
+  {
+    key: 'foodtruck',
+    name: 'Food truck',
+    category: 'Food & Hospitality',
+    description: 'A moving kitchen — weekly stops as structured content, menu, and catering.',
+    settings: { theme: 'sunset', heading_font: 'sans', layout: 'list', accent_color: '#fb923c', site_description: 'Follow the truck. The tacos are worth it.' },
+    content_types: [
+      {
+        key: 'stop',
+        name: 'Stop',
+        name_plural: 'This week',
+        schema: [
+          { label: 'Day', kind: 'select', options: 'Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday' },
+          { label: 'Location', kind: 'text' },
+          { label: 'Hours', kind: 'text' },
+        ],
+      },
+    ],
+    items: [
+      { type: 'stop', title: 'Tech quarter — Plaza corner', excerpt: 'The lunch rush stop. Come before noon or embrace the line.', fields: { day: 'Tuesday', location: 'Plaza corner, 4th & Main', hours: '11:30 – 14:00' }, body: "Our biggest stop of the week. Pre-order on the app by 11 if your lunch break is real; the line moves fast but it moves long." },
+      { type: 'stop', title: 'Brewery yard', excerpt: 'Tacos and taproom beer — civilization, achieved.', fields: { day: 'Friday', location: 'Harbor Brewing yard', hours: '17:00 – 21:00' }, body: "Friday nights we park at the brewery. Their beer, our al pastor, everyone wins. Last orders 8:45, no exceptions, the fryer needs its sleep." },
+      { type: 'stop', title: 'Saturday market', excerpt: 'Breakfast tacos until the eggs run out.', fields: { day: 'Saturday', location: 'Farmers market, river entrance', hours: '08:00 – 13:00' }, body: "The weekend special: breakfast tacos with eggs from the farm two stalls over. When they sell out of eggs, we sell out of breakfast — it's a small, delicious economy." },
+    ],
+    pages: [
+      { title: 'Menu', body: "## Tacos (3 for 12)\n\n- **Al pastor** — the reason we bought a truck\n- **Baja fish** — beer-battered, cabbage, lime crema\n- **Mushroom** — chili-roasted, even carnivores concede\n\n## Sides\n\n- Elote — 5\n- Chips, salsa roja — 4\n\nEverything gluten-aware, most things gluten-free. Ask at the window." },
+      { title: 'Catering', body: "The truck comes to you: weddings, office parties, anything with 30+ hungry people and somewhere to park.\n\nFlat travel fee + per-head pricing, tacos unlimited within reason. Book a month out for weekends: truck@example.com." },
+    ],
+    posts: [],
+  },
+
+  // ---------- More Services ----------
+  {
+    key: 'barbershop',
+    name: 'Barbershop',
+    category: 'Services',
+    description: 'Sharp and simple — cuts, prices, walk-in policy, done.',
+    settings: { theme: 'noir', heading_font: 'mono', layout: 'list', accent_color: '#f43f5e', site_description: 'Good cuts, no fuss, decent conversation.' },
+    pages: [
+      { title: 'Cuts & prices', body: "| Service | Price | Time |\n|---|---|---|\n| Cut | $32 | 30 min |\n| Cut & beard | $45 | 45 min |\n| Skin fade | $38 | 40 min |\n| Buzz | $20 | 15 min |\n| Kids (under 12) | $22 | 30 min |\n\nCard or cash. Tips go to the person holding the clippers." },
+      { title: 'Walk-ins & booking', body: "**Walk-ins** always welcome — the board in the window shows the current wait.\n\n**Bookings** open a week ahead, online only, and Saturday slots go by Wednesday. You know what to do.\n\nTue–Fri 10–7, Sat 9–5. Closed Sun–Mon, as is right." },
+    ],
+    posts: [
+      { title: 'Second chair, now open', tags: ['News'], excerpt: 'We hired. Waits just got shorter.', body: "After a year of the board saying '45 min', there's a second chair — ten years' experience and strong opinions about scissor work over clippers.\n\nWalk-in waits are back under twenty minutes. The conversation quality, already excellent, has somehow improved." },
+    ],
+  },
+  {
+    key: 'dental',
+    name: 'Dental practice',
+    category: 'Services',
+    description: 'A reassuring practice site — treatments, first-visit info, and pricing that hides nothing.',
+    settings: { theme: 'default', heading_font: 'sans', layout: 'cards', accent_color: '#0ea5e9', site_description: 'Gentle dentistry, honest pricing, zero lectures.' },
+    pages: [
+      { title: 'Treatments', body: "## Routine\n\n- **Exam & clean** — $95, twice a year keeps everything boring (the goal)\n- **X-rays** — $40, only when actually needed\n\n## When something hurts\n\n- Fillings from $140 (white, always)\n- Root canal from $600 — with numbing that works and a playlist of your choosing\n- Crowns from $850\n\nWritten estimates before any work beyond a clean. No surprises is practice policy." },
+      { title: 'Your first visit', body: "New patients get a longer first slot: full exam, x-rays if needed, a clean, and an honest conversation about what (if anything) needs doing.\n\n**Nervous?** Say so when you book — we go slower, explain everything, and nobody here has ever lectured anyone about flossing. Results over guilt." },
+    ],
+    posts: [
+      { title: 'Now open Saturdays', tags: ['News'], excerpt: 'One Saturday a month, for teeth that refuse to observe business hours.', body: "By request: we now open the **first Saturday of each month**, 9–2.\n\nSlots are for working humans whose molars sabotage them on weekends. They book out fast — the online calendar has the next three months open." },
+    ],
+  },
+  {
+    key: 'vet',
+    name: 'Veterinary clinic',
+    category: 'Services',
+    description: 'Warm and practical — services, emergencies, and what to expect at a visit.',
+    settings: { theme: 'forest', heading_font: 'sans', layout: 'cards', accent_color: '#166534', site_description: 'For the family members with more legs.' },
+    pages: [
+      { title: 'Services', body: "## Everyday care\n\n- Wellness exams & vaccinations\n- Dental cleaning (yes, they need it too)\n- Microchipping & travel paperwork\n\n## When it's serious\n\n- In-house lab and imaging — results same visit\n- Surgery, from routine spays to the complicated stuff\n- **Emergencies**: call first, then come — (555) 010-0055, staffed until 10pm\n\nCats get the quiet exam room. It matters more than you'd think." },
+      { title: 'Your visit', body: "**Bring**: previous records if you have them, a treat they love, and the carrier they hate.\n\n**Costs**: exam $60; estimates in writing before anything else. We'll always tell you the pragmatic option alongside the gold-standard one — you know your animal and your budget.\n\nParking out front; anxious dogs can wait in the car and skip the lobby drama — just call from outside." },
+    ],
+    posts: [
+      { title: 'Tick season starts now', tags: ['Health'], excerpt: 'Earlier every year — get ahead of it this month.', body: "The first ticks of the season showed up on patients this week — three weeks earlier than last year.\n\nPrevention beats removal: chewables cover a month, collars up to eight. Both stocked, both cheaper than the alternative. Book a two-minute pickup, no exam needed for current patients." },
+    ],
+  },
+  {
+    key: 'yoga',
+    name: 'Yoga studio',
+    category: 'Services',
+    description: 'A calm schedule-first studio site with class listings.',
+    settings: { theme: 'lavender', heading_font: 'serif', layout: 'list', accent_color: '#7c3aed', site_description: 'Breathe in, book in.' },
+    content_types: [
+      {
+        key: 'class',
+        name: 'Class',
+        name_plural: 'Schedule',
+        schema: [
+          { label: 'Day', kind: 'select', options: 'Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday' },
+          { label: 'Time', kind: 'text' },
+          { label: 'Teacher', kind: 'text' },
+          { label: 'Style', kind: 'select', options: 'Vinyasa, Yin, Restorative' },
+        ],
+      },
+    ],
+    items: [
+      { type: 'class', title: 'Morning Vinyasa', excerpt: 'Wake the body up properly.', fields: { day: 'Monday', time: '07:00', teacher: 'Maya', style: 'Vinyasa' }, body: "A steady, breath-led flow to start the week — strong enough to count as exercise, kind enough for a Monday. All levels; modifications offered throughout." },
+      { type: 'class', title: 'Candlelit Yin', excerpt: 'Long holds, low light, deep release.', fields: { day: 'Wednesday', time: '19:30', teacher: 'Tom', style: 'Yin' }, body: "Five poses, five minutes each, gravity doing the work. The room is candlelit, the playlist is ambient, and the last ten minutes are widely considered the best sleep aid in town." },
+      { type: 'class', title: 'Sunday Restorative', excerpt: 'Bolsters, blankets, and nowhere to be.', fields: { day: 'Sunday', time: '17:00', teacher: 'Maya', style: 'Restorative' }, body: "The week's gentlest hour: fully supported poses, guided breathing, optional eye pillows. If you fall asleep, that's not failure — that's the curriculum working." },
+    ],
+    pages: [
+      { title: 'Pricing', body: "| Pass | Price |\n|---|---|\n| Drop-in | $18 |\n| 10-class pass | $150 (never expires) |\n| Monthly unlimited | $95 |\n\nFirst class free, mats included, no contracts. Students and seniors: 20% off everything." },
+      { title: 'The studio', body: "One sunlit room above the bookshop, cork floors, plants we mostly keep alive.\n\nArrive ten minutes early, especially your first time. Props provided; bring water and whatever week you've had — both welcome." },
+    ],
+    posts: [],
+  },
+  {
+    key: 'accounting',
+    name: 'Accounting & bookkeeping',
+    category: 'Services',
+    description: 'A trust-first practice site — services, pricing, and deadline reminders.',
+    settings: { theme: 'slate', heading_font: 'sans', layout: 'list', accent_color: '#38bdf8', site_description: 'Numbers handled. Sleep restored.' },
+    pages: [
+      { title: 'Services & pricing', body: "## For small businesses\n\n- **Monthly bookkeeping** — from $250/mo: reconciled, categorized, reported\n- **Payroll** — from $75/mo, filings included\n- **Year-end accounts & tax** — from $900\n\n## For individuals\n\n- Personal returns from $220\n- Rental income, side businesses, the crypto folder you're afraid of — bring it all\n\nFixed quotes upfront. The clock only runs when we've agreed what it's attached to." },
+      { title: 'How we work', body: "1. **A free 30-minute call** — you talk, we listen, we quote\n2. **Clean handover** — we fetch records from your bank, your old accountant, or the shoebox\n3. **A monthly rhythm** — books closed by the 10th, a one-page summary in plain English\n\nYou'll never be surprised by your own numbers again. That's the entire product." },
+    ],
+    posts: [
+      { title: 'Quarterly deadlines, calendared', tags: ['Deadlines'], excerpt: 'The three dates that matter this quarter, plus what to send us when.', body: "This quarter's dates for small-business clients:\n\n- **15th next month** — estimated payments due (we'll send your figure a week prior)\n- **End of month** — payroll filings (handled, if you're on our payroll plan)\n- **30 days after quarter-close** — sales tax\n\nClients: everything above is already in motion. Everyone else: this is what having an accountant feels like." },
+    ],
+  },
+  {
+    key: 'itservices',
+    name: 'IT services & MSP',
+    category: 'Services',
+    description: 'A competent, calm managed-IT site — plans, response times, no jargon walls.',
+    settings: { theme: 'terminal', heading_font: 'mono', layout: 'list', accent_color: '', site_description: 'Your IT department, minus the department.' },
+    pages: [
+      { title: 'Plans', body: "| Plan | Per user/mo | Includes |\n|---|---|---|\n| Essentials | $45 | Helpdesk, patching, backups, antivirus |\n| Standard | $75 | + device management, email security, onboarding/offboarding |\n| Complete | $110 | + 24/7 response, compliance reporting, vCIO reviews |\n\nMonth to month. Offboarding is documented and graceful — we're confident you'll stay because leaving is easy." },
+      { title: 'Response times', body: "We publish them because we hit them:\n\n| Severity | First response | Example |\n|---|---|---|\n| Critical | 15 min, 24/7 | Server down, ransomware suspicion |\n| High | 1 business hr | Someone can't work |\n| Normal | 4 business hrs | Something's annoying |\n\nLast quarter's actuals: 9 min / 41 min / 2.1 hrs. The status page doesn't lie and neither do we." },
+    ],
+    posts: [
+      { title: 'The backup test most businesses fail', tags: ['Security'], excerpt: 'Having backups and having restores are different things.', body: "Every prospective client says they have backups. Then we ask: **when did you last restore one?**\n\nSilence, usually.\n\nA backup you've never restored is a hope, not a plan. We run restore drills quarterly for every client — the first one is included in onboarding, and it has saved two companies this year alone." },
+    ],
+  },
+  {
+    key: 'travel',
+    name: 'Travel agency',
+    category: 'Services',
+    description: 'Trips as structured content — destination, duration, price, departure dates.',
+    settings: { theme: 'ocean', heading_font: 'serif', layout: 'cards', accent_color: '#0e7490', site_description: 'Small-group trips, planned like we’re coming too. (We are.)' },
+    content_types: [
+      {
+        key: 'trip',
+        name: 'Trip',
+        name_plural: 'Trips',
+        schema: [
+          { label: 'Destination', kind: 'text' },
+          { label: 'Duration', kind: 'text' },
+          { label: 'Price (USD)', kind: 'number' },
+          { label: 'Departs', kind: 'date' },
+          { label: 'Book link', kind: 'url' },
+        ],
+      },
+    ],
+    items: [
+      { type: 'trip', title: 'Coast & Islands: Croatia by ferry', excerpt: 'Eight days, four islands, zero rental cars.', fields: { destination: 'Croatia', duration: '8 days', price_usd: 2400, departs: '2026-09-12', book_link: 'https://example.com/book/croatia' }, body: "Split to Dubrovnik the slow way: local ferries, family konobas, and swims between every transfer.\n\n- Max 12 travelers\n- All ferries, stays, and five dinners included\n- One day with no plan at all — trust us, it's the favorite" },
+      { type: 'trip', title: 'Kyoto in November', excerpt: 'Autumn leaves, quiet temples, one perfect week.', fields: { destination: 'Japan', duration: '7 days', price_usd: 3200, departs: '2026-11-05', book_link: 'https://example.com/book/kyoto' }, body: "The city at its best month: maple season, morning temple visits before the crowds, an overnight in a ryokan with kaiseki dinner.\n\n- Max 10 travelers\n- Rail pass, stays, guides, and that dinner included\n- Optional dawn photography walk (worth the alarm)" },
+      { type: 'trip', title: 'Atlas & Coast: Morocco', excerpt: 'Marrakech, the mountains, and the sea — ten days, well paced.', fields: { destination: 'Morocco', duration: '10 days', price_usd: 2750, departs: '2027-03-20', book_link: 'https://example.com/book/morocco' }, body: "Souks first, then silence: two nights in the Atlas foothills, ending on the coast at Essaouira.\n\n- Max 12 travelers\n- Riads throughout, all breakfasts, three standout dinners\n- Cooking class with a family in the mountains — the recipe travels home with you" },
+    ],
+    pages: [
+      { title: 'How we travel', body: "Small groups (never more than twelve), local guides who are friends not vendors, and pacing with actual air in it — one anchor plan per day, afternoons that breathe.\n\nEverything's included except flights and souvenirs. One price, no surprise 'optional excursions' ambush at the hotel bar." },
+      { title: 'Private trips', body: "Every trip on this site can run privately for your family, friends, or team — same routes, your dates, your pace.\n\nTell us the occasion and the headcount: hello@example.com. Planning starts about four months out." },
+    ],
+    posts: [
+      { title: 'Croatia: two cabins left for September', tags: ['Departures'], excerpt: 'The ferry trip is nearly full — and the water is still warm in September.', body: "September's Croatia departure is down to **two spots**.\n\nIf you've been circling this one: the sea is warmest in early September, the crowds are gone, and the figs are ridiculous. The booking link holds a place for 48 hours." },
+    ],
+  },
+
+  // ---------- More Creative & Retail ----------
+  {
+    key: 'bookstore',
+    name: 'Bookstore',
+    category: 'Creative & Retail',
+    description: 'A bookish home — staff picks, events, and opening hours with soul.',
+    settings: { theme: 'paper', heading_font: 'serif', layout: 'list', accent_color: '#b45309', site_description: 'Independent since always.' },
+    pages: [
+      { title: 'Visit', body: "**Hours**: Tue–Sat 10–7, Sun 11–5. Closed Mondays for restocking and recovering.\n\n17 Chapel Lane — two rooms, one resident cat (Dewey, aloof but fair), and a poetry section larger than strictly commercial sense allows.\n\nWe order anything in print: one day for the warehouse, a week for the obscure. No membership required for the reservation shelf." },
+      { title: 'Events', body: "**Monthly fixtures:**\n\n- **First Thursday** — author night (wine, questions, signed stock)\n- **Second Sunday** — kids' story hour, chaos welcome\n- **Last Wednesday** — the book club (newcomers absolutely welcome; we pick arguable books on purpose)\n\nAll free. The chairs are limited; the standing room is convivial." },
+    ],
+    posts: [
+      { title: 'Staff picks: what we pressed into hands this month', tags: ['Staff picks'], excerpt: 'Three books we could not stop recommending, one of them at inconvenient volume.', body: "**The novel** — a debut we've hand-sold forty times. When you finish it, come back and talk to us about the ending. We're not done being upset.\n\n**The nonfiction** — narrative history that reads like a thriller; three customers have returned to buy copies for other people.\n\n**The wildcard** — a slim poetry collection Dewey knocked off the shelf twice. We know an endorsement when we see one." },
+    ],
+  },
+  {
+    key: 'florist',
+    name: 'Florist',
+    category: 'Creative & Retail',
+    description: 'Seasonal and fresh — arrangements, delivery, weddings.',
+    settings: { theme: 'forest', heading_font: 'serif', layout: 'cards', accent_color: '#166534', site_description: 'Flowers with the season, not against it.' },
+    pages: [
+      { title: 'Order & delivery', body: "## Arrangements\n\n- **Petite** — $35: a small kindness\n- **Classic** — $60: the reliable stunner\n- **Statement** — $95+: for apologies and anniversaries of consequence\n\nTell us the occasion and the palette; we choose from what's best that morning.\n\n**Delivery**: same-day in town for orders by 1pm, $8 flat. We text a photo of what actually went out the door." },
+      { title: 'Weddings', body: "From a bouquet-and-buttonholes elopement to the full marquee — we do a handful of weddings a month and never two on one weekend.\n\nSeasonal-first design keeps budgets sane and arrangements alive. Consultations are free and involve tea. Enquire with your date first; everything else can wait." },
+    ],
+    posts: [
+      { title: 'Dahlia season opens this week', tags: ['Seasonal'], excerpt: 'The vans come back from the flower farm loaded — six weeks of the best blooms of the year.', body: "The first dahlias arrived Tuesday and the shop looks like a parade.\n\nDinner-plate darks, sherbet pompoms, and the café-au-lait everyone requests for weddings. Six weeks, give or take a frost — dahlia arrangements are the default until they're gone." },
+    ],
+  },
+  {
+    key: 'tattoo',
+    name: 'Tattoo studio',
+    category: 'Creative & Retail',
+    description: 'Bold and clean — artists, booking process, aftercare.',
+    settings: { theme: 'noir', heading_font: 'mono', layout: 'cards', accent_color: '#f43f5e', site_description: 'Good work takes a conversation first.' },
+    pages: [
+      { title: 'Booking', body: "**How it works here:**\n\n1. **Email your idea** — references, placement, rough size\n2. **Consultation** — free, 20 minutes, honest feedback (including 'that won't age well')\n3. **Deposit books the date** — $100, comes off the final price\n\nRates: $150/hr, day rate for large work. Flash days announced on the journal — first come, first inked." },
+      { title: 'Aftercare', body: "The tattoo is ours together for two weeks; then it's all yours.\n\n- **Days 1–3**: wrap off after a few hours, wash gently, thin layer of the ointment we gave you\n- **Days 4–14**: moisturize, don't pick, don't swim, don't sunbathe\n- **Forever**: sunscreen. The difference at year ten is enormous.\n\nQuestions? Photos to the studio number any time. We'd rather answer than fix." },
+    ],
+    posts: [
+      { title: 'Guest artist week', tags: ['News'], excerpt: 'A week of fine-line botanical work from a guest we’ve chased for two years.', body: "For one week next month the second chair belongs to a guest artist whose fine-line botanical work we've admired (fine: envied) for years.\n\nBooks open Friday at noon for that week only. Small pieces, waitlist certain, no grudges when it fills in an hour." },
+    ],
+  },
+
+  // ---------- More Property ----------
+  {
+    key: 'coworking',
+    name: 'Coworking space',
+    category: 'Property',
+    description: 'Desks and rooms as structured content — capacity, price, availability.',
+    settings: { theme: 'default', heading_font: 'sans', layout: 'cards', accent_color: '#4f46e5', site_description: 'Good light, fast wifi, no ping-pong evangelism.' },
+    content_types: [
+      {
+        key: 'space',
+        name: 'Space',
+        name_plural: 'Spaces',
+        schema: [
+          { label: 'Capacity', kind: 'number' },
+          { label: 'Price per month (USD)', kind: 'number' },
+          { label: 'Availability', kind: 'select', options: 'Available, Waitlist, Full' },
+        ],
+      },
+    ],
+    items: [
+      { type: 'space', title: 'Hot desk', excerpt: 'Any open desk, any day, locker included.', fields: { capacity: 1, price_per_month_usd: 180, availability: 'Available' }, body: "Turn up, pick a desk, plug in. Includes meeting-room credits, locker, and unlimited coffee from the machine that cost more than a car.\n\nMonth to month; pause anytime." },
+      { type: 'space', title: 'Dedicated desk', excerpt: 'Your desk, your monitor, your slightly dying plant.', fields: { capacity: 1, price_per_month_usd: 320, availability: 'Waitlist' }, body: "The same desk every day, second monitor provided, personal storage, and squatters' rights to your favorite mug.\n\nCurrently waitlisted — hot-deskers get first refusal as seats open." },
+      { type: 'space', title: 'Team room for six', excerpt: 'A lockable room with your name on the door.', fields: { capacity: 6, price_per_month_usd: 1450, availability: 'Available' }, body: "A private, lockable room for up to six: whiteboard walls, your own AC control (the true luxury), and 24/7 access.\n\nIncludes six memberships and double meeting-room credits. Three-month minimum." },
+    ],
+    pages: [
+      { title: 'The building', body: "A converted print works: brick, beams, and the big windows they don't make anymore.\n\n- Gigabit fiber, mesh throughout, wired on request\n- Four meeting rooms, two phone booths\n- Bike storage, showers, actual towels\n- Coffee that a member once called 'the reason I renew'\n\nTours daily at 11 and 3 — or just walk in." },
+      { title: 'Membership terms', body: "Everything is month to month except team rooms (three months).\n\nDay passes ($25) exist for the commitment-averse; the first one's free. Your pass works 24/7 from day one — the building believes in your deadline even when you don't." },
+    ],
+    posts: [],
+  },
+
+  // ---------- More Community & Education ----------
+  {
+    key: 'museum',
+    name: 'Museum & gallery',
+    category: 'Community & Education',
+    description: 'Exhibitions as structured content — dates, galleries, always-current listings.',
+    settings: { theme: 'noir', heading_font: 'serif', layout: 'cards', accent_color: '', site_description: 'Small museum, serious collection.' },
+    content_types: [
+      {
+        key: 'exhibition',
+        name: 'Exhibition',
+        name_plural: 'Exhibitions',
+        schema: [
+          { label: 'Opens', kind: 'date' },
+          { label: 'Closes', kind: 'date' },
+          { label: 'Gallery', kind: 'text' },
+        ],
+      },
+    ],
+    items: [
+      { type: 'exhibition', title: 'Harbor Light: A Century of Coastal Painting', excerpt: 'Fifty works tracing how a hundred years of painters saw the same water.', fields: { opens: '2026-06-15', closes: '2026-11-30', gallery: 'Main Gallery' }, body: "The same harbor, painted for a hundred years, never the same twice. Fifty works from the collection and three key loans, hung chronologically so the light itself seems to change as you walk.\n\nIncluded with admission; guided tours Saturdays at 2." },
+      { type: 'exhibition', title: 'Fieldwork: New Photography', excerpt: 'Four early-career photographers on land, labor, and the edge of town.', fields: { opens: '2026-09-01', closes: '2027-01-10', gallery: 'North Wing' }, body: "Our biennial open-call show: four photographers selected from six hundred submissions, each given a wall and a stipend.\n\nThe artists talk happens opening week and is always the season's best argument." },
+    ],
+    pages: [
+      { title: 'Plan your visit', body: "**Hours**: Tue–Sun 10–5, Thursdays until 8 (and pay-what-you-wish from 5).\n\n**Admission**: $12 · under-18s free · members free forever.\n\nStep-free throughout; the courtyard café does a famous lemon cake. Sketching encouraged, pencil only — ask at the desk for a stool." },
+      { title: 'Membership', body: "$60 a year: unlimited entry, preview evenings, 10% at the shop and café, and the smug calm of never checking the price of a second visit.\n\nAll of it funds acquisitions and the open-call program. Join at the desk in one minute flat." },
+    ],
+    posts: [
+      { title: 'Acquisition: the sketchbooks', tags: ['Collection'], excerpt: 'Twelve working sketchbooks join the collection — and go straight on display.', body: "The museum has acquired twelve working sketchbooks from the estate of a painter central to our coastal collection.\n\nRather than vault them, we're showing them immediately: a rotating page-turn display in the Main Gallery, one spread a week. Come often; the book won't wait for you." },
+    ],
+  },
+  {
+    key: 'church',
+    name: 'Church & community',
+    category: 'Community & Education',
+    description: 'Welcoming and plain-spoken — services, groups, and how to find help.',
+    settings: { theme: 'paper', heading_font: 'serif', layout: 'list', accent_color: '', site_description: 'All welcome. Genuinely, all.' },
+    pages: [
+      { title: 'Services & times', body: "**Sundays**\n\n- 9:00 — quiet traditional service (40 min)\n- 10:30 — main service with music and kids' groups\n\n**Wednesdays** — 7pm, evening prayer, 25 minutes of stillness in a loud week.\n\nCome as you are; nobody checks. Coffee after the 10:30 is arguably a third service." },
+      { title: 'Groups & help', body: "## Through the week\n\n- **Food pantry** — Tuesdays 4–6, no questions, no paperwork\n- **Parents & toddlers** — Thursday mornings, chaos and companionship\n- **Youth group** — Fridays 7pm\n\n## Need help, or want to give it?\n\nThe pantry runs on donations and eight volunteers who'd love to be twelve. Either way: office@example.com or just come Tuesday." },
+    ],
+    posts: [
+      { title: 'The winter coat drive returns', tags: ['Community'], excerpt: 'Last year: 214 coats. This year the rack is bigger.', body: "The coat rack goes up in the entrance hall this Sunday.\n\n**Give**: clean coats, all sizes — kids' sizes vanish fastest.\n**Take**: whatever you need, whenever we're open. No sign-up, no questions, no sermon attached.\n\nLast winter neighbors gave 214 coats and took 209. Math like that keeps a place honest." },
+    ],
+  },
+  {
+    key: 'daycare',
+    name: 'Daycare & preschool',
+    category: 'Community & Education',
+    description: 'Warm and reassuring — programs, a typical day, enrollment.',
+    settings: { theme: 'mint', heading_font: 'sans', layout: 'cards', accent_color: '#0d9488', site_description: 'Big feelings, small chairs, good days.' },
+    pages: [
+      { title: 'Programs', body: "## Rooms by age\n\n- **Seedlings** (1–2) — ratio 1:3, naps taken seriously\n- **Sprouts** (2–3) — ratio 1:4, potty-training allies\n- **Branches** (3–5) — ratio 1:6, pre-K curriculum smuggled inside play\n\nFull-time and 3-day schedules; breakfast, lunch, and two snacks included (menu posted weekly, allergies rigorously handled)." },
+      { title: 'A typical day', body: "**7:30** doors open, slow starts respected · **9:00** circle time · **9:30** outside, almost all weathers · **11:30** lunch, family style · **12:30** nap or quiet books · **3:00** snack, then art, blocks, and the mud kitchen's ongoing renovations · **5:30** pickup, with a note on the day.\n\nPhotos land in the parent app as they happen — the first-steps video has been watched from three offices at once." },
+      { title: 'Enrollment', body: "1. **Tour** — Tuesdays and Thursdays at 10, kids welcome on the tour\n2. **Waitlist** — $50, applied to first month\n3. **Settling-in week** — short days, a parent nearby, tissues for the parent\n\nCurrent openings change monthly; the waitlist moves faster than its reputation. Ask about sibling priority." },
+    ],
+    posts: [
+      { title: 'The mud kitchen grand reopening', tags: ['News'], excerpt: 'Renovated by popular demand (the demand was mud).', body: "After a weekend of parent-volunteer carpentry, the mud kitchen reopens Monday: two sinks, a pulley system, and a menu board where the specials are always mud.\n\nSend children in clothes you've made peace with. Laundry is the tuition's hidden fee, and Monday it compounds." },
+    ],
+  },
+
+  // ---------- More Product & Publishing ----------
+  {
+    key: 'newsletter',
+    name: 'Newsletter & magazine',
+    category: 'Product & Publishing',
+    description: 'An issues-first publication site — archive, about, and a subscribe pitch.',
+    settings: { theme: 'paper', heading_font: 'serif', layout: 'list', accent_color: '#dc2626', site_description: 'One considered essay, every Sunday.' },
+    pages: [
+      { title: 'About', body: "One essay every Sunday morning: reported, edited, and short enough to finish with one coffee.\n\nNo growth hacks, no 'link roundups', no apologies for skipping a week when the piece isn't ready. 11,000 readers; the [RSS feed](/feed.xml) and the archive are free forever." },
+      { title: 'Subscribe', body: "**Free**: every essay, every Sunday, plus the full archive.\n\n**Supporter — $5/mo**: the same essays (paywalls poison the discourse) plus the monthly mailbag issue and a vote on the yearly deep-dive topic.\n\nSupporters currently fund 100% of the reporting travel. That's the whole business model, and it's working." },
+    ],
+    posts: [
+      { title: 'Issue 142: The last phone box in town', tags: ['Issue'], excerpt: 'Someone keeps cleaning it. It took three weeks to find out who.', body: "There's one working phone box left here, and someone has been cleaning it — glass polished, dead leaves swept, a jar of flowers replaced weekly.\n\nIt took three weeks of asking to find the who, and the why turned out to be the whole story. It involves a promise made in 1974.\n\n*The full essay ran Sunday; this is the archive copy.*" },
+      { title: 'Issue 141: Why the bakery queue moves left', tags: ['Issue'], excerpt: 'A four-minute essay about a fifteen-meter queue.', body: "Every Saturday, the bakery queue bends left against all architectural logic. The reason is one chair, one regular, and twenty years of collective, unspoken courtesy.\n\nSmall systems essay, the kind readers either love or politely endure. The mailbag suggests: love, narrowly." },
+    ],
+  },
+  {
+    key: 'podcast',
+    name: 'Podcast',
+    category: 'Product & Publishing',
+    description: 'An episode-first show site — notes, links, and where to listen.',
+    settings: { theme: 'midnight', heading_font: 'sans', layout: 'list', accent_color: '#a855f7', site_description: 'Conversations that run long on purpose.' },
+    pages: [
+      { title: 'About the show', body: "Long-form conversations with people who make things — one guest, two hours, no segment music.\n\nNew episodes every other Tuesday. Find it wherever you listen, or take the [RSS feed](/feed.xml) straight, as nature intended.\n\n**Pitch a guest**: show@example.com. We read everything; we book slowly." },
+      { title: 'Support & sponsors', body: "The show is listener-funded first: supporters get episodes a week early and the unedited cuts (rambles included).\n\nWe take two sponsors per episode, read live, only for things we've actually used. The register of everything we've ever advertised — and what we still use — lives on this page. Currently: 9 of 14." },
+    ],
+    posts: [
+      { title: 'Ep. 87 — The bridge engineer', tags: ['Episode'], excerpt: 'Two hours on load, failure, and why she walks her bridges at night.', body: "This week: a structural engineer with forty years of bridges behind her.\n\n**We talk about**: the load calculation she still does by hand, the collapse that changed the codes, and why she visits her bridges at night ('they're honest at night — no traffic to flatter them').\n\n**Links from the episode** are below the player. The last twenty minutes are the best thing we've aired this year." },
+      { title: 'Ep. 86 — The typeface revivalist', tags: ['Episode'], excerpt: 'Digging 19th-century letters out of specimen books and back onto your screen.', body: "A conversation with a type designer who revives dead typefaces — from water-damaged specimen books to the font menu.\n\n**Covered**: the ethics of reviving a dead designer's work, the letter 'g' as a career, and the revival that turned out to be a forgery of a forgery." },
+    ],
+  },
 ];
 
 /** The template list as sent to the admin UI (no bodies — keep it light). */

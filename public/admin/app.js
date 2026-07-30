@@ -1192,6 +1192,7 @@
           Apply a starter kit — theme, typography, layout, and real starter pages and posts,
           published instantly. Your existing content is never touched.
         </p>
+        <input id="tpl-filter" placeholder="Search templates — hotel, restaurant, salon…" style="margin-bottom:0.5rem">
         <div class="tpl-grid" id="tpl-grid">Loading…</div>
         <div class="ai-build" id="ai-build">
           <b style="font-size:0.85rem">✦ AI site builder</b>
@@ -1410,15 +1411,25 @@
             <button type="button" class="btn secondary sm" data-tpl="${t.key}">Apply</button>
           </div>`;
         };
-        const categories = [...new Set(templates.map((t) => t.category))];
-        page.querySelector('#tpl-grid').innerHTML = categories
-          .map(
-            (cat) =>
-              `<div class="tpl-cat">${esc(cat)}</div>` +
-              templates.filter((t) => t.category === cat).map(tplRow).join('')
-          )
-          .join('');
-        page.querySelectorAll('[data-tpl]').forEach((btn) =>
+        const renderTplGrid = (query = '') => {
+          const q = query.trim().toLowerCase();
+          const shown = q
+            ? templates.filter((t) => `${t.name} ${t.description} ${t.category}`.toLowerCase().includes(q))
+            : templates;
+          const categories = [...new Set(shown.map((t) => t.category))];
+          page.querySelector('#tpl-grid').innerHTML = categories.length
+            ? categories
+                .map(
+                  (cat) =>
+                    `<div class="tpl-cat">${esc(cat)}</div>` +
+                    shown.filter((t) => t.category === cat).map(tplRow).join('')
+                )
+                .join('')
+            : '<p class="path" style="margin:0.4rem 0">No templates match — try the AI builder below.</p>';
+          bindApply();
+        };
+        page.querySelector('#tpl-filter').addEventListener('input', (e) => renderTplGrid(e.target.value));
+        const bindApply = () => page.querySelectorAll('[data-tpl]').forEach((btn) =>
           btn.addEventListener('click', async () => {
             if (!confirm('Apply this starter kit? It updates your site theme, publishes its starter content, and may add custom content types. Existing content is untouched.')) return;
             btn.disabled = true;
@@ -1435,6 +1446,7 @@
             }
           })
         );
+        renderTplGrid();
         const aiStatus = page.querySelector('#ai-status');
         const aiGo = page.querySelector('#ai-go');
         if (!ai_available) {

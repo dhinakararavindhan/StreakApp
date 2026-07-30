@@ -858,7 +858,7 @@ test('site templates are listed for authenticated users only', async () => {
   const res = await alice('/api/site-templates');
   assert.strictEqual(res.status, 200);
   const body = await res.json();
-  assert.ok(Array.isArray(body.templates) && body.templates.length >= 15);
+  assert.ok(Array.isArray(body.templates) && body.templates.length >= 40);
   const docs = body.templates.find((t) => t.key === 'docs');
   assert.ok(docs);
   assert.strictEqual(docs.theme, 'terminal');
@@ -867,8 +867,33 @@ test('site templates are listed for authenticated users only', async () => {
   const hotel = body.templates.find((t) => t.key === 'hotel');
   assert.strictEqual(hotel.category, 'Food & Hospitality');
   assert.ok(hotel.types >= 1 && hotel.items >= 2);
-  assert.ok(body.templates.some((t) => t.key === 'restaurant'));
+  for (const key of ['restaurant', 'barbershop', 'dental', 'vet', 'bookstore', 'church', 'daycare', 'podcast']) {
+    assert.ok(body.templates.some((t) => t.key === key), `missing template ${key}`);
+  }
+  for (const key of ['brewery', 'travel', 'coworking', 'museum', 'yoga', 'foodtruck']) {
+    const t = body.templates.find((x) => x.key === key);
+    assert.ok(t && t.types >= 1 && t.items >= 2, `${key} should ship a custom type with items`);
+  }
   assert.strictEqual(typeof body.ai_available, 'boolean');
+});
+
+test('every template in the catalog applies cleanly', async () => {
+  const owner = await registerAs('kitchensink', 'sink-password-1');
+  const team = await (await owner('/api/teams', { method: 'POST', body: { name: 'Kitchen Sink Co' } })).json();
+  const { templates } = await (await owner('/api/site-templates')).json();
+  for (const t of templates) {
+    const res = await owner(`/api/teams/${team.id}/apply-template`, { method: 'POST', body: { template: t.key } });
+    assert.strictEqual(res.status, 200, `apply ${t.key}`);
+    const result = await res.json();
+    assert.ok(result.created > 0, `${t.key} created no content`);
+  }
+  // Every custom-type item kept its validated field values.
+  const rows = await (await owner(`/api/teams/${team.id}/content`)).json();
+  const typed = rows.filter((r) => !['post', 'page'].includes(r.type));
+  assert.ok(typed.length >= 20);
+  assert.ok(typed.every((r) => Object.keys(r.fields).length > 0), 'a typed item lost its fields');
+  // And the site still renders.
+  assert.strictEqual((await fetch(`${base}/t/${team.slug}`)).status, 200);
 });
 
 test('business templates install custom types with typed starter content', async () => {
