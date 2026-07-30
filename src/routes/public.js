@@ -200,7 +200,9 @@ function findTeam(slug) {
 
 // A row is publicly visible when published, or when a previously approved
 // version is still live while new edits await review (published_snapshot).
-const LIVE = "(status = 'published' OR published_snapshot != '')";
+const LIVE = `((status = 'published'
+  AND (publish_at IS NULL OR publish_at <= datetime('now'))
+  AND (expire_at IS NULL OR expire_at > datetime('now'))) OR published_snapshot != '')`;
 
 /** The version of a row the public should see. */
 function liveRow(row) {

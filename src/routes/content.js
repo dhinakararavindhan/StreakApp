@@ -1,6 +1,8 @@
 const express = require('express');
+const { marked } = require('marked');
 
 const { getDb, slugify, uniqueSlug } = require('../db');
+const { audit } = require('../audit');
 
 // Mounted at /api/teams/:teamId/content behind requireTeamRole('manager'),
 // which sets req.team and req.teamRole — every query below is scoped to
@@ -9,10 +11,12 @@ const { getDb, slugify, uniqueSlug } = require('../db');
 // Approval workflow: managers can create, edit, and delete content, but
 // nothing they touch goes live directly. They may hold work as 'draft' or
 // submit it as 'pending'; only company admins (and superadmins) can move
-// content to 'published' — via approve or by editing as an admin.
+// content to 'published'. While edits are in review, the previously
+// approved version stays live via published_snapshot.
 const router = express.Router({ mergeParams: true });
 
 const STATUSES = ['draft', 'pending', 'published'];
+const MAX_VERSIONS = 50;
 
 function loadTags(contentId) {
   return getDb()
@@ -37,7 +41,7 @@ function setTags(teamId, contentId, tagNames) {
   }
 }
 
-function serialize(row) {
+function serialize(row, { withHtml = false } = {}) {
   let live = null;
   if (row.published_snapshot) {
     try {
@@ -47,7 +51,41 @@ function serialize(row) {
     }
   }
   const { published_snapshot, ...rest } = row;
-  return { ...rest, live_version: live, tags: loadTags(row.id) };
+  const out = { ...rest, live_version: live, tags: loadTags(row.id) };
+  if (withHtml) {
+    out.body_html = marked.parse(row.body);
+    const lastEditor = getDb()
+      .prepare(
+        `SELECT u.username FROM content_versions v LEFT JOIN users u ON u.id = v.edited_by
+         WHERE v.content_id = ? ORDER BY v.id DESC LIMIT 1`
+      )
+      .get(row.id);
+    out.last_edited_by = lastEditor ? lastEditor.username : null;
+  }
+  return out;
+}
+
+/** Record the current state of a row as a version. */
+function saveVersion(row, userId) {
+  const db = getDb();
+  db.prepare(
+    `INSERT INTO content_versions (content_id, team_id, title, body, excerpt, cover_image, status, edited_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(row.id, row.team_id, row.title, row.body, row.excerpt, row.cover_image, row.status, userId);
+  db.prepare(
+    `DELETE FROM content_versions WHERE content_id = ? AND id NOT IN
+     (SELECT id FROM content_versions WHERE content_id = ? ORDER BY id DESC LIMIT ?)`
+  ).run(row.id, row.id, MAX_VERSIONS);
+}
+
+/** Normalize a schedule datetime. Returns null (clear), a normalized
+    'YYYY-MM-DD HH:MM:SS' string, or undefined for invalid input. */
+function normalizeWhen(value) {
+  if (value === null || value === '' ) return null;
+  const s = String(value).trim().replace('T', ' ');
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(s)) return `${s}:00`;
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(s)) return s;
+  return undefined;
 }
 
 // List with optional filters: ?type=post&status=pending&tag=news&search=hello
@@ -72,7 +110,7 @@ router.get('/', (req, res) => {
        ORDER BY c.updated_at DESC`
     )
     .all(...params);
-  res.json(rows.map(serialize));
+  res.json(rows.map((r) => serialize(r)));
 });
 
 router.get('/:id', (req, res) => {
@@ -84,44 +122,56 @@ router.get('/:id', (req, res) => {
     )
     .get(req.params.id, req.team.id);
   if (!row) return res.status(404).json({ error: 'Not found' });
-  res.json(serialize(row));
+  res.json(serialize(row, { withHtml: true }));
 });
 
 router.post('/', (req, res) => {
-  const { type = 'post', title, slug, body = '', excerpt = '', cover_image = '', status = 'draft', tags } = req.body || {};
+  const {
+    type = 'post', title, slug, body = '', excerpt = '', cover_image = '',
+    status = 'draft', tags, publish_at, expire_at,
+  } = req.body || {};
   if (!title) return res.status(400).json({ error: 'title is required' });
   if (!['post', 'page'].includes(type)) return res.status(400).json({ error: 'type must be post or page' });
   if (!STATUSES.includes(status)) return res.status(400).json({ error: 'status must be draft, pending, or published' });
   if (status === 'published' && req.teamRole !== 'admin') {
     return res.status(403).json({ error: 'Publishing requires admin approval — submit for review (status "pending") instead' });
   }
+  const publishAt = normalizeWhen(publish_at === undefined ? null : publish_at);
+  const expireAt = normalizeWhen(expire_at === undefined ? null : expire_at);
+  if (publishAt === undefined || expireAt === undefined) {
+    return res.status(400).json({ error: 'publish_at/expire_at must be YYYY-MM-DD HH:MM (UTC) or empty' });
+  }
 
   const db = getDb();
   const finalSlug = uniqueSlug(slug || title, req.team.id);
   const result = db
     .prepare(
-      `INSERT INTO content (team_id, type, title, slug, body, excerpt, cover_image, status, author_id, published_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? = 'published' THEN datetime('now') ELSE NULL END)`
+      `INSERT INTO content (team_id, type, title, slug, body, excerpt, cover_image, status, author_id, publish_at, expire_at, published_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? = 'published' THEN datetime('now') ELSE NULL END)`
     )
-    .run(req.team.id, type, title, finalSlug, body, excerpt, String(cover_image), status, req.user.id, status);
+    .run(req.team.id, type, title, finalSlug, body, excerpt, String(cover_image), status, req.user.id, publishAt, expireAt, status);
   setTags(req.team.id, result.lastInsertRowid, tags);
   const row = db.prepare('SELECT * FROM content WHERE id = ?').get(result.lastInsertRowid);
+  saveVersion(row, req.user.id);
+  audit(req.team.id, req.user, status === 'pending' ? 'content.submit' : 'content.create', title);
   res.status(201).json(serialize(row));
 });
 
-router.put('/:id', (req, res) => {
+/** Core update used by PUT and version-restore. `fields` may hold title,
+    slug, body, excerpt, cover_image, status, tags, publish_at, expire_at. */
+function applyUpdate(req, res, existing, fields) {
   const db = getDb();
-  const existing = db
-    .prepare('SELECT * FROM content WHERE id = ? AND team_id = ?')
-    .get(req.params.id, req.team.id);
-  if (!existing) return res.status(404).json({ error: 'Not found' });
-
-  const { title, slug, body, excerpt, cover_image, status, tags } = req.body || {};
+  const { title, slug, body, excerpt, cover_image, status, tags, publish_at, expire_at } = fields;
   if (status && !STATUSES.includes(status)) {
     return res.status(400).json({ error: 'status must be draft, pending, or published' });
   }
   if (status === 'published' && req.teamRole !== 'admin' && existing.status !== 'published') {
     return res.status(403).json({ error: 'Publishing requires admin approval — submit for review (status "pending") instead' });
+  }
+  const publishAt = publish_at === undefined ? existing.publish_at : normalizeWhen(publish_at);
+  const expireAt = expire_at === undefined ? existing.expire_at : normalizeWhen(expire_at);
+  if (publishAt === undefined || expireAt === undefined) {
+    return res.status(400).json({ error: 'publish_at/expire_at must be YYYY-MM-DD HH:MM (UTC) or empty' });
   }
 
   let newStatus = status !== undefined ? status : existing.status;
@@ -166,7 +216,8 @@ router.put('/:id', (req, res) => {
 
   db.prepare(
     `UPDATE content SET title = ?, slug = ?, body = ?, excerpt = ?, cover_image = ?, status = ?,
-     review_note = ?, published_snapshot = ?, published_at = ?, updated_at = datetime('now') WHERE id = ?`
+     review_note = ?, published_snapshot = ?, publish_at = ?, expire_at = ?, published_at = ?,
+     updated_at = datetime('now') WHERE id = ?`
   ).run(
     newTitle,
     newSlug,
@@ -176,12 +227,78 @@ router.put('/:id', (req, res) => {
     newStatus,
     reviewNote,
     snapshot,
+    publishAt,
+    expireAt,
     publishedAt,
     existing.id
   );
   if (tags !== undefined) setTags(req.team.id, existing.id, tags);
-  res.json(serialize(db.prepare('SELECT * FROM content WHERE id = ?').get(existing.id)));
+  const updated = db.prepare('SELECT * FROM content WHERE id = ?').get(existing.id);
+  saveVersion(updated, req.user.id);
+  return updated;
+}
+
+router.put('/:id', (req, res) => {
+  const db = getDb();
+  const existing = db
+    .prepare('SELECT * FROM content WHERE id = ? AND team_id = ?')
+    .get(req.params.id, req.team.id);
+  if (!existing) return res.status(404).json({ error: 'Not found' });
+
+  const updated = applyUpdate(req, res, existing, req.body || {});
+  if (!updated) return; // applyUpdate already responded with an error
+  const action =
+    updated.status === 'pending' && existing.status !== 'pending'
+      ? 'content.submit'
+      : updated.status === 'published' && existing.status !== 'published'
+        ? 'content.publish'
+        : 'content.update';
+  audit(req.team.id, req.user, action, updated.title);
+  res.json(serialize(updated));
 });
+
+// ---------- version history ----------
+
+router.get('/:id/versions', (req, res) => {
+  const db = getDb();
+  const row = db.prepare('SELECT id FROM content WHERE id = ? AND team_id = ?').get(req.params.id, req.team.id);
+  if (!row) return res.status(404).json({ error: 'Not found' });
+  const versions = db
+    .prepare(
+      `SELECT v.id, v.title, v.body, v.excerpt, v.cover_image, v.status, v.created_at,
+              u.username AS edited_by
+       FROM content_versions v LEFT JOIN users u ON u.id = v.edited_by
+       WHERE v.content_id = ? ORDER BY v.id DESC`
+    )
+    .all(row.id);
+  res.json(versions);
+});
+
+router.post('/:id/versions/:versionId/restore', (req, res) => {
+  const db = getDb();
+  const existing = db
+    .prepare('SELECT * FROM content WHERE id = ? AND team_id = ?')
+    .get(req.params.id, req.team.id);
+  if (!existing) return res.status(404).json({ error: 'Not found' });
+  const version = db
+    .prepare('SELECT * FROM content_versions WHERE id = ? AND content_id = ?')
+    .get(req.params.versionId, existing.id);
+  if (!version) return res.status(404).json({ error: 'Version not found' });
+
+  // Restoring applies the old fields as a fresh edit — all workflow rules
+  // (manager pull-back, snapshots, slug freeze) apply as usual.
+  const updated = applyUpdate(req, res, existing, {
+    title: version.title,
+    body: version.body,
+    excerpt: version.excerpt,
+    cover_image: version.cover_image,
+  });
+  if (!updated) return;
+  audit(req.team.id, req.user, 'content.restore', updated.title, `version ${version.id}`);
+  res.json(serialize(updated));
+});
+
+// ---------- review actions ----------
 
 // Approve a pending item (company admins only) — it goes live.
 router.post('/:id/approve', (req, res) => {
@@ -194,6 +311,7 @@ router.post('/:id/approve', (req, res) => {
     `UPDATE content SET status = 'published', review_note = '', published_snapshot = '',
      published_at = COALESCE(published_at, datetime('now')), updated_at = datetime('now') WHERE id = ?`
   ).run(row.id);
+  audit(req.team.id, req.user, 'content.approve', row.title);
   res.json(serialize(db.prepare('SELECT * FROM content WHERE id = ?').get(row.id)));
 });
 
@@ -209,14 +327,50 @@ router.post('/:id/reject', (req, res) => {
   db.prepare(
     "UPDATE content SET status = 'draft', review_note = ?, updated_at = datetime('now') WHERE id = ?"
   ).run(note, row.id);
+  audit(req.team.id, req.user, 'content.reject', row.title, note);
   res.json(serialize(db.prepare('SELECT * FROM content WHERE id = ?').get(row.id)));
 });
 
+// ---------- comments (reviewer ↔ author threads) ----------
+
+router.get('/:id/comments', (req, res) => {
+  const db = getDb();
+  const row = db.prepare('SELECT id FROM content WHERE id = ? AND team_id = ?').get(req.params.id, req.team.id);
+  if (!row) return res.status(404).json({ error: 'Not found' });
+  const rows = db
+    .prepare(
+      `SELECT c.id, c.body, c.created_at, u.username AS author
+       FROM content_comments c LEFT JOIN users u ON u.id = c.user_id
+       WHERE c.content_id = ? ORDER BY c.id`
+    )
+    .all(row.id);
+  res.json(rows);
+});
+
+router.post('/:id/comments', (req, res) => {
+  const db = getDb();
+  const row = db.prepare('SELECT id, title FROM content WHERE id = ? AND team_id = ?').get(req.params.id, req.team.id);
+  if (!row) return res.status(404).json({ error: 'Not found' });
+  const body = String((req.body || {}).body || '').trim().slice(0, 2000);
+  if (!body) return res.status(400).json({ error: 'body is required' });
+  const result = db
+    .prepare('INSERT INTO content_comments (content_id, user_id, body) VALUES (?, ?, ?)')
+    .run(row.id, req.user.id, body);
+  const comment = db
+    .prepare(
+      `SELECT c.id, c.body, c.created_at, u.username AS author
+       FROM content_comments c LEFT JOIN users u ON u.id = c.user_id WHERE c.id = ?`
+    )
+    .get(result.lastInsertRowid);
+  res.status(201).json(comment);
+});
+
 router.delete('/:id', (req, res) => {
-  const result = getDb()
-    .prepare('DELETE FROM content WHERE id = ? AND team_id = ?')
-    .run(req.params.id, req.team.id);
-  if (result.changes === 0) return res.status(404).json({ error: 'Not found' });
+  const db = getDb();
+  const row = db.prepare('SELECT title FROM content WHERE id = ? AND team_id = ?').get(req.params.id, req.team.id);
+  if (!row) return res.status(404).json({ error: 'Not found' });
+  db.prepare('DELETE FROM content WHERE id = ? AND team_id = ?').run(req.params.id, req.team.id);
+  audit(req.team.id, req.user, 'content.delete', row.title);
   res.json({ ok: true });
 });
 

@@ -22,6 +22,7 @@
     platform: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 010 18M12 3a14 14 0 000 18"/></svg>',
     account: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/></svg>',
     approvals: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M8.2 12.4l2.6 2.6 5-5.6"/></svg>',
+    activity: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5l3.2 1.9"/></svg>',
   };
 
   async function api(path, options = {}) {
@@ -176,6 +177,7 @@
     ['#/media', 'Media', 'media'],
     ['#/tags', 'Tags', 'tags'],
     ['#/approvals', 'Approvals', 'approvals', 'company-admin'],
+    ['#/activity', 'Activity', 'activity', 'company-admin'],
     ['#/company', 'Company', 'company'],
     ['#/platform', 'Platform', 'platform', 'superadmin'],
     ['#/account', 'Account', 'account'],
@@ -369,10 +371,12 @@
 
   // ---------- editor ----------
 
+  const toLocalDT = (v) => (v ? v.slice(0, 16).replace(' ', 'T') : '');
+
   async function renderEditor(id) {
     const isNew = id === 'new';
     const item = isNew
-      ? { type: 'post', title: '', slug: '', body: '', excerpt: '', cover_image: '', status: 'draft', tags: [] }
+      ? { type: 'post', title: '', slug: '', body: '', excerpt: '', cover_image: '', status: 'draft', tags: [], publish_at: null, expire_at: null }
       : await capi(`/content/${id}`);
 
     const canPublish = isCompanyAdmin();
@@ -386,19 +390,20 @@
       : `<option value="draft" ${effectiveStatus === 'draft' ? 'selected' : ''}>Draft</option>
          <option value="pending" ${effectiveStatus === 'pending' ? 'selected' : ''}>Submit for approval</option>`;
     const managerHint = !canPublish
-      ? `<p class="portal-hint" style="margin-top:0.3rem">${item.status === 'published' ? 'This item is live — saving sends your changes back for admin approval.' : 'Publishing requires admin approval.'}</p>`
+      ? `<p class="portal-hint" style="margin-top:0.3rem">${item.status === 'published' ? 'This item is live — saving sends your changes back for admin approval; the current version stays up meanwhile.' : 'Publishing requires admin approval.'}</p>`
       : '';
     const reviewNote = item.review_note
       ? `<div class="msg error" style="grid-column:1/-1">Changes requested by an admin: ${esc(item.review_note)}</div>`
       : '';
 
     const page = shell('#/content', `
-      <h1>${isNew ? 'New content' : 'Edit content'} <span class="sub">${esc(company.name)}</span></h1>
+      <h1>${isNew ? 'New content' : 'Edit content'} <span class="sub" id="autosave-state">${esc(company.name)}</span></h1>
       <form id="editor" class="editor-grid">
         ${reviewNote}
         <div class="card">
           <label>Title</label><input name="title" required value="${esc(item.title)}">
           <label>Body (Markdown)</label><textarea name="body" rows="18">${esc(item.body)}</textarea>
+          <select id="insert-img" style="margin-top:0.5rem"><option value="">Insert image from media library…</option></select>
           <label>Excerpt</label><textarea name="excerpt" rows="2">${esc(item.excerpt)}</textarea>
         </div>
         <div class="card">
@@ -410,6 +415,10 @@
           <label>Status</label>
           <select name="status">${statusOptions}</select>
           ${managerHint}
+          <label>Go live at (UTC — blank: immediately)</label>
+          <input type="datetime-local" name="publish_at" value="${toLocalDT(item.publish_at)}">
+          <label>Expire at (UTC — blank: never)</label>
+          <input type="datetime-local" name="expire_at" value="${toLocalDT(item.expire_at)}">
           <label>Cover image (URL or pick an upload)</label>
           <input name="cover_image" list="media-list" value="${esc(item.cover_image)}" placeholder="/uploads/…">
           <datalist id="media-list"></datalist>
@@ -421,9 +430,12 @@
             <a class="btn secondary" href="#/content">Back</a>
           </p>
         </div>
-      </form>`);
+      </form>
+      ${!isNew ? `
+      <div class="card" style="margin-top:0.9rem"><b>Discussion</b><div id="comments-host" style="margin-top:0.5rem">Loading…</div></div>
+      <div class="card" style="margin-top:0.9rem"><b>Version history</b><div id="history-host" style="margin-top:0.6rem">Loading…</div></div>` : ''}`);
 
-    // Offer uploaded images as cover suggestions + live preview.
+    // Cover preview + media suggestions for both cover picker and image insert.
     const coverInput = page.querySelector('[name=cover_image]');
     const preview = page.querySelector('#cover-preview');
     const updatePreview = () => {
@@ -435,25 +447,46 @@
     updatePreview();
     capi('/media')
       .then((rows) => {
-        page.querySelector('#media-list').innerHTML = rows
-          .filter((m) => m.mime_type.startsWith('image/'))
+        const images = rows.filter((m) => m.mime_type.startsWith('image/'));
+        page.querySelector('#media-list').innerHTML = images
           .map((m) => `<option value="${esc(m.url)}">${esc(m.original_name)}</option>`)
           .join('');
+        page.querySelector('#insert-img').insertAdjacentHTML(
+          'beforeend',
+          images.map((m) => `<option value="${esc(m.url)}">${esc(m.original_name)}</option>`).join('')
+        );
       })
       .catch(() => {});
+
+    // Insert markdown image at the cursor.
+    const bodyEl = page.querySelector('textarea[name=body]');
+    page.querySelector('#insert-img').addEventListener('change', (e) => {
+      const url = e.target.value;
+      if (!url) return;
+      const start = bodyEl.selectionStart ?? bodyEl.value.length;
+      const end = bodyEl.selectionEnd ?? start;
+      bodyEl.value = `${bodyEl.value.slice(0, start)}\n![](${url})\n${bodyEl.value.slice(end)}`;
+      e.target.value = '';
+      bodyEl.dispatchEvent(new Event('input', { bubbles: true }));
+      bodyEl.focus();
+    });
+
+    const collect = (f) => ({
+      title: f.get('title'),
+      body: f.get('body'),
+      excerpt: f.get('excerpt'),
+      cover_image: f.get('cover_image'),
+      status: f.get('status'),
+      slug: f.get('slug'),
+      publish_at: f.get('publish_at') || '',
+      expire_at: f.get('expire_at') || '',
+      tags: f.get('tags').split(',').map((t) => t.trim()).filter(Boolean),
+    });
 
     page.querySelector('#editor').addEventListener('submit', async (e) => {
       e.preventDefault();
       const f = new FormData(e.target);
-      const body = {
-        title: f.get('title'),
-        body: f.get('body'),
-        excerpt: f.get('excerpt'),
-        cover_image: f.get('cover_image'),
-        status: f.get('status'),
-        slug: f.get('slug'),
-        tags: f.get('tags').split(',').map((t) => t.trim()).filter(Boolean),
-      };
+      const body = collect(f);
       if (isNew) body.type = f.get('type');
       try {
         const saved = isNew
@@ -469,6 +502,93 @@
         toast(err.message, 'error');
       }
     });
+
+    // Autosave — drafts only, so autosaving can never trigger a review round-trip.
+    if (!isNew && item.status === 'draft') {
+      const form = page.querySelector('#editor');
+      let timer;
+      form.addEventListener('input', () => {
+        if (form.querySelector('[name=status]').value !== 'draft') return;
+        clearTimeout(timer);
+        timer = setTimeout(async () => {
+          try {
+            const saved = await capi(`/content/${id}`, { method: 'PUT', body: collect(new FormData(form)) });
+            form.querySelector('[name=slug]').value = saved.slug;
+            const state = page.querySelector('#autosave-state');
+            if (state) state.textContent = `Autosaved ${new Date().toLocaleTimeString()}`;
+          } catch {
+            // surfaced on manual save
+          }
+        }, 2500);
+      });
+    }
+
+    if (!isNew) {
+      mountComments(page.querySelector('#comments-host'), id);
+
+      const historyHost = page.querySelector('#history-host');
+      async function loadHistory() {
+        const versions = await capi(`/content/${id}/versions`);
+        historyHost.innerHTML = versions.length
+          ? `<table><thead><tr><th>When</th><th>By</th><th>Title</th><th></th></tr></thead>
+            <tbody>${versions
+              .slice(0, 15)
+              .map(
+                (v, i) => `<tr>
+                  <td>${esc(v.created_at.slice(0, 16))}</td>
+                  <td>${esc(v.edited_by || '—')}</td>
+                  <td>${esc(v.title)}</td>
+                  <td>${i === 0 ? '<span class="path">current</span>' : `<button type="button" class="btn secondary sm" data-restore="${v.id}">Restore</button>`}</td>
+                </tr>`
+              )
+              .join('')}</tbody></table>`
+          : '<p class="path">No versions yet.</p>';
+        historyHost.querySelectorAll('[data-restore]').forEach((btn) =>
+          btn.addEventListener('click', async () => {
+            if (!confirm('Restore this version? Your workflow rules still apply to the restored content.')) return;
+            try {
+              await capi(`/content/${id}/versions/${btn.dataset.restore}/restore`, { method: 'POST' });
+              toast('Version restored.');
+              render();
+            } catch (err) {
+              toast(err.message, 'error');
+            }
+          })
+        );
+      }
+      loadHistory();
+    }
+  }
+
+  // ---------- comments (shared by editor + review) ----------
+
+  async function mountComments(host, contentId) {
+    async function load() {
+      const rows = await capi(`/content/${contentId}/comments`);
+      host.innerHTML = `
+        <div class="comments">${rows
+          .map(
+            (c) => `<div class="comment"><span class="who">${esc(c.author || 'deleted user')}</span><span class="when">${esc(c.created_at.slice(0, 16))}</span><div>${esc(c.body)}</div></div>`
+          )
+          .join('') || '<p class="path" style="margin:0.4rem 0">No comments yet — start the discussion.</p>'}</div>
+        <form class="toolbar" style="margin-bottom:0">
+          <input name="body" placeholder="Write a comment…" required style="flex:1">
+          <button class="btn sm">Comment</button>
+        </form>`;
+      host.querySelector('form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        try {
+          await capi(`/content/${contentId}/comments`, {
+            method: 'POST',
+            body: { body: new FormData(e.target).get('body') },
+          });
+          load();
+        } catch (err) {
+          toast(err.message, 'error');
+        }
+      });
+    }
+    await load();
   }
 
   // ---------- media ----------
@@ -598,47 +718,89 @@
 
   // ---------- side-by-side review ----------
 
-  /** Line diff (LCS). Returns aligned lanes: left = live, right = proposed. */
-  function diffLines(a, b) {
-    const A = String(a).split('\n');
-    const B = String(b).split('\n');
+  /** LCS diff over any token array. */
+  function diffOpsArr(A, B) {
     const n = A.length;
     const m = B.length;
-    if (n * m > 250000) {
-      // Too large to diff comfortably — show without highlights.
-      return {
-        left: A.map((s) => ({ t: 'same', s })),
-        right: B.map((s) => ({ t: 'same', s })),
-      };
-    }
     const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
     for (let i = n - 1; i >= 0; i--) {
       for (let j = m - 1; j >= 0; j--) {
         dp[i][j] = A[i] === B[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
       }
     }
-    const left = [];
-    const right = [];
+    const ops = [];
     let i = 0;
     let j = 0;
     while (i < n && j < m) {
-      if (A[i] === B[j]) {
-        left.push({ t: 'same', s: A[i++] });
-        right.push({ t: 'same', s: B[j++] });
-      } else if (dp[i + 1][j] >= dp[i][j + 1]) {
-        left.push({ t: 'del', s: A[i++] });
-      } else {
-        right.push({ t: 'add', s: B[j++] });
-      }
+      if (A[i] === B[j]) { ops.push({ t: 'same', s: A[i] }); i++; j++; }
+      else if (dp[i + 1][j] >= dp[i][j + 1]) { ops.push({ t: 'del', s: A[i] }); i++; }
+      else { ops.push({ t: 'add', s: B[j] }); j++; }
     }
-    while (i < n) left.push({ t: 'del', s: A[i++] });
-    while (j < m) right.push({ t: 'add', s: B[j++] });
+    while (i < n) ops.push({ t: 'del', s: A[i++] });
+    while (j < m) ops.push({ t: 'add', s: B[j++] });
+    return ops;
+  }
+
+  /** Word-level diff of one line pair. Returns escaped HTML lanes, or null if too big. */
+  function diffWords(a, b) {
+    const A = String(a).split(/(\s+)/).filter(Boolean);
+    const B = String(b).split(/(\s+)/).filter(Boolean);
+    if (A.length * B.length > 22500) return null;
+    const ops = diffOpsArr(A, B);
+    return {
+      left: ops
+        .filter((o) => o.t !== 'add')
+        .map((o) => (o.t === 'same' ? esc(o.s) : `<span class="wdel">${esc(o.s)}</span>`))
+        .join(''),
+      right: ops
+        .filter((o) => o.t !== 'del')
+        .map((o) => (o.t === 'same' ? esc(o.s) : `<span class="wadd">${esc(o.s)}</span>`))
+        .join(''),
+    };
+  }
+
+  /** Line diff lanes with word-level highlighting on replaced line pairs. */
+  function buildPanes(aText, bText) {
+    const A = String(aText).split('\n');
+    const B = String(bText).split('\n');
+    if (A.length * B.length > 250000) {
+      return {
+        left: A.map((s) => ({ cls: '', h: esc(s) })),
+        right: B.map((s) => ({ cls: '', h: esc(s) })),
+      };
+    }
+    const ops = diffOpsArr(A, B);
+    const left = [];
+    const right = [];
+    let i = 0;
+    while (i < ops.length) {
+      if (ops[i].t === 'same') {
+        left.push({ cls: '', h: esc(ops[i].s) });
+        right.push({ cls: '', h: esc(ops[i].s) });
+        i++;
+        continue;
+      }
+      const dels = [];
+      const adds = [];
+      while (i < ops.length && ops[i].t !== 'same') {
+        (ops[i].t === 'del' ? dels : adds).push(ops[i].s);
+        i++;
+      }
+      const paired = Math.min(dels.length, adds.length);
+      for (let k = 0; k < paired; k++) {
+        const w = diffWords(dels[k], adds[k]);
+        left.push({ cls: w ? 'rep' : 'del', h: w ? w.left : esc(dels[k]) });
+        right.push({ cls: w ? 'rep' : 'add', h: w ? w.right : esc(adds[k]) });
+      }
+      for (let k = paired; k < dels.length; k++) left.push({ cls: 'del', h: esc(dels[k]) });
+      for (let k = paired; k < adds.length; k++) right.push({ cls: 'add', h: esc(adds[k]) });
+    }
     return { left, right };
   }
 
   function diffPane(lines) {
     return `<div class="diff-body">${lines
-      .map((l) => `<span class="dl ${l.t === 'same' ? '' : l.t}">${esc(l.s) || '&nbsp;'}</span>`)
+      .map((l) => `<span class="dl ${l.cls}">${l.h || '&nbsp;'}</span>`)
       .join('')}</div>`;
   }
 
@@ -653,21 +815,27 @@
     const isPending = item.status === 'pending';
     const page = shell('#/approvals', `
       <h1>Review: ${esc(item.title)}
-        <span style="display:flex;gap:0.5rem">
+        <span style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">
+          <span class="seg" id="view-seg" style="margin:0;grid-template-columns:1fr 1fr;width:160px">
+            <button type="button" data-v="diff" class="on">Diff</button>
+            <button type="button" data-v="preview">Preview</button>
+          </span>
           <a class="btn secondary sm" href="#/approvals">Back</a>
           ${isPending ? `<button class="btn sm" id="rv-approve">Approve</button>
           <button class="btn danger sm" id="rv-reject">Reject</button>` : `<span class="pill ${esc(item.status)}">${esc(item.status)}</span>`}
         </span>
       </h1>
-      <div id="panes" class="review-grid"></div>`);
+      <div id="view-diff" class="review-grid"></div>
+      <div id="view-preview" class="review-grid" style="display:none"></div>
+      <div class="card" style="margin-top:0.9rem"><b>Discussion</b><div id="comments-host" style="margin-top:0.5rem">Loading…</div></div>`);
 
-    const body = diffLines(live ? live.body : '', item.body);
+    const panes = buildPanes(live ? live.body : '', item.body);
     const leftPane = live
       ? `<div class="card">
           ${fieldRow('Title', live.title, false)}
           ${fieldRow('Excerpt', live.excerpt, false)}
           ${fieldRow('Cover image', live.cover_image, false)}
-          <div class="diff-field"><div class="fl">Body</div>${diffPane(body.left)}</div>
+          <div class="diff-field"><div class="fl">Body</div>${diffPane(panes.left)}</div>
         </div>`
       : `<div class="review-empty">Nothing live yet — this is new content awaiting its first approval.</div>`;
     const rightPane = `<div class="card">
@@ -675,16 +843,33 @@
         ${fieldRow('Excerpt', item.excerpt, live && live.excerpt !== item.excerpt)}
         ${fieldRow('Cover image', item.cover_image, live && live.cover_image !== item.cover_image)}
         <div class="diff-field"><div class="fl">Body</div>${diffPane(
-          live ? body.right : String(item.body).split('\n').map((s) => ({ t: 'add', s }))
+          live ? panes.right : String(item.body).split('\n').map((s) => ({ cls: 'add', h: esc(s) }))
         )}</div>
       </div>`;
-    page.querySelector('#panes').innerHTML = `
+    page.querySelector('#view-diff').innerHTML = `
       <div class="review-pane">
         <h3>Live version ${live ? `<span class="pill published">on site</span>` : ''}</h3>${leftPane}
       </div>
       <div class="review-pane">
-        <h3>Proposed by ${esc(item.author || 'unknown')} <span class="pill pending">pending</span></h3>${rightPane}
+        <h3>Proposed by ${esc(item.last_edited_by || item.author || 'unknown')} <span class="pill pending">pending</span></h3>${rightPane}
       </div>`;
+
+    // Rendered-markdown preview of the proposed version.
+    page.querySelector('#view-preview').innerHTML = `
+      <div class="card md-preview" style="grid-column:1/-1">
+        ${item.cover_image ? `<img class="preview-cover" src="${esc(item.cover_image)}" alt="">` : ''}
+        <h1>${esc(item.title)}</h1>
+        ${item.excerpt ? `<p class="path">${esc(item.excerpt)}</p>` : ''}
+        ${item.body_html || ''}
+      </div>`;
+
+    page.querySelectorAll('#view-seg button').forEach((b) =>
+      b.addEventListener('click', () => {
+        page.querySelectorAll('#view-seg button').forEach((x) => x.classList.toggle('on', x === b));
+        page.querySelector('#view-diff').style.display = b.dataset.v === 'diff' ? '' : 'none';
+        page.querySelector('#view-preview').style.display = b.dataset.v === 'preview' ? '' : 'none';
+      })
+    );
 
     if (isPending) {
       page.querySelector('#rv-approve').addEventListener('click', async () => {
@@ -708,6 +893,29 @@
         }
       });
     }
+
+    mountComments(page.querySelector('#comments-host'), item.id);
+  }
+
+  // ---------- activity (audit log) ----------
+
+  async function renderActivity() {
+    const page = shell('#/activity', `<h1>Activity <span class="sub">${esc(company.name)}</span></h1><div id="list">Loading…</div>`);
+    const rows = await api(`/teams/${company.id}/audit`);
+    page.querySelector('#list').innerHTML = rows.length
+      ? `<table><thead><tr><th>When</th><th>Who</th><th>Action</th><th>Target</th><th>Detail</th></tr></thead>
+        <tbody>${rows
+          .map(
+            (r) => `<tr>
+              <td>${esc(r.created_at.slice(0, 16))}</td>
+              <td>${esc(r.username || '—')}</td>
+              <td><code>${esc(r.action)}</code></td>
+              <td>${esc(r.target)}</td>
+              <td class="path">${esc(r.detail)}</td>
+            </tr>`
+          )
+          .join('')}</tbody></table>`
+      : '<p style="color:var(--muted)">No activity yet.</p>';
   }
 
   // ---------- company (profile, branding, members) ----------
@@ -1034,6 +1242,12 @@
       { label: 'Go to Media', k: 'nav', run: () => (location.hash = '#/media') },
       { label: 'Go to Tags', k: 'nav', run: () => (location.hash = '#/tags') },
       { label: 'Go to Company', k: 'nav', run: () => (location.hash = '#/company') },
+      ...(isCompanyAdmin()
+        ? [
+            { label: 'Go to Approvals', k: 'nav', run: () => (location.hash = '#/approvals') },
+            { label: 'Go to Activity', k: 'nav', run: () => (location.hash = '#/activity') },
+          ]
+        : []),
       ...(me.role === 'superadmin' ? [{ label: 'Go to Platform', k: 'nav', run: () => (location.hash = '#/platform') }] : []),
       { label: 'New content', k: 'create', run: () => (location.hash = '#/edit/new') },
       { label: 'Open public site', k: 'open', run: () => window.open(`/t/${company.slug}`, '_blank') },
@@ -1129,6 +1343,7 @@
       const reviewMatch = hash.match(/^#\/review\/(\d+)/);
       if (reviewMatch && isCompanyAdmin()) return await renderReview(reviewMatch[1]);
       if (hash.startsWith('#/approvals') && isCompanyAdmin()) return await renderApprovals();
+      if (hash.startsWith('#/activity') && isCompanyAdmin()) return await renderActivity();
       if (hash.startsWith('#/company')) return await renderCompany();
       if (hash.startsWith('#/platform') && me.role === 'superadmin') return await renderPlatform();
       if (hash.startsWith('#/account')) return await renderAccount();

@@ -452,6 +452,107 @@ test('deleting a team removes its content everywhere', async () => {
   assert.strictEqual(site.status, 404);
 });
 
+
+test('version history records every save and supports restore', async () => {
+  const created = await alice(`/api/teams/${aliceTeam.id}/content`, {
+    method: 'POST',
+    body: { type: 'post', title: 'Versioned piece', body: 'First draft.' },
+  });
+  const item = await created.json();
+
+  await alice(`/api/teams/${aliceTeam.id}/content/${item.id}`, {
+    method: 'PUT',
+    body: { body: 'Second draft, much better.' },
+  });
+
+  const versions = await (await alice(`/api/teams/${aliceTeam.id}/content/${item.id}/versions`)).json();
+  assert.ok(versions.length >= 2);
+  assert.strictEqual(versions[0].body, 'Second draft, much better.');
+  const firstVersion = versions[versions.length - 1];
+  assert.strictEqual(firstVersion.body, 'First draft.');
+
+  const restored = await alice(
+    `/api/teams/${aliceTeam.id}/content/${item.id}/versions/${firstVersion.id}/restore`,
+    { method: 'POST' }
+  );
+  assert.strictEqual(restored.status, 200);
+  assert.strictEqual((await restored.json()).body, 'First draft.');
+
+  // The restore itself became a new version.
+  const after = await (await alice(`/api/teams/${aliceTeam.id}/content/${item.id}/versions`)).json();
+  assert.ok(after.length >= 3);
+});
+
+test('scheduled publishing gates public visibility by time', async () => {
+  const future = await alice(`/api/teams/${aliceTeam.id}/content`, {
+    method: 'POST',
+    body: { type: 'post', title: 'Tomorrow news', status: 'published', publish_at: '2099-01-01 00:00' },
+  });
+  assert.strictEqual(future.status, 201);
+  assert.strictEqual((await fetch(`${base}/t/acme-docs/posts/tomorrow-news`)).status, 404);
+  const headless = await (await fetch(`${base}/api/public/acme-docs/content`)).json();
+  assert.ok(!headless.some((r) => r.slug === 'tomorrow-news'));
+
+  const past = await alice(`/api/teams/${aliceTeam.id}/content`, {
+    method: 'POST',
+    body: { type: 'post', title: 'Yesterday news', status: 'published', publish_at: '2020-01-01 00:00' },
+  });
+  assert.strictEqual(past.status, 201);
+  assert.strictEqual((await fetch(`${base}/t/acme-docs/posts/yesterday-news`)).status, 200);
+
+  const expired = await alice(`/api/teams/${aliceTeam.id}/content`, {
+    method: 'POST',
+    body: { type: 'post', title: 'Expired offer', status: 'published', expire_at: '2020-01-01 00:00' },
+  });
+  assert.strictEqual(expired.status, 201);
+  assert.strictEqual((await fetch(`${base}/t/acme-docs/posts/expired-offer`)).status, 404);
+
+  const bad = await alice(`/api/teams/${aliceTeam.id}/content`, {
+    method: 'POST',
+    body: { type: 'post', title: 'Bad schedule', publish_at: 'not-a-date' },
+  });
+  assert.strictEqual(bad.status, 400);
+});
+
+test('comment threads work for members; single GET includes body_html', async () => {
+  const created = await alice(`/api/teams/${aliceTeam.id}/content`, {
+    method: 'POST',
+    body: { type: 'post', title: 'Discussed piece', body: '# Heading\n\nText.' },
+  });
+  const item = await created.json();
+
+  const posted = await bob(`/api/teams/${aliceTeam.id}/content/${item.id}/comments`, {
+    method: 'POST',
+    body: { body: 'Should we mention pricing here?' },
+  });
+  assert.strictEqual(posted.status, 201);
+  await alice(`/api/teams/${aliceTeam.id}/content/${item.id}/comments`, {
+    method: 'POST',
+    body: { body: 'Yes — add a line about the free tier.' },
+  });
+
+  const thread = await (await alice(`/api/teams/${aliceTeam.id}/content/${item.id}/comments`)).json();
+  assert.strictEqual(thread.length, 2);
+  assert.strictEqual(thread[0].author, 'bob');
+
+  const single = await (await alice(`/api/teams/${aliceTeam.id}/content/${item.id}`)).json();
+  assert.ok(single.body_html.includes('<h1>Heading</h1>'));
+});
+
+test('audit log records workflow actions, admin-only', async () => {
+  const forbidden = await bob(`/api/teams/${aliceTeam.id}/audit`);
+  assert.strictEqual(forbidden.status, 403);
+
+  const rows = await (await alice(`/api/teams/${aliceTeam.id}/audit`)).json();
+  const actions = rows.map((r) => r.action);
+  assert.ok(actions.includes('content.approve'));
+  assert.ok(actions.includes('content.reject'));
+  assert.ok(actions.includes('content.restore'));
+  assert.ok(actions.includes('member.add'));
+  const approve = rows.find((r) => r.action === 'content.approve');
+  assert.strictEqual(approve.username, 'alice');
+});
+
 test('health endpoint responds for load balancers', async () => {
   const res = await fetch(`${base}/api/health`);
   assert.strictEqual(res.status, 200);

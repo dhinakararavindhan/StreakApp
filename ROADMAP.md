@@ -13,7 +13,7 @@ next one more valuable.
 - Compact light/dark admin (Geist Sans) with dashboard, command palette, media library, cover images
 - 28 end-to-end tests
 
-## Phase 1 — Production readiness 🚧 (this phase)
+## Phase 1 — Production readiness ✅ (shipped)
 
 Anyone can run Nova in production, safely, today.
 
@@ -24,16 +24,17 @@ Anyone can run Nova in production, safely, today.
 - [x] **Open-web citizenship** (every hosted site): RSS feeds, XML sitemaps, robots.txt, meta descriptions and Open Graph tags
 - [x] **License + contribution guide** (MIT) — open source is the adoption engine
 
-## Phase 2 — Editorial depth
+## Phase 2 — Editorial depth ✅ (shipped)
 
 Make the newsroom-grade workflow complete.
 
-- [ ] Content version history (every save, restorable), building on the snapshot mechanism
-- [ ] Scheduled publishing (`publish_at`) and expiry
-- [ ] Audit log: who approved/rejected/published what, when
-- [ ] Word-level diffs and rendered-markdown preview in the review screen
-- [ ] Editor upgrades: image embedding from the media library, autosave, slash commands
-- [ ] Comment threads on pending content (reviewer ↔ author)
+- [x] Content version history — every save recorded (capped at 50/item), restorable through the same workflow rules
+- [x] Scheduled publishing (`publish_at`) and expiry (`expire_at`), enforced at query time on sites, feeds, sitemaps, and the headless API
+- [x] Audit log: content lifecycle, approvals/rejections, restores, membership and settings changes — Activity page for company admins
+- [x] Word-level diffs and rendered-markdown preview in the review screen
+- [x] Editor upgrades: image embedding from the media library, autosave for drafts
+- [x] Comment threads on content (reviewer ↔ author), in the editor and the review screen
+- [ ] Slash commands in the editor (deferred)
 
 ## Phase 3 — World-scale content
 

@@ -37,12 +37,14 @@ Managers have full CRUD on content, but nothing they touch goes live on its own:
 - Company admins see a badge-counted **Approvals** queue with a **side-by-side review**: the live version and the proposed version rendered next to each other with line-level diff highlighting (removals struck through on the left, additions highlighted on the right, changed fields flagged). Approve or reject (with a note) from the queue or the review screen; rejected items return to draft and the note is shown to the author in the editor.
 - If a manager edits already-published content, the edits go to **Pending** while the **previously approved version stays live** (snapshotted, URL frozen) — the public site and headless API only ever serve approved content. Approving swaps the new version in; rejecting keeps the old one up.
 - Admins and superadmins can still publish directly.
+- **Version history**: every save is recorded and restorable (restores obey the same workflow rules). **Comment threads** let reviewers and authors discuss an item in the editor and review screens. An **audit log** (Activity page) records approvals, rejections, restores, membership and settings changes.
+- **Scheduling**: set `publish_at` (go live later) and `expire_at` (come down later) — enforced everywhere published content is served, including feeds, sitemaps, and the headless API.
 
 ## Admin panel highlights
 
 - **Dashboard** — per-company KPIs (published, in review, drafts, posts, pages, media, members) and recently updated content.
 - **Command palette** — Ctrl/⌘+K anywhere: jump between pages, create content, switch companies, and search content by title.
-- **Editor** — Markdown body, excerpt, tags, slug control, and a cover image picker fed by the company's media library with live preview.
+- **Editor** — Markdown body with media-library image insertion, autosave for drafts, excerpt, tags, slug control, scheduling fields, a cover image picker with live preview, version history with restore, and the item's discussion thread.
 - **Company page** — profile, custom domain, theme/branding, headless API reference, and member management with role control.
 - **Platform page** (superadmins) — platform-wide KPIs, newest companies, user administration, and platform settings.
 
@@ -119,6 +121,10 @@ All `/api` routes accept and return JSON. Authentication uses an httpOnly cookie
 | GET/PUT/DELETE | `/api/teams/:id/content/:cid` | member | Read / update / delete one item (managers can't set `published`) |
 | POST | `/api/teams/:id/content/:cid/approve` | company admin | Approve pending content — goes live |
 | POST | `/api/teams/:id/content/:cid/reject` | company admin | Reject pending content back to draft (`{note}`) |
+| GET | `/api/teams/:id/content/:cid/versions` | member | Version history (newest first) |
+| POST | `/api/teams/:id/content/:cid/versions/:vid/restore` | member | Restore a version (workflow rules apply) |
+| GET/POST | `/api/teams/:id/content/:cid/comments` | member | Discussion thread on an item |
+| GET | `/api/teams/:id/audit` | company admin | Audit log (last 100 entries) |
 | GET/DELETE | `/api/teams/:id/tags[/:tagId]` | member | List / delete tags |
 | GET/POST/DELETE | `/api/teams/:id/media[/:mid]` | member | List / upload (multipart `file`) / delete |
 | GET | `/api/platform/stats` | superadmin | Platform-wide KPIs and newest companies |
@@ -133,7 +139,7 @@ All `/api` routes accept and return JSON. Authentication uses an httpOnly cookie
 npm test
 ```
 
-35 end-to-end tests (`node --test`, in-memory database): registration, company creation, the three-tier role model, cross-company isolation, content CRUD with cover images, per-company slug scoping, draft/pending/publish visibility, the approval workflow, feeds/sitemaps/SEO, rate limiting, theming, custom-domain routing, the headless API, dashboards, and platform stats.
+39 end-to-end tests (`node --test`, in-memory database): registration, company creation, the three-tier role model, cross-company isolation, content CRUD with cover images, per-company slug scoping, draft/pending/publish visibility, the approval workflow, feeds/sitemaps/SEO, rate limiting, theming, custom-domain routing, the headless API, dashboards, and platform stats.
 
 ## Project layout
 

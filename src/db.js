@@ -68,8 +68,45 @@ function init(options = {}) {
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       published_at TEXT,
+      publish_at TEXT,
+      expire_at TEXT,
       UNIQUE (team_id, slug)
     );
+
+    CREATE TABLE IF NOT EXISTS content_versions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      content_id INTEGER NOT NULL REFERENCES content(id) ON DELETE CASCADE,
+      team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL DEFAULT '',
+      excerpt TEXT NOT NULL DEFAULT '',
+      cover_image TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'draft',
+      edited_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_versions_content ON content_versions(content_id, id);
+
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+      user_id INTEGER,
+      username TEXT NOT NULL DEFAULT '',
+      action TEXT NOT NULL,
+      target TEXT NOT NULL DEFAULT '',
+      detail TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_audit_team ON audit_log(team_id, id);
+
+    CREATE TABLE IF NOT EXISTS content_comments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      content_id INTEGER NOT NULL REFERENCES content(id) ON DELETE CASCADE,
+      user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      body TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_comments_content ON content_comments(content_id, id);
 
     CREATE TABLE IF NOT EXISTS tags (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -140,6 +177,13 @@ function migrate() {
   // content.published_snapshot — the still-live version while edits await review
   if (!db.prepare('PRAGMA table_info(content)').all().some((c) => c.name === 'published_snapshot')) {
     db.exec("ALTER TABLE content ADD COLUMN published_snapshot TEXT NOT NULL DEFAULT ''");
+  }
+
+  // Scheduled publishing and expiry (pre-scheduling databases)
+  for (const col of ['publish_at', 'expire_at']) {
+    if (!db.prepare('PRAGMA table_info(content)').all().some((c) => c.name === col)) {
+      db.exec(`ALTER TABLE content ADD COLUMN ${col} TEXT`);
+    }
   }
 
   // Approval workflow: the old status CHECK lacks 'pending', which blocks

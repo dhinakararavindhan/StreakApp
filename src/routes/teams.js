@@ -1,6 +1,7 @@
 const express = require('express');
 
 const { getDb, uniqueTeamSlug, setTeamDefaults } = require('../db');
+const { audit } = require('../audit');
 const { requireAuth, requireTeamRole } = require('../auth');
 const contentRoutes = require('./content');
 const tagRoutes = require('./tags');
@@ -93,6 +94,7 @@ router.put('/:teamId', requireTeamRole('admin'), (req, res) => {
     newDomain,
     req.team.id
   );
+  audit(req.team.id, req.user, 'company.update', newName, newDomain ? `domain: ${newDomain}` : '');
   res.json(serialize(db.prepare('SELECT * FROM teams WHERE id = ?').get(req.team.id)));
 });
 
@@ -125,6 +127,17 @@ router.get('/:teamId/stats', requireTeamRole('manager'), (req, res) => {
   });
 });
 
+// ---------- audit log ----------
+
+router.get('/:teamId/audit', requireTeamRole('admin'), (req, res) => {
+  const rows = getDb()
+    .prepare(
+      'SELECT id, username, action, target, detail, created_at FROM audit_log WHERE team_id = ? ORDER BY id DESC LIMIT 100'
+    )
+    .all(req.team.id);
+  res.json(rows);
+});
+
 // ---------- members ----------
 
 router.get('/:teamId/members', requireTeamRole('manager'), (req, res) => {
@@ -151,6 +164,7 @@ router.post('/:teamId/members', requireTeamRole('admin'), (req, res) => {
     return res.status(409).json({ error: 'Already a member of this company' });
   }
   db.prepare('INSERT INTO team_members (team_id, user_id, role) VALUES (?, ?, ?)').run(req.team.id, user.id, role);
+  audit(req.team.id, req.user, 'member.add', user.username, role);
   res.status(201).json({ id: user.id, username: user.username, role });
 });
 
@@ -167,6 +181,7 @@ router.put('/:teamId/members/:userId', requireTeamRole('admin'), (req, res) => {
     .prepare('UPDATE team_members SET role = ? WHERE team_id = ? AND user_id = ?')
     .run(role, req.team.id, req.params.userId);
   if (result.changes === 0) return res.status(404).json({ error: 'Not a member' });
+  audit(req.team.id, req.user, 'member.role', `user #${req.params.userId}`, role);
   res.json({ ok: true });
 });
 
@@ -185,6 +200,7 @@ router.delete('/:teamId/members/:userId', requireTeamRole('manager'), (req, res)
     .prepare('DELETE FROM team_members WHERE team_id = ? AND user_id = ?')
     .run(req.team.id, targetId);
   if (result.changes === 0) return res.status(404).json({ error: 'Not a member' });
+  audit(req.team.id, req.user, isSelf ? 'member.leave' : 'member.remove', `user #${targetId}`);
   res.json({ ok: true });
 });
 
@@ -214,9 +230,14 @@ router.put('/:teamId/settings', requireTeamRole('admin'), (req, res) => {
     `INSERT INTO team_settings (team_id, key, value) VALUES (?, ?, ?)
      ON CONFLICT(team_id, key) DO UPDATE SET value = excluded.value`
   );
+  const changed = [];
   for (const [key, value] of Object.entries(req.body || {})) {
-    if (TEAM_SETTING_KEYS.has(key)) stmt.run(req.team.id, key, String(value));
+    if (TEAM_SETTING_KEYS.has(key)) {
+      stmt.run(req.team.id, key, String(value));
+      changed.push(key);
+    }
   }
+  if (changed.length) audit(req.team.id, req.user, 'settings.update', changed.join(', '));
   const rows = db.prepare('SELECT key, value FROM team_settings WHERE team_id = ?').all(req.team.id);
   res.json(Object.fromEntries(rows.map((r) => [r.key, r.value])));
 });
