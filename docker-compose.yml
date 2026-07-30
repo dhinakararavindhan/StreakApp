@@ -1,0 +1,20 @@
+services:
+  nova:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      # Set a stable secret so logins survive restarts.
+      JWT_SECRET: change-me-to-a-long-random-string
+      # Set your first-run superadmin credentials.
+      # ADMIN_USERNAME: admin
+      # ADMIN_PASSWORD: choose-a-strong-password
+      # Enable when serving over HTTPS (behind a TLS-terminating proxy):
+      # COOKIE_SECURE: "1"
+      # TRUST_PROXY: "1"
+    volumes:
+      - nova-data:/data
+    restart: unless-stopped
+
+volumes:
+  nova-data:

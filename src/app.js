@@ -4,6 +4,8 @@ const cookieParser = require('cookie-parser');
 
 const { init } = require('./db');
 const { attachUser } = require('./auth');
+const { securityHeaders } = require('./security');
+const { version } = require('../package.json');
 const authRoutes = require('./routes/auth');
 const teamRoutes = require('./routes/teams');
 const userRoutes = require('./routes/users');
@@ -15,9 +17,16 @@ function createApp(options = {}) {
   init(options.db || {});
 
   const app = express();
+  // Behind a reverse proxy (nginx/Caddy/load balancer), trust X-Forwarded-*
+  // so req.ip and req.protocol are correct for rate limiting and links.
+  if (process.env.TRUST_PROXY === '1') app.set('trust proxy', 1);
+  app.use(securityHeaders);
   app.use(express.json({ limit: '2mb' }));
   app.use(cookieParser());
   app.use(attachUser);
+
+  // For load balancers and uptime monitors.
+  app.get('/api/health', (req, res) => res.json({ ok: true, version }));
 
   // REST API — content, tags, and media are nested under their team:
   // /api/teams/:teamId/{content,tags,media,members,settings}

@@ -17,6 +17,8 @@ function setAuthCookie(res, token) {
   res.cookie(COOKIE_NAME, token, {
     httpOnly: true,
     sameSite: 'lax',
+    // Enable when serving over HTTPS (COOKIE_SECURE=1).
+    secure: process.env.COOKIE_SECURE === '1',
     maxAge: 7 * 24 * 60 * 60 * 1000,
   });
 }

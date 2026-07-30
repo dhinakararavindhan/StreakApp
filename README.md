@@ -1,5 +1,7 @@
 # Nova CMS ✦
 
+**The CMS any team on earth can adopt in an afternoon — and never outgrow.** See [ROADMAP.md](ROADMAP.md) for where this is headed.
+
 A multi-company content platform built with Node.js, Express, and SQLite. Any company can onboard itself and use Nova to power its website — with its own look, its own domain, its own people, and fully isolated content.
 
 It ships three things in one small app:
@@ -70,6 +72,20 @@ To fill the platform with realistic demo companies and content (Northwind Coffee
 node scripts/seed-demo.js          # against http://localhost:3000
 ```
 
+## Deploy with Docker
+
+```bash
+docker compose up -d      # builds the image, persists /data, restarts on failure
+```
+
+Or roll your own: `docker build -t nova-cms . && docker run -p 3000:3000 -v nova-data:/data -e JWT_SECRET=<random> nova-cms`. A container healthcheck hits `/api/health`. Behind a TLS proxy set `COOKIE_SECURE=1` and `TRUST_PROXY=1`. CI (GitHub Actions) runs the test suite on every push.
+
+## Production notes
+
+- **Rate limiting**: login and registration are limited per IP (tune with `RATE_LIMIT_LOGIN` / `RATE_LIMIT_REGISTER`).
+- **Security headers** are set on every response; auth cookies are httpOnly + SameSite=Lax (+ Secure when `COOKIE_SECURE=1`).
+- **SEO built in**: every hosted site gets `feed.xml` (RSS), `sitemap.xml`, meta descriptions, and Open Graph tags; `/robots.txt` and the platform sitemap are domain-aware, so a custom-domain site gets its own at the root.
+
 ## Configuration
 
 | Env var | Default | Purpose |
@@ -79,6 +95,9 @@ node scripts/seed-demo.js          # against http://localhost:3000
 | `UPLOAD_DIR` | `./uploads` | Where uploaded media is stored |
 | `JWT_SECRET` | random per boot | Auth token signing key — set this in production so logins survive restarts |
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` | `admin` / `admin123` | First-run superadmin account |
+| `COOKIE_SECURE` | off | Set `1` when serving over HTTPS |
+| `TRUST_PROXY` | off | Set `1` behind a reverse proxy so client IPs and protocol are correct |
+| `RATE_LIMIT_LOGIN` / `RATE_LIMIT_REGISTER` | `30` / `30` | Auth attempts allowed per IP per window |
 
 ## API overview
 
@@ -114,7 +133,7 @@ All `/api` routes accept and return JSON. Authentication uses an httpOnly cookie
 npm test
 ```
 
-28 end-to-end tests (`node --test`, in-memory database): registration, company creation, the three-tier role model, cross-company isolation, content CRUD with cover images, per-company slug scoping, draft/pending/publish visibility, the approval workflow, theming, custom-domain routing, the headless API, dashboards, and platform stats.
+35 end-to-end tests (`node --test`, in-memory database): registration, company creation, the three-tier role model, cross-company isolation, content CRUD with cover images, per-company slug scoping, draft/pending/publish visibility, the approval workflow, feeds/sitemaps/SEO, rate limiting, theming, custom-domain routing, the headless API, dashboards, and platform stats.
 
 ## Project layout
 

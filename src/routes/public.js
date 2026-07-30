@@ -50,13 +50,21 @@ function themeCss(settings = {}) {
   return `${css}\n${custom}`;
 }
 
-function layout({ title, siteTitle, siteDescription, homeHref, nav = '', content, settings }) {
+function layout({ title, siteTitle, siteDescription, homeHref, nav = '', content, settings, meta = {} }) {
+  const fullTitle = title ? `${title} — ${siteTitle}` : siteTitle;
+  const description = meta.description || siteDescription || '';
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(title ? `${title} — ${siteTitle}` : siteTitle)}</title>
+<title>${esc(fullTitle)}</title>
+<meta name="description" content="${esc(description)}">
+<meta property="og:title" content="${esc(title || siteTitle)}">
+<meta property="og:description" content="${esc(description)}">
+<meta property="og:type" content="${esc(meta.ogType || 'website')}">
+${meta.ogImage ? `<meta property="og:image" content="${esc(meta.ogImage)}">` : ''}
+${meta.feedHref ? `<link rel="alternate" type="application/rss+xml" title="${esc(siteTitle)}" href="${esc(meta.feedHref)}">` : ''}
 <style>
   @font-face { font-family: 'Geist Sans'; font-weight: 400; font-display: swap; src: url('/assets/fonts/geist-sans-latin-400-normal.woff2') format('woff2'); }
   @font-face { font-family: 'Geist Sans'; font-weight: 600; font-display: swap; src: url('/assets/fonts/geist-sans-latin-600-normal.woff2') format('woff2'); }
@@ -171,7 +179,7 @@ function fullArticle(team, row, base) {
   return `<article class="full">${cover}<h1>${esc(row.title)}</h1>${meta}${marked.parse(row.body)}</article>`;
 }
 
-function teamLayout(team, onDomain, { title, content }) {
+function teamLayout(team, onDomain, { title, content, meta = {} }) {
   const s = teamSettings(team.id);
   const base = teamBase(team, onDomain);
   return layout({
@@ -182,6 +190,7 @@ function teamLayout(team, onDomain, { title, content }) {
     nav: teamNav(team, base, onDomain),
     content,
     settings: s,
+    meta: { feedHref: `${base}/feed.xml`, ...meta },
   });
 }
 
@@ -232,7 +241,11 @@ function renderTeamHome(team, onDomain, req, res) {
   res.send(teamLayout(team, onDomain, { title: tag ? `Tag: ${tag}` : '', content }));
 }
 
-function renderTeamPost(team, onDomain, slug, res) {
+function absoluteUrl(req, path) {
+  return `${req.protocol}://${req.get('host')}${path}`;
+}
+
+function renderTeamPost(team, onDomain, slug, req, res) {
   const row = liveRow(
     getDb()
       .prepare(`SELECT * FROM content WHERE team_id = ? AND type = 'post' AND ${LIVE} AND slug = ?`)
@@ -244,10 +257,20 @@ function renderTeamPost(team, onDomain, slug, res) {
       .send(teamLayout(team, onDomain, { title: 'Not found', content: '<div class="hero"><h1>404</h1><p>Post not found.</p></div>' }));
   }
   const base = teamBase(team, onDomain);
-  res.send(teamLayout(team, onDomain, { title: row.title, content: fullArticle(team, row, base) }));
+  res.send(
+    teamLayout(team, onDomain, {
+      title: row.title,
+      content: fullArticle(team, row, base),
+      meta: {
+        description: row.excerpt || undefined,
+        ogType: 'article',
+        ogImage: row.cover_image ? absoluteUrl(req, row.cover_image) : undefined,
+      },
+    })
+  );
 }
 
-function renderTeamPage(team, onDomain, slug, res) {
+function renderTeamPage(team, onDomain, slug, req, res) {
   const row = liveRow(
     getDb()
       .prepare(`SELECT * FROM content WHERE team_id = ? AND type = 'page' AND ${LIVE} AND slug = ?`)
@@ -259,7 +282,13 @@ function renderTeamPage(team, onDomain, slug, res) {
       .send(teamLayout(team, onDomain, { title: 'Not found', content: '<div class="hero"><h1>404</h1><p>Page not found.</p></div>' }));
   }
   const base = teamBase(team, onDomain);
-  res.send(teamLayout(team, onDomain, { title: row.title, content: fullArticle(team, row, base) }));
+  res.send(
+    teamLayout(team, onDomain, {
+      title: row.title,
+      content: fullArticle(team, row, base),
+      meta: { description: row.excerpt || undefined },
+    })
+  );
 }
 
 // ---------- headless content API (public, CORS-open, published only) ----------
@@ -348,6 +377,96 @@ router.use((req, res, next) => {
   next();
 });
 
+// ---------- feeds, sitemaps, robots ----------
+
+function livePosts(teamId) {
+  return getDb()
+    .prepare(`SELECT * FROM content WHERE team_id = ? AND type = 'post' AND ${LIVE} ORDER BY published_at DESC LIMIT 50`)
+    .all(teamId)
+    .map(liveRow);
+}
+
+function livePages(teamId) {
+  return getDb()
+    .prepare(`SELECT * FROM content WHERE team_id = ? AND type = 'page' AND ${LIVE} ORDER BY title`)
+    .all(teamId)
+    .map(liveRow);
+}
+
+function sendTeamFeed(team, onDomain, req, res) {
+  const s = teamSettings(team.id);
+  const origin = `${req.protocol}://${req.get('host')}`;
+  const base = teamBase(team, onDomain);
+  const items = livePosts(team.id)
+    .map(
+      (p) => `  <item>
+    <title>${esc(p.title)}</title>
+    <link>${esc(`${origin}${base}/posts/${p.slug}`)}</link>
+    <guid isPermaLink="true">${esc(`${origin}${base}/posts/${p.slug}`)}</guid>
+    <description>${esc(p.excerpt || '')}</description>
+    <pubDate>${new Date((p.published_at || p.created_at).replace(' ', 'T') + 'Z').toUTCString()}</pubDate>
+  </item>`
+    )
+    .join('\n');
+  res.type('application/rss+xml').send(`<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+<channel>
+  <title>${esc(s.site_title || team.name)}</title>
+  <link>${esc(`${origin}${base || '/'}`)}</link>
+  <description>${esc(s.site_description || '')}</description>
+${items}
+</channel>
+</rss>`);
+}
+
+function sendTeamSitemap(team, onDomain, req, res) {
+  const origin = `${req.protocol}://${req.get('host')}`;
+  const base = teamBase(team, onDomain);
+  const urls = [
+    `${origin}${base || '/'}`,
+    ...livePages(team.id).map((p) => `${origin}${base}/${p.slug}`),
+    ...livePosts(team.id).map((p) => `${origin}${base}/posts/${p.slug}`),
+  ];
+  res.type('application/xml').send(`<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${urls.map((u) => `  <url><loc>${esc(u)}</loc></url>`).join('\n')}
+</urlset>`);
+}
+
+router.get('/robots.txt', (req, res) => {
+  const origin = `${req.protocol}://${req.get('host')}`;
+  res.type('text/plain').send(`User-agent: *\nAllow: /\nSitemap: ${origin}/sitemap.xml\n`);
+});
+
+// Domain-aware: a company's sitemap/feed at its root, platform sitemap otherwise.
+router.get('/sitemap.xml', (req, res) => {
+  if (req.domainTeam) return sendTeamSitemap(req.domainTeam, true, req, res);
+  const origin = `${req.protocol}://${req.get('host')}`;
+  const teams = getDb().prepare('SELECT slug FROM teams ORDER BY slug').all();
+  const urls = [`${origin}/`, ...teams.map((t) => `${origin}/t/${t.slug}`)];
+  res.type('application/xml').send(`<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${urls.map((u) => `  <url><loc>${esc(u)}</loc></url>`).join('\n')}
+</urlset>`);
+});
+
+router.get('/feed.xml', (req, res, next) => {
+  if (!req.domainTeam) return next();
+  sendTeamFeed(req.domainTeam, true, req, res);
+});
+
+router.get('/t/:team/feed.xml', (req, res) => {
+  const team = findTeam(req.params.team);
+  if (!team) return res.status(404).send('Company not found');
+  sendTeamFeed(team, false, req, res);
+});
+
+router.get('/t/:team/sitemap.xml', (req, res) => {
+  const team = findTeam(req.params.team);
+  if (!team) return res.status(404).send('Company not found');
+  sendTeamSitemap(team, false, req, res);
+});
+
 // ---------- HTML site ----------
 
 // Root: a company's site home on its own domain, the directory otherwise.
@@ -398,7 +517,7 @@ router.get('/', (req, res) => {
 // Custom-domain post/page URLs at the domain root.
 router.get('/posts/:slug', (req, res, next) => {
   if (!req.domainTeam) return next();
-  renderTeamPost(req.domainTeam, true, req.params.slug, res);
+  renderTeamPost(req.domainTeam, true, req.params.slug, req, res);
 });
 
 // Path-based company sites (always available, custom domain or not).
@@ -411,19 +530,19 @@ router.get('/t/:team', (req, res) => {
 router.get('/t/:team/posts/:slug', (req, res) => {
   const team = findTeam(req.params.team);
   if (!team) return res.status(404).send('Company not found');
-  renderTeamPost(team, false, req.params.slug, res);
+  renderTeamPost(team, false, req.params.slug, req, res);
 });
 
 router.get('/t/:team/:slug', (req, res) => {
   const team = findTeam(req.params.team);
   if (!team) return res.status(404).send('Company not found');
-  renderTeamPage(team, false, req.params.slug, res);
+  renderTeamPage(team, false, req.params.slug, req, res);
 });
 
 // Custom-domain pages at the domain root: /about, /pricing, …
 router.get('/:slug', (req, res, next) => {
   if (!req.domainTeam) return next();
-  renderTeamPage(req.domainTeam, true, req.params.slug, res);
+  renderTeamPage(req.domainTeam, true, req.params.slug, req, res);
 });
 
 module.exports = router;

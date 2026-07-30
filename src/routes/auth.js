@@ -3,10 +3,22 @@ const bcrypt = require('bcryptjs');
 
 const { getDb } = require('../db');
 const { issueToken, setAuthCookie, clearAuthCookie, requireAuth } = require('../auth');
+const { rateLimit } = require('../security');
 
 const router = express.Router();
 
-router.post('/login', (req, res) => {
+const loginLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: Number(process.env.RATE_LIMIT_LOGIN || 30),
+  name: 'sign-in attempts',
+});
+const registerLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: Number(process.env.RATE_LIMIT_REGISTER || 30),
+  name: 'registrations',
+});
+
+router.post('/login', loginLimiter, (req, res) => {
   const { username, password } = req.body || {};
   if (!username || !password) {
     return res.status(400).json({ error: 'username and password are required' });
@@ -21,7 +33,7 @@ router.post('/login', (req, res) => {
 
 // Self-serve signup, so any team can onboard itself. Can be disabled via
 // the allow_registration platform setting.
-router.post('/register', (req, res) => {
+router.post('/register', registerLimiter, (req, res) => {
   const db = getDb();
   const allowed = db.prepare("SELECT value FROM settings WHERE key = 'allow_registration'").get();
   if (allowed && allowed.value !== 'true') {

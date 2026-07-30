@@ -451,3 +451,65 @@ test('deleting a team removes its content everywhere', async () => {
   const site = await fetch(`${base}/t/throwaway`);
   assert.strictEqual(site.status, 404);
 });
+
+test('health endpoint responds for load balancers', async () => {
+  const res = await fetch(`${base}/api/health`);
+  assert.strictEqual(res.status, 200);
+  const body = await res.json();
+  assert.strictEqual(body.ok, true);
+  assert.ok(body.version);
+});
+
+test('security headers are set on responses', async () => {
+  const res = await fetch(`${base}/`);
+  assert.strictEqual(res.headers.get('x-content-type-options'), 'nosniff');
+  assert.strictEqual(res.headers.get('x-frame-options'), 'SAMEORIGIN');
+});
+
+test('robots.txt points to the sitemap', async () => {
+  const res = await fetch(`${base}/robots.txt`);
+  assert.strictEqual(res.status, 200);
+  assert.ok((await res.text()).includes('Sitemap:'));
+});
+
+test('platform and company sitemaps list live URLs', async () => {
+  const platform = await (await fetch(`${base}/sitemap.xml`)).text();
+  assert.ok(platform.includes('/t/acme-docs'));
+
+  const team = await (await fetch(`${base}/t/acme-docs/sitemap.xml`)).text();
+  assert.ok(team.includes('/t/acme-docs/posts/quarterly-update'));
+  assert.ok(team.includes('/t/acme-docs/about'));
+});
+
+test('company RSS feed serves live posts', async () => {
+  const res = await fetch(`${base}/t/acme-docs/feed.xml`);
+  assert.strictEqual(res.status, 200);
+  assert.ok((res.headers.get('content-type') || '').includes('rss'));
+  const xml = await res.text();
+  assert.ok(xml.includes('<title>Quarterly update</title>'));
+  assert.ok(xml.includes('/t/acme-docs/posts/quarterly-update'));
+});
+
+test('public pages carry description and Open Graph tags', async () => {
+  const html = await (await fetch(`${base}/t/acme-docs/posts/quarterly-update`)).text();
+  assert.ok(html.includes('property="og:title"'));
+  assert.ok(html.includes('property="og:type" content="article"'));
+  assert.ok(html.includes('rel="alternate" type="application/rss+xml"'));
+});
+
+// Keep this test LAST — it exhausts the login rate-limit window.
+test('login attempts are rate limited', async () => {
+  let limited = null;
+  for (let i = 0; i < 40; i++) {
+    const res = await client()('/api/auth/login', {
+      method: 'POST',
+      body: { username: 'admin', password: 'definitely-wrong' },
+    });
+    if (res.status === 429) {
+      limited = res;
+      break;
+    }
+  }
+  assert.ok(limited, 'expected a 429 within 40 attempts');
+  assert.ok(limited.headers.get('retry-after'));
+});
