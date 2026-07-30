@@ -56,16 +56,26 @@
 
   // ---------- auth screens ----------
 
-  function renderLogin(mode = 'login') {
+  const PORTALS = {
+    superadmin: { label: 'Super Admin', hint: 'Platform operators — full platform oversight.' },
+    admin: { label: 'Admin', hint: 'Company owners — branding, domain, members, content.' },
+    manager: { label: 'Manager', hint: 'Company employees — content, media, and tags.' },
+  };
+
+  function renderLogin(mode = 'login', portal = 'manager') {
     const isLogin = mode === 'login';
+    const segs = Object.entries(PORTALS)
+      .map(([key, p]) => `<button type="button" data-portal="${key}" class="${key === portal ? 'on' : ''}">${p.label}</button>`)
+      .join('');
     app.innerHTML = `
       <div class="login-wrap"><form class="login-box" id="login-form">
         <div class="brand brand-lg">NOVA<span class="spark"> ✦</span></div>
         <p class="tagline">${isLogin ? 'The multi-company content platform.' : 'Create your account — then launch your company workspace.'}</p>
+        ${isLogin ? `<div class="seg" id="portal-seg">${segs}</div><p class="portal-hint" id="portal-hint">${PORTALS[portal].hint}</p>` : ''}
         <label>Username</label><input name="username" required autofocus autocomplete="username">
         <label>Password${isLogin ? '' : ' (min 8 chars)'}</label><input name="password" type="password" required autocomplete="${isLogin ? 'current-password' : 'new-password'}">
-        <p><button class="btn" style="width:100%">${isLogin ? 'Sign in' : 'Create account'}</button></p>
-        <p style="text-align:center;font-size:0.85rem;color:var(--muted)">
+        <p><button class="btn" style="width:100%;justify-content:center">${isLogin ? `Sign in as ${PORTALS[portal].label}` : 'Create account'}</button></p>
+        <p style="text-align:center;font-size:0.82rem;color:var(--muted)">
           ${isLogin
             ? 'New here? <a href="#" id="switch">Create an account</a>'
             : 'Already registered? <a href="#" id="switch">Sign in</a>'}
@@ -73,8 +83,13 @@
       </form></div>`;
     document.getElementById('switch').addEventListener('click', (e) => {
       e.preventDefault();
-      renderLogin(isLogin ? 'register' : 'login');
+      renderLogin(isLogin ? 'register' : 'login', portal);
     });
+    if (isLogin) {
+      document.querySelectorAll('#portal-seg button').forEach((b) =>
+        b.addEventListener('click', () => renderLogin('login', b.dataset.portal))
+      );
+    }
     document.getElementById('login-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const f = new FormData(e.target);
@@ -83,12 +98,34 @@
           method: 'POST',
           body: { username: f.get('username'), password: f.get('password') },
         });
+        // Verify the account actually holds the portal's role.
+        if (isLogin && !(await portalAllows(portal))) {
+          await api('/auth/logout', { method: 'POST' });
+          me = null;
+          toast(portalDeniedMessage(portal), 'error');
+          return;
+        }
         location.hash = '#/dashboard';
         boot();
       } catch (err) {
         toast(err.message, 'error');
       }
     });
+  }
+
+  /** Superadmins pass every portal; admins need an admin seat; managers any membership. */
+  async function portalAllows(portal) {
+    if (me.role === 'superadmin') return true;
+    if (portal === 'superadmin') return false;
+    const mine = await api('/teams');
+    if (portal === 'admin') return mine.some((c) => c.my_role === 'admin');
+    return true; // manager portal: membership is checked at company selection
+  }
+
+  function portalDeniedMessage(portal) {
+    return portal === 'superadmin'
+      ? 'This account is not a platform superadmin. Use the Admin or Manager sign-in.'
+      : 'This account has no company admin seat. Use the Manager sign-in.';
   }
 
   function renderCreateCompany() {
@@ -142,7 +179,7 @@
     const links = NAV.filter(([, , , need]) => !need || me.role === need)
       .map(
         ([href, label, icon]) =>
-          `<a class="navlink ${active === href ? 'active' : ''}" href="${href}">${ICONS[icon]}${label}</a>`
+          `<a class="navlink ${active === href ? 'active' : ''}" href="${href}" title="${label}">${ICONS[icon]}<span class="label">${label}</span></a>`
       )
       .join('');
     const options = companies
@@ -150,23 +187,54 @@
       .join('');
     const roleChip =
       me.role === 'superadmin'
-        ? '<span class="role-chip super">SUPERADMIN</span>'
+        ? '<span class="role-chip super">SUPER ADMIN</span>'
         : `<span class="role-chip">${esc((company && company.my_role) || 'member').toUpperCase()}</span>`;
+    const activeLabel = (NAV.find(([href]) => href === active) || [null, 'Dashboard'])[1];
+    const collapsed = localStorage.getItem('nova_side') === 'min';
     app.innerHTML = `
-      <div class="shell">
-        <div class="sidebar">
-          <div class="brand">NOVA<span class="spark"> ✦</span></div>
+      <div class="app ${collapsed ? 'collapsed' : ''}" id="frame">
+        <aside class="sidebar">
+          <div class="side-head"><div class="brand">NOVA<span class="spark"> ✦</span></div></div>
           <select class="switcher" id="company-switch" title="Active company">${options}</select>
           <a class="new-co" href="#" id="new-company">+ New company</a>
           ${links}
           <div class="spacer"></div>
-          <div class="kbd-hint"><kbd>Ctrl</kbd> + <kbd>K</kbd> command palette</div>
-          <div class="who"><b>${esc(me.username)}</b> ${roleChip}</div>
-          <a class="navlink" href="/t/${esc(company.slug)}" target="_blank">${ICONS.platform}View site ↗</a>
-          <a class="navlink" href="#" id="logout">${ICONS.account}Sign out</a>
+          <a class="navlink" href="/t/${esc(company.slug)}" target="_blank" title="View site">${ICONS.platform}<span class="label">View site ↗</span></a>
+          <div class="foot"><kbd>Ctrl</kbd>+<kbd>K</kbd> palette</div>
+        </aside>
+        <div class="main">
+          <header class="topbar">
+            <button class="iconbtn" id="side-toggle" title="Toggle sidebar">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
+            </button>
+            <div class="crumb"><b>${esc(company.name)}</b><span class="sep">/</span>${esc(activeLabel)}</div>
+            <div class="grow"></div>
+            <button class="searchbtn" id="open-palette">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
+              Search or jump to…<kbd>Ctrl K</kbd>
+            </button>
+            <div class="userbox">
+              <a class="avatar" href="#/account" title="Account">${esc(me.username[0].toUpperCase())}</a>
+              <span class="name">${esc(me.username)}</span>
+              ${roleChip}
+            </div>
+            <button class="iconbtn" id="logout" title="Sign out">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            </button>
+          </header>
+          <div class="content" id="page">${inner}</div>
         </div>
-        <div class="content" id="page">${inner}</div>
       </div>`;
+    document.getElementById('side-toggle').addEventListener('click', () => {
+      const frame = document.getElementById('frame');
+      if (window.innerWidth <= 780) {
+        frame.classList.toggle('side-open');
+        return;
+      }
+      frame.classList.toggle('collapsed');
+      localStorage.setItem('nova_side', frame.classList.contains('collapsed') ? 'min' : 'full');
+    });
+    document.getElementById('open-palette').addEventListener('click', openPalette);
     document.getElementById('company-switch').addEventListener('change', (e) => {
       const next = companies.find((c) => c.id === Number(e.target.value));
       if (next) {
@@ -202,16 +270,16 @@
   async function renderDashboard() {
     const page = shell('#/dashboard', `<h1>Dashboard <span class="sub">${esc(company.name)}</span></h1><div id="body">Loading…</div>`);
     const s = await capi('/stats');
-    const kpi = (n, l) => `<div class="kpi"><div class="n">${n}</div><div class="l">${l}</div></div>`;
+    const kpi = (n, l, hi) => `<div class="kpi ${hi ? 'hi' : ''}"><div class="n">${n}</div><div class="l">${l}</div></div>`;
     page.querySelector('#body').innerHTML = `
       <div class="kpis">
-        ${kpi(s.published, 'Published')}${kpi(s.drafts, 'Drafts')}${kpi(s.posts, 'Posts')}${kpi(s.pages, 'Pages')}${kpi(s.media, 'Media files')}${kpi(s.members, 'Members')}
+        ${kpi(s.published, 'Published', true)}${kpi(s.drafts, 'Drafts')}${kpi(s.posts, 'Posts')}${kpi(s.pages, 'Pages')}${kpi(s.media, 'Media files')}${kpi(s.members, 'Members')}
       </div>
       <div class="toolbar">
         <a class="btn" href="#/edit/new">+ New content</a>
         <a class="btn secondary" href="/t/${esc(company.slug)}" target="_blank">Open public site ↗</a>
       </div>
-      <h1 style="font-size:1.05rem;margin-top:1.6rem">Recently updated</h1>
+      <h2 class="sec">Recently updated</h2>
       ${s.recent.length ? `
       <table><thead><tr><th>Title</th><th>Type</th><th>Status</th><th>By</th><th>Updated</th></tr></thead>
       <tbody>${s.recent
@@ -247,7 +315,7 @@
         <tbody>${rows
           .map(
             (r) => `<tr>
-              <td><a href="#/edit/${r.id}"><b>${esc(r.title)}</b></a><br><span style="color:var(--muted);font-size:0.78rem">/${esc(r.slug)}</span></td>
+              <td><a href="#/edit/${r.id}"><b>${esc(r.title)}</b></a><br><span class="path">/${esc(r.slug)}</span></td>
               <td>${esc(r.type)}</td>
               <td><span class="pill ${esc(r.status)}">${esc(r.status)}</span></td>
               <td>${esc(r.updated_at.slice(0, 16))}</td>
@@ -615,10 +683,10 @@
     const kpi = (n, l) => `<div class="kpi"><div class="n">${n}</div><div class="l">${l}</div></div>`;
     page.querySelector('#body').innerHTML = `
       <div class="kpis">
-        ${kpi(stats.companies, 'Companies')}${kpi(stats.users, 'Users')}${kpi(stats.content, 'Content items')}${kpi(stats.published, 'Published')}${kpi(stats.custom_domains, 'Custom domains')}
+        ${kpi(stats.companies, 'Companies', true)}${kpi(stats.users, 'Users')}${kpi(stats.content, 'Content items')}${kpi(stats.published, 'Published')}${kpi(stats.custom_domains, 'Custom domains')}
       </div>
 
-      <h1 style="font-size:1.05rem">Newest companies</h1>
+      <h2 class="sec">Newest companies</h2>
       <table><thead><tr><th>Company</th><th>Members</th><th>Published</th><th>Created</th></tr></thead>
       <tbody>${stats.recent_companies
         .map(
@@ -627,7 +695,7 @@
         )
         .join('')}</tbody></table>
 
-      <h1 style="font-size:1.05rem;margin-top:1.8rem">Users</h1>
+      <h2 class="sec">Users</h2>
       <form class="toolbar" id="add-user">
         <input name="username" placeholder="Username" required style="max-width:200px">
         <input name="password" type="password" placeholder="Password (min 8 chars)" required style="max-width:230px">
@@ -636,7 +704,7 @@
       </form>
       <div id="user-list"></div>
 
-      <h1 style="font-size:1.05rem;margin-top:1.8rem">Platform settings</h1>
+      <h2 class="sec">Platform settings</h2>
       <form class="card" id="platform-form" style="max-width:520px">
         <label>Platform title</label><input name="site_title" value="${esc(settings.site_title)}">
         <label>Platform description</label><input name="site_description" value="${esc(settings.site_description)}">

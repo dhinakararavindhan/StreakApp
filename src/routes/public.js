@@ -58,9 +58,12 @@ function layout({ title, siteTitle, siteDescription, homeHref, nav = '', content
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(title ? `${title} — ${siteTitle}` : siteTitle)}</title>
 <style>
+  @font-face { font-family: 'Inter'; font-weight: 400; font-display: swap; src: url('/assets/fonts/inter-latin-400-normal.woff2') format('woff2'); }
+  @font-face { font-family: 'Inter'; font-weight: 600; font-display: swap; src: url('/assets/fonts/inter-latin-600-normal.woff2') format('woff2'); }
+  @font-face { font-family: 'Inter'; font-weight: 800; font-display: swap; src: url('/assets/fonts/inter-latin-800-normal.woff2') format('woff2'); }
   ${themeCss(settings)}
   * { box-sizing: border-box; }
-  body { margin: 0; font-family: system-ui, sans-serif; color: var(--fg); background: var(--bg); line-height: 1.65; }
+  body { margin: 0; font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; color: var(--fg); background: var(--bg); line-height: 1.65; }
   header.top {
     position: sticky; top: 0; z-index: 10;
     background: color-mix(in srgb, var(--bg) 82%, transparent);

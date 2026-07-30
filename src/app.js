@@ -27,8 +27,9 @@ function createApp(options = {}) {
   app.use('/api/settings', settingsRoutes);
   app.use('/api/platform', platformRoutes);
 
-  // Admin panel (static SPA)
+  // Admin panel (static SPA) + shared assets (fonts)
   app.use('/admin', express.static(path.join(__dirname, '..', 'public', 'admin')));
+  app.use('/assets', express.static(path.join(__dirname, '..', 'public', 'assets')));
 
   // Uploaded files
   app.use(
