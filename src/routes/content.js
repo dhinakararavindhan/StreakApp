@@ -4,6 +4,7 @@ const { marked } = require('marked');
 const { getDb, slugify, uniqueSlug } = require('../db');
 const { audit } = require('../audit');
 const { deliver, contentPayload } = require('../webhooks');
+const { FORMATS, renderBody } = require('../render');
 
 // Mounted at /api/teams/:teamId/content behind requireTeamRole('manager'),
 // which sets req.team and req.teamRole — every query below is scoped to
@@ -76,7 +77,7 @@ function serialize(row, { withHtml = false } = {}) {
   const { published_snapshot, ...rest } = row;
   const out = { ...rest, live_version: live, tags: loadTags(row.id) };
   if (withHtml) {
-    out.body_html = marked.parse(row.body);
+    out.body_html = renderBody(row.format, row.body, row.excerpt);
     out.translations = groupMembers(row.team_id, groupRoot(row)).filter((t) => t.id !== row.id);
     const lastEditor = getDb()
       .prepare(
@@ -93,9 +94,9 @@ function serialize(row, { withHtml = false } = {}) {
 function saveVersion(row, userId) {
   const db = getDb();
   db.prepare(
-    `INSERT INTO content_versions (content_id, team_id, title, body, excerpt, cover_image, status, edited_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(row.id, row.team_id, row.title, row.body, row.excerpt, row.cover_image, row.status, userId);
+    `INSERT INTO content_versions (content_id, team_id, title, body, format, excerpt, cover_image, status, edited_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(row.id, row.team_id, row.title, row.body, row.format, row.excerpt, row.cover_image, row.status, userId);
   db.prepare(
     `DELETE FROM content_versions WHERE content_id = ? AND id NOT IN
      (SELECT id FROM content_versions WHERE content_id = ? ORDER BY id DESC LIMIT ?)`
@@ -152,9 +153,12 @@ router.get('/:id', (req, res) => {
 
 router.post('/', (req, res) => {
   const {
-    type = 'post', title, slug, body = '', excerpt = '', cover_image = '',
+    type = 'post', title, slug, body = '', format = 'markdown', excerpt = '', cover_image = '',
     status = 'draft', tags, publish_at, expire_at, locale, translation_of,
   } = req.body || {};
+  if (!FORMATS.includes(format)) {
+    return res.status(400).json({ error: `format must be one of: ${FORMATS.join(', ')}` });
+  }
   if (!title) return res.status(400).json({ error: 'title is required' });
   if (!['post', 'page'].includes(type)) return res.status(400).json({ error: 'type must be post or page' });
   if (!STATUSES.includes(status)) return res.status(400).json({ error: 'status must be draft, pending, or published' });
@@ -188,10 +192,10 @@ router.post('/', (req, res) => {
   const finalSlug = uniqueSlug(slug || title, req.team.id);
   const result = db
     .prepare(
-      `INSERT INTO content (team_id, type, title, slug, body, excerpt, cover_image, status, author_id, publish_at, expire_at, locale, translation_of, published_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? = 'published' THEN datetime('now') ELSE NULL END)`
+      `INSERT INTO content (team_id, type, title, slug, body, format, excerpt, cover_image, status, author_id, publish_at, expire_at, locale, translation_of, published_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? = 'published' THEN datetime('now') ELSE NULL END)`
     )
-    .run(req.team.id, type, title, finalSlug, body, excerpt, String(cover_image), status, req.user.id, publishAt, expireAt, finalLocale, rootId, status);
+    .run(req.team.id, type, title, finalSlug, body, format, excerpt, String(cover_image), status, req.user.id, publishAt, expireAt, finalLocale, rootId, status);
   setTags(req.team.id, result.lastInsertRowid, tags);
   const row = db.prepare('SELECT * FROM content WHERE id = ?').get(result.lastInsertRowid);
   saveVersion(row, req.user.id);
@@ -204,7 +208,10 @@ router.post('/', (req, res) => {
     slug, body, excerpt, cover_image, status, tags, publish_at, expire_at. */
 function applyUpdate(req, res, existing, fields) {
   const db = getDb();
-  const { title, slug, body, excerpt, cover_image, status, tags, publish_at, expire_at, locale } = fields;
+  const { title, slug, body, format, excerpt, cover_image, status, tags, publish_at, expire_at, locale } = fields;
+  if (format !== undefined && !FORMATS.includes(format)) {
+    return res.status(400).json({ error: `format must be one of: ${FORMATS.join(', ')}` });
+  }
   let newLocale = existing.locale;
   if (locale !== undefined) {
     newLocale = String(locale).toLowerCase();
@@ -240,6 +247,7 @@ function applyUpdate(req, res, existing, fields) {
       title: existing.title,
       slug: existing.slug,
       body: existing.body,
+      format: existing.format,
       excerpt: existing.excerpt,
       cover_image: existing.cover_image,
       published_at: existing.published_at,
@@ -265,13 +273,14 @@ function applyUpdate(req, res, existing, fields) {
   const reviewNote = newStatus === 'draft' ? existing.review_note : '';
 
   db.prepare(
-    `UPDATE content SET title = ?, slug = ?, body = ?, excerpt = ?, cover_image = ?, status = ?,
+    `UPDATE content SET title = ?, slug = ?, body = ?, format = ?, excerpt = ?, cover_image = ?, status = ?,
      review_note = ?, published_snapshot = ?, publish_at = ?, expire_at = ?, published_at = ?,
      locale = ?, updated_at = datetime('now') WHERE id = ?`
   ).run(
     newTitle,
     newSlug,
     body !== undefined ? body : existing.body,
+    format !== undefined ? format : existing.format,
     excerpt !== undefined ? excerpt : existing.excerpt,
     cover_image !== undefined ? String(cover_image) : existing.cover_image,
     newStatus,
@@ -325,7 +334,7 @@ router.get('/:id/versions', (req, res) => {
   if (!row) return res.status(404).json({ error: 'Not found' });
   const versions = db
     .prepare(
-      `SELECT v.id, v.title, v.body, v.excerpt, v.cover_image, v.status, v.created_at,
+      `SELECT v.id, v.title, v.body, v.format, v.excerpt, v.cover_image, v.status, v.created_at,
               u.username AS edited_by
        FROM content_versions v LEFT JOIN users u ON u.id = v.edited_by
        WHERE v.content_id = ? ORDER BY v.id DESC`
@@ -350,6 +359,7 @@ router.post('/:id/versions/:versionId/restore', (req, res) => {
   const updated = applyUpdate(req, res, existing, {
     title: version.title,
     body: version.body,
+    format: version.format,
     excerpt: version.excerpt,
     cover_image: version.cover_image,
   });

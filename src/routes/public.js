@@ -2,6 +2,7 @@ const express = require('express');
 const { marked } = require('marked');
 
 const { getDb } = require('../db');
+const { renderBody, fallbackExcerpt } = require('../render');
 
 const router = express.Router();
 
@@ -130,6 +131,11 @@ ${(meta.alternates || []).map((a) => `<link rel="alternate" hreflang="${esc(a.la
   code { background: color-mix(in srgb, var(--fg) 6%, var(--bg)); border-radius: 4px; padding: 0.1em 0.35em; font-size: 0.9em; }
   pre code { background: none; padding: 0; }
   blockquote { border-left: 3px solid var(--accent); margin-left: 0; padding-left: 1.25rem; color: var(--muted); }
+  figure.body-image { margin: 0; }
+  figure.body-image img { width: 100%; border-radius: 12px; }
+  figure.body-image figcaption { color: var(--muted); font-size: 0.85rem; margin-top: 0.5rem; text-align: center; }
+  .embed-wrap { position: relative; aspect-ratio: 16 / 9; border-radius: 12px; overflow: hidden; background: var(--border); }
+  .embed-wrap iframe { position: absolute; inset: 0; width: 100%; height: 100%; }
   footer { border-top: 1px solid var(--border); color: var(--muted); font-size: 0.875rem; }
 </style>
 </head>
@@ -186,9 +192,7 @@ function postCard(team, row, base) {
   const cover = row.cover_image
     ? `<img class="cover" src="${esc(row.cover_image)}" alt="">`
     : `<div class="cover placeholder">✶</div>`;
-  const excerpt = row.excerpt
-    ? mdInline(row.excerpt)
-    : esc(row.body.replace(/[#*_`>\[\]]/g, '').slice(0, 140));
+  const excerpt = row.excerpt ? mdInline(row.excerpt) : esc(fallbackExcerpt(row.format, row.body));
   return `<div class="card">
     <a href="${esc(href)}">${cover}</a>
     <div class="pad">
@@ -203,7 +207,7 @@ function fullArticle(team, row, base) {
   const date = (row.published_at || row.created_at || '').slice(0, 10);
   const cover = row.cover_image ? `<img class="cover-hero" src="${esc(row.cover_image)}" alt="">` : '';
   const meta = row.type === 'post' ? `<div class="meta">${esc(date)} ${tagLinks(row, base)}</div>` : '';
-  return `<article class="full">${cover}<h1>${esc(row.title)}</h1>${meta}${marked.parse(row.body)}</article>`;
+  return `<article class="full">${cover}<h1>${esc(row.title)}</h1>${meta}${renderBody(row.format, row.body, row.excerpt)}</article>`;
 }
 
 function teamLayout(team, onDomain, { title, content, meta = {}, locale }) {
@@ -370,6 +374,7 @@ function publicContentRow(row, { withBody }) {
     title: row.title,
     slug: row.slug,
     locale: row.locale,
+    format: row.format,
     excerpt: row.excerpt,
     excerpt_html: mdInline(row.excerpt),
     cover_image: row.cover_image,
@@ -379,7 +384,7 @@ function publicContentRow(row, { withBody }) {
   };
   if (withBody) {
     base.body = row.body;
-    base.body_html = marked.parse(row.body);
+    base.body_html = renderBody(row.format, row.body, row.excerpt);
   }
   return base;
 }

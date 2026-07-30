@@ -44,6 +44,7 @@ Content for every audience, in every language, of every shape.
 - [x] **Webhooks**: `content.published/updated/unpublished/deleted` events, HMAC-SHA256 signed, per-hook delivery status
 - [x] **API keys**: company-scoped Bearer tokens — `read` (GETs incl. drafts) and `write` (acts as a manager, so writes go through approval); hashes only at rest, shown once
 - [x] Full-company **JSON export** (content, settings, members, media metadata) — no lock-in
+- [x] **Body formats**: Markdown, plain text, raw HTML, image, and embed (YouTube/Vimeo) — per item, format-aware editor and rendering everywhere
 - [ ] **Custom content types**: user-defined schemas — posts/pages become just two built-ins (next)
 - [ ] Importers: WordPress and Markdown-folder (next)
 

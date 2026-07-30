@@ -59,6 +59,7 @@ function init(options = {}) {
       title TEXT NOT NULL,
       slug TEXT NOT NULL,
       body TEXT NOT NULL DEFAULT '',
+      format TEXT NOT NULL DEFAULT 'markdown' CHECK (format IN ('markdown', 'text', 'html', 'image', 'embed')),
       excerpt TEXT NOT NULL DEFAULT '',
       cover_image TEXT NOT NULL DEFAULT '',
       status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'pending', 'published')),
@@ -81,6 +82,7 @@ function init(options = {}) {
       team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
       title TEXT NOT NULL,
       body TEXT NOT NULL DEFAULT '',
+      format TEXT NOT NULL DEFAULT 'markdown',
       excerpt TEXT NOT NULL DEFAULT '',
       cover_image TEXT NOT NULL DEFAULT '',
       status TEXT NOT NULL DEFAULT 'draft',
@@ -210,6 +212,14 @@ function migrate() {
     if (!db.prepare('PRAGMA table_info(content)').all().some((c) => c.name === col)) {
       db.exec(`ALTER TABLE content ADD COLUMN ${col} TEXT`);
     }
+  }
+
+  // Body formats (pre-format databases)
+  if (!db.prepare('PRAGMA table_info(content)').all().some((c) => c.name === 'format')) {
+    db.exec("ALTER TABLE content ADD COLUMN format TEXT NOT NULL DEFAULT 'markdown'");
+  }
+  if (!db.prepare('PRAGMA table_info(content_versions)').all().some((c) => c.name === 'format')) {
+    db.exec("ALTER TABLE content_versions ADD COLUMN format TEXT NOT NULL DEFAULT 'markdown'");
   }
 
   // i18n (pre-locale databases)

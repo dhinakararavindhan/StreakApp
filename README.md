@@ -63,7 +63,8 @@ Managers have full CRUD on content, but nothing they touch goes live on its own:
 
 ## Content features
 
-- **Markdown everywhere**: post/page bodies (full), excerpts and site descriptions (inline — rendered on cards, heroes, footers, and as `excerpt_html` in the headless API; stripped to plain text for meta tags), and discussion comments.
+- **Five body formats**, chosen per item in the editor: **Markdown** (toolbar + live preview), **Plain text** (paragraphs preserved, HTML escaped), **HTML** (rendered as-is on your site — full control), **Image** (body is the image URL, excerpt becomes the caption, rendered as a figure), and **Embed** (YouTube/Vimeo URLs become privacy-friendly players). The editor adapts to each format; the headless API exposes `format` and format-correct `body_html`; version history preserves the format.
+- **Markdown everywhere** it fits beyond bodies: excerpts and site descriptions (inline — rendered on cards, heroes, footers, and as `excerpt_html` in the headless API; stripped to plain text for meta tags), and discussion comments.
 - **Posts and pages** with drafts and publishing, excerpts, and **cover images** (shown on site cards, post heroes, and in the headless API).
 - **Slugs** auto-generated from titles and de-duplicated *within each company*.
 - **Tags** per company, with filtering on the public site and in the admin.
@@ -156,7 +157,7 @@ All `/api` routes accept and return JSON. Authentication uses an httpOnly cookie
 npm test
 ```
 
-44 end-to-end tests (`node --test`, in-memory database): registration, company creation, the three-tier role model, cross-company isolation, content CRUD with cover images, per-company slug scoping, draft/pending/publish visibility, the approval workflow, feeds/sitemaps/SEO, rate limiting, theming, custom-domain routing, the headless API, dashboards, and platform stats.
+45 end-to-end tests (`node --test`, in-memory database): registration, company creation, the three-tier role model, cross-company isolation, content CRUD with cover images, per-company slug scoping, draft/pending/publish visibility, the approval workflow, feeds/sitemaps/SEO, rate limiting, theming, custom-domain routing, the headless API, dashboards, and platform stats.
 
 ## Project layout
 

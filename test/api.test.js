@@ -763,6 +763,70 @@ test('inline markdown renders in excerpts and site descriptions', async () => {
   assert.ok(item.excerpt_html.includes('<strong>bold moves</strong>'));
 });
 
+
+test('body formats: text, html, image, and embed all render correctly', async () => {
+  // Plain text: paragraphs preserved, HTML escaped.
+  await alice(`/api/teams/${aliceTeam.id}/content`, {
+    method: 'POST',
+    body: {
+      type: 'post', title: 'Plain note', format: 'text', status: 'published',
+      body: 'First paragraph with <b>tags</b> that must not render.\n\nSecond paragraph.',
+    },
+  });
+  const textHtml = await (await fetch(`${base}/t/acme-docs/posts/plain-note`)).text();
+  assert.ok(textHtml.includes('&lt;b&gt;tags&lt;/b&gt;'));
+  assert.ok(textHtml.includes('<p>Second paragraph.</p>'));
+
+  // Raw HTML: rendered as-is on the public site.
+  await alice(`/api/teams/${aliceTeam.id}/content`, {
+    method: 'POST',
+    body: {
+      type: 'post', title: 'Custom layout', format: 'html', status: 'published',
+      body: '<section class="pricing-grid"><h2>Plans</h2></section>',
+    },
+  });
+  const rawHtml = await (await fetch(`${base}/t/acme-docs/posts/custom-layout`)).text();
+  assert.ok(rawHtml.includes('<section class="pricing-grid">'));
+
+  // Image: body is the URL, excerpt becomes the caption.
+  await alice(`/api/teams/${aliceTeam.id}/content`, {
+    method: 'POST',
+    body: {
+      type: 'post', title: 'Team photo', format: 'image', status: 'published',
+      body: '/uploads/team.jpg', excerpt: 'The whole crew, June offsite.',
+    },
+  });
+  const imgHtml = await (await fetch(`${base}/t/acme-docs/posts/team-photo`)).text();
+  assert.ok(imgHtml.includes('<figure class="body-image">'));
+  assert.ok(imgHtml.includes('src="/uploads/team.jpg"'));
+  assert.ok(imgHtml.includes('<figcaption>The whole crew, June offsite.</figcaption>'));
+
+  // Embed: YouTube URL becomes a privacy-friendly iframe.
+  await alice(`/api/teams/${aliceTeam.id}/content`, {
+    method: 'POST',
+    body: {
+      type: 'post', title: 'Roast walkthrough', format: 'embed', status: 'published',
+      body: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+    },
+  });
+  const embedHtml = await (await fetch(`${base}/t/acme-docs/posts/roast-walkthrough`)).text();
+  assert.ok(embedHtml.includes('youtube-nocookie.com/embed/dQw4w9WgXcQ'));
+
+  // Headless API exposes format and format-correct body_html.
+  const item = await (await fetch(`${base}/api/public/acme-docs/content/team-photo`)).json();
+  assert.strictEqual(item.format, 'image');
+  assert.ok(item.body_html.includes('<figure class="body-image">'));
+  const list = await (await fetch(`${base}/api/public/acme-docs/content`)).json();
+  assert.ok(list.find((r) => r.slug === 'custom-layout').format === 'html');
+
+  // Invalid format rejected; format survives version restore.
+  const bad = await alice(`/api/teams/${aliceTeam.id}/content`, {
+    method: 'POST',
+    body: { type: 'post', title: 'Nope', format: 'docx' },
+  });
+  assert.strictEqual(bad.status, 400);
+});
+
 test('health endpoint responds for load balancers', async () => {
   const res = await fetch(`${base}/api/health`);
   assert.strictEqual(res.status, 200);

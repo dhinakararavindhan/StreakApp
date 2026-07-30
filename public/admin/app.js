@@ -366,7 +366,7 @@
         <tbody>${rows
           .map(
             (r) => `<tr>
-              <td><a href="#/edit/${r.id}"><b>${esc(r.title)}</b></a><br><span class="path">/${esc(r.slug)}</span> <span class="path" style="text-transform:uppercase">· ${esc(r.locale || 'en')}</span></td>
+              <td><a href="#/edit/${r.id}"><b>${esc(r.title)}</b></a><br><span class="path">/${esc(r.slug)}</span> <span class="path" style="text-transform:uppercase">· ${esc(r.locale || 'en')}${r.format && r.format !== 'markdown' ? ` · ${esc(r.format)}` : ''}</span></td>
               <td>${esc(r.type)}</td>
               <td><span class="pill ${esc(r.status)}">${esc(r.status)}</span></td>
               <td>${esc(r.updated_at.slice(0, 16))}</td>
@@ -398,7 +398,7 @@
   async function renderEditor(id) {
     const isNew = id === 'new';
     const item = isNew
-      ? { type: 'post', title: '', slug: '', body: '', excerpt: '', cover_image: '', status: 'draft', tags: [], publish_at: null, expire_at: null, locale: 'en' }
+      ? { type: 'post', title: '', slug: '', body: '', format: 'markdown', excerpt: '', cover_image: '', status: 'draft', tags: [], publish_at: null, expire_at: null, locale: 'en' }
       : await capi(`/content/${id}`);
 
     const canPublish = isCompanyAdmin();
@@ -424,7 +424,7 @@
         ${reviewNote}
         <div class="card">
           <label>Title</label><input name="title" required value="${esc(item.title)}">
-          <label style="display:flex;justify-content:space-between;align-items:center;gap:0.6rem">Body (Markdown)
+          <label style="display:flex;justify-content:space-between;align-items:center;gap:0.6rem"><span id="body-label">Body (Markdown)</span>
             <span class="seg" id="body-view" style="margin:0;grid-template-columns:1fr 1fr;width:150px">
               <button type="button" data-v="write" class="on">Write</button>
               <button type="button" data-v="preview">Preview</button>
@@ -449,6 +449,14 @@
           <select name="type" ${isNew ? '' : 'disabled'}>
             <option value="post" ${item.type === 'post' ? 'selected' : ''}>Post</option>
             <option value="page" ${item.type === 'page' ? 'selected' : ''}>Page</option>
+          </select>
+          <label>Body format</label>
+          <select name="format" id="fmt-select">
+            <option value="markdown" ${item.format === 'markdown' ? 'selected' : ''}>Markdown</option>
+            <option value="text" ${item.format === 'text' ? 'selected' : ''}>Plain text</option>
+            <option value="html" ${item.format === 'html' ? 'selected' : ''}>HTML</option>
+            <option value="image" ${item.format === 'image' ? 'selected' : ''}>Image</option>
+            <option value="embed" ${item.format === 'embed' ? 'selected' : ''}>Embed (YouTube / Vimeo)</option>
           </select>
           <label>Status</label>
           <select name="status">${statusOptions}</select>
@@ -507,14 +515,62 @@
       })
       .catch(() => {});
 
-    // Insert markdown image at the cursor.
     const bodyEl = page.querySelector('textarea[name=body]');
+    const fmtSelect = page.querySelector('#fmt-select');
+    const currentFormat = () => fmtSelect.value;
+
+    // Render any body format for the live preview (always sanitized).
+    const clientRenderBody = (fmt, body) => {
+      if (fmt === 'text') {
+        return String(body || '')
+          .split(/\n{2,}/)
+          .filter((par) => par.trim() !== '')
+          .map((par) => `<p>${esc(par).replace(/\n/g, '<br>')}</p>`)
+          .join('');
+      }
+      if (fmt === 'html') return sanitizeHtml(body);
+      if (fmt === 'image') {
+        return body ? `<figure class="body-image" style="margin:0"><img src="${esc(String(body).trim())}" style="max-width:100%;border-radius:8px"></figure>` : '';
+      }
+      if (fmt === 'embed') {
+        return body ? `<p class="path">▶ Embedded media (renders as a player on the public site):<br><a href="${esc(String(body).trim())}" target="_blank">${esc(String(body).trim())}</a></p>` : '';
+      }
+      return md(body);
+    };
+
+    // Adapt the editing surface to the chosen format.
+    const FORMAT_UI = {
+      markdown: { label: 'Body (Markdown)', toolbar: true, rows: 18, mono: true, insert: 'Insert image from media library…', ph: '' },
+      text: { label: 'Body (plain text)', toolbar: false, rows: 18, mono: false, insert: null, ph: 'Plain text — blank lines start new paragraphs.' },
+      html: { label: 'Body (raw HTML — rendered as-is on your site)', toolbar: false, rows: 18, mono: true, insert: null, ph: '<section>…</section>' },
+      image: { label: 'Image URL (excerpt becomes the caption)', toolbar: false, rows: 3, mono: true, insert: 'Use image from media library…', ph: '/uploads/… or https://…' },
+      embed: { label: 'Video URL (YouTube or Vimeo)', toolbar: false, rows: 3, mono: true, insert: null, ph: 'https://www.youtube.com/watch?v=…' },
+    };
+    const applyFormatUI = () => {
+      const ui = FORMAT_UI[currentFormat()] || FORMAT_UI.markdown;
+      page.querySelector('#body-label').textContent = ui.label;
+      page.querySelector('#md-toolbar').style.display = ui.toolbar ? '' : 'none';
+      bodyEl.rows = ui.rows;
+      bodyEl.placeholder = ui.ph;
+      bodyEl.style.fontFamily = ui.mono ? '' : "'Geist Sans', system-ui, sans-serif";
+      const insertSel = page.querySelector('#insert-img');
+      insertSel.style.display = ui.insert ? '' : 'none';
+      if (ui.insert) insertSel.options[0].textContent = ui.insert;
+      if (previewEl.style.display !== 'none') renderBodyPreview();
+    };
+    fmtSelect.addEventListener('change', applyFormatUI);
+
+    // Media picker: inserts markdown at the cursor, or fills the URL for image bodies.
     page.querySelector('#insert-img').addEventListener('change', (e) => {
       const url = e.target.value;
       if (!url) return;
-      const start = bodyEl.selectionStart ?? bodyEl.value.length;
-      const end = bodyEl.selectionEnd ?? start;
-      bodyEl.value = `${bodyEl.value.slice(0, start)}\n![](${url})\n${bodyEl.value.slice(end)}`;
+      if (currentFormat() === 'image') {
+        bodyEl.value = url;
+      } else {
+        const start = bodyEl.selectionStart ?? bodyEl.value.length;
+        const end = bodyEl.selectionEnd ?? start;
+        bodyEl.value = `${bodyEl.value.slice(0, start)}\n![](${url})\n${bodyEl.value.slice(end)}`;
+      }
       e.target.value = '';
       bodyEl.dispatchEvent(new Event('input', { bubbles: true }));
       bodyEl.focus();
@@ -555,7 +611,7 @@
     // Live Write/Preview toggle for the body.
     const previewEl = page.querySelector('#body-preview');
     const toolbarEl = page.querySelector('#md-toolbar');
-    const renderBodyPreview = () => (previewEl.innerHTML = md(bodyEl.value) || '<p class="path">Nothing to preview yet.</p>');
+    const renderBodyPreview = () => (previewEl.innerHTML = clientRenderBody(currentFormat(), bodyEl.value) || '<p class="path">Nothing to preview yet.</p>');
     page.querySelectorAll('#body-view button').forEach((b) =>
       b.addEventListener('click', () => {
         page.querySelectorAll('#body-view button').forEach((x) => x.classList.toggle('on', x === b));
@@ -569,12 +625,14 @@
     bodyEl.addEventListener('input', () => {
       if (previewEl.style.display !== 'none') renderBodyPreview();
     });
+    applyFormatUI();
 
     const collect = (f) => ({
       title: f.get('title'),
       body: f.get('body'),
       excerpt: f.get('excerpt'),
       cover_image: f.get('cover_image'),
+      format: f.get('format'),
       status: f.get('status'),
       slug: f.get('slug'),
       locale: f.get('locale') || 'en',
