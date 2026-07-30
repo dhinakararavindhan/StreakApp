@@ -261,16 +261,23 @@ test('approval workflow: managers cannot publish, admins approve or reject', asy
   assert.strictEqual((await approve.json()).status, 'published');
   assert.strictEqual((await fetch(`${base}/t/acme-docs/posts/quarterly-update`)).status, 200);
 
-  // A manager editing live content pulls it back into review.
+  // A manager editing live content pulls the edits into review, but the
+  // previously approved version STAYS live as a snapshot.
   const edit = await bob(`/api/teams/${aliceTeam.id}/content/${item.id}`, {
     method: 'PUT',
     body: { body: 'Numbers look even better.' },
   });
   assert.strictEqual(edit.status, 200);
-  assert.strictEqual((await edit.json()).status, 'pending');
-  assert.strictEqual((await fetch(`${base}/t/acme-docs/posts/quarterly-update`)).status, 404);
+  const edited = await edit.json();
+  assert.strictEqual(edited.status, 'pending');
+  assert.strictEqual(edited.live_version.body, 'Numbers look good.');
+  const stillLive = await fetch(`${base}/t/acme-docs/posts/quarterly-update`);
+  assert.strictEqual(stillLive.status, 200);
+  const liveHtml = await stillLive.text();
+  assert.ok(liveHtml.includes('Numbers look good.'));
+  assert.ok(!liveHtml.includes('Numbers look even better.'));
 
-  // Reject with a note — back to draft, note visible to the author.
+  // Reject with a note — edits go back to draft, note visible, old version still live.
   const reject = await alice(`/api/teams/${aliceTeam.id}/content/${item.id}/reject`, {
     method: 'POST',
     body: { note: 'Add the revenue table before publishing.' },
@@ -279,6 +286,20 @@ test('approval workflow: managers cannot publish, admins approve or reject', asy
   const rejected = await reject.json();
   assert.strictEqual(rejected.status, 'draft');
   assert.strictEqual(rejected.review_note, 'Add the revenue table before publishing.');
+  assert.strictEqual((await fetch(`${base}/t/acme-docs/posts/quarterly-update`)).status, 200);
+
+  // Resubmit and approve — the new version replaces the snapshot.
+  await bob(`/api/teams/${aliceTeam.id}/content/${item.id}`, {
+    method: 'PUT',
+    body: { status: 'pending' },
+  });
+  const reapprove = await alice(`/api/teams/${aliceTeam.id}/content/${item.id}/approve`, { method: 'POST' });
+  assert.strictEqual(reapprove.status, 200);
+  const final = await reapprove.json();
+  assert.strictEqual(final.status, 'published');
+  assert.strictEqual(final.live_version, null);
+  const updatedHtml = await (await fetch(`${base}/t/acme-docs/posts/quarterly-update`)).text();
+  assert.ok(updatedHtml.includes('Numbers look even better.'));
 
   // Dashboard stats count pending items.
   const stats = await (await alice(`/api/teams/${aliceTeam.id}/stats`)).json();

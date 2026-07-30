@@ -128,10 +128,9 @@ function teamBase(team, onDomain) {
 
 function teamNav(team, base, onDomain) {
   const pages = getDb()
-    .prepare(
-      "SELECT title, slug FROM content WHERE team_id = ? AND type = 'page' AND status = 'published' ORDER BY title"
-    )
-    .all(team.id);
+    .prepare(`SELECT * FROM content WHERE team_id = ? AND type = 'page' AND ${LIVE} ORDER BY title`)
+    .all(team.id)
+    .map(liveRow);
   const links = pages.map((p) => `<a href="${esc(base)}/${esc(p.slug)}">${esc(p.title)}</a>`).join('');
   // On a company's own domain, don't advertise the platform directory.
   return onDomain ? links : links + '<a href="/">All sites</a>';
@@ -190,6 +189,20 @@ function findTeam(slug) {
   return getDb().prepare('SELECT * FROM teams WHERE slug = ?').get(slug);
 }
 
+// A row is publicly visible when published, or when a previously approved
+// version is still live while new edits await review (published_snapshot).
+const LIVE = "(status = 'published' OR published_snapshot != '')";
+
+/** The version of a row the public should see. */
+function liveRow(row) {
+  if (!row || row.status === 'published' || !row.published_snapshot) return row;
+  try {
+    return { ...row, ...JSON.parse(row.published_snapshot) };
+  } catch {
+    return row;
+  }
+}
+
 function renderTeamHome(team, onDomain, req, res) {
   const s = teamSettings(team.id);
   const { tag } = req.query;
@@ -202,10 +215,11 @@ function renderTeamHome(team, onDomain, req, res) {
   }
   const posts = getDb()
     .prepare(
-      `SELECT * FROM content WHERE team_id = ? AND type = 'post' AND status = 'published' ${filter}
+      `SELECT * FROM content WHERE team_id = ? AND type = 'post' AND ${LIVE} ${filter}
        ORDER BY published_at DESC`
     )
-    .all(...params);
+    .all(...params)
+    .map(liveRow);
   const base = teamBase(team, onDomain);
   const hero = `<div class="hero">
     <h1>${esc(s.site_title || team.name)}</h1>
@@ -219,9 +233,11 @@ function renderTeamHome(team, onDomain, req, res) {
 }
 
 function renderTeamPost(team, onDomain, slug, res) {
-  const row = getDb()
-    .prepare("SELECT * FROM content WHERE team_id = ? AND type = 'post' AND status = 'published' AND slug = ?")
-    .get(team.id, slug);
+  const row = liveRow(
+    getDb()
+      .prepare(`SELECT * FROM content WHERE team_id = ? AND type = 'post' AND ${LIVE} AND slug = ?`)
+      .get(team.id, slug)
+  );
   if (!row) {
     return res
       .status(404)
@@ -232,9 +248,11 @@ function renderTeamPost(team, onDomain, slug, res) {
 }
 
 function renderTeamPage(team, onDomain, slug, res) {
-  const row = getDb()
-    .prepare("SELECT * FROM content WHERE team_id = ? AND type = 'page' AND status = 'published' AND slug = ?")
-    .get(team.id, slug);
+  const row = liveRow(
+    getDb()
+      .prepare(`SELECT * FROM content WHERE team_id = ? AND type = 'page' AND ${LIVE} AND slug = ?`)
+      .get(team.id, slug)
+  );
   if (!row) {
     return res
       .status(404)
@@ -290,7 +308,7 @@ router.get('/api/public/:team/content', cors, (req, res) => {
   const team = findTeam(req.params.team);
   if (!team) return res.status(404).json({ error: 'Company not found' });
   const { type, tag } = req.query;
-  const where = ["team_id = ?", "status = 'published'"];
+  const where = ['team_id = ?', LIVE];
   const params = [team.id];
   if (type) { where.push('type = ?'); params.push(type); }
   if (tag) {
@@ -301,16 +319,19 @@ router.get('/api/public/:team/content', cors, (req, res) => {
   }
   const rows = getDb()
     .prepare(`SELECT * FROM content WHERE ${where.join(' AND ')} ORDER BY published_at DESC`)
-    .all(...params);
+    .all(...params)
+    .map(liveRow);
   res.json(rows.map((r) => publicContentRow(r, { withBody: false })));
 });
 
 router.get('/api/public/:team/content/:slug', cors, (req, res) => {
   const team = findTeam(req.params.team);
   if (!team) return res.status(404).json({ error: 'Company not found' });
-  const row = getDb()
-    .prepare("SELECT * FROM content WHERE team_id = ? AND status = 'published' AND slug = ?")
-    .get(team.id, req.params.slug);
+  const row = liveRow(
+    getDb()
+      .prepare(`SELECT * FROM content WHERE team_id = ? AND ${LIVE} AND slug = ?`)
+      .get(team.id, req.params.slug)
+  );
   if (!row) return res.status(404).json({ error: 'Not found' });
   res.json(publicContentRow(row, { withBody: true }));
 });
@@ -337,7 +358,7 @@ router.get('/', (req, res) => {
   const teams = getDb()
     .prepare(
       `SELECT t.*, COUNT(c.id) AS published_count FROM teams t
-       LEFT JOIN content c ON c.team_id = t.id AND c.status = 'published'
+       LEFT JOIN content c ON c.team_id = t.id AND (c.status = 'published' OR c.published_snapshot != '')
        GROUP BY t.id ORDER BY t.name`
     )
     .all();

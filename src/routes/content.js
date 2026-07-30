@@ -38,7 +38,16 @@ function setTags(teamId, contentId, tagNames) {
 }
 
 function serialize(row) {
-  return { ...row, tags: loadTags(row.id) };
+  let live = null;
+  if (row.published_snapshot) {
+    try {
+      live = JSON.parse(row.published_snapshot);
+    } catch {
+      live = null;
+    }
+  }
+  const { published_snapshot, ...rest } = row;
+  return { ...rest, live_version: live, tags: loadTags(row.id) };
 }
 
 // List with optional filters: ?type=post&status=pending&tag=news&search=hello
@@ -68,7 +77,11 @@ router.get('/', (req, res) => {
 
 router.get('/:id', (req, res) => {
   const row = getDb()
-    .prepare('SELECT * FROM content WHERE id = ? AND team_id = ?')
+    .prepare(
+      `SELECT c.*, u.username AS author FROM content c
+       LEFT JOIN users u ON u.id = c.author_id
+       WHERE c.id = ? AND c.team_id = ?`
+    )
     .get(req.params.id, req.team.id);
   if (!row) return res.status(404).json({ error: 'Not found' });
   res.json(serialize(row));
@@ -118,20 +131,42 @@ router.put('/:id', (req, res) => {
     newStatus = 'pending';
   }
 
+  // The previously approved version stays live (as a snapshot) while the
+  // new edits await review. An admin explicitly setting draft is a true
+  // unpublish and drops the snapshot.
+  let snapshot = existing.published_snapshot;
+  if (existing.status === 'published' && newStatus !== 'published' && !snapshot) {
+    snapshot = JSON.stringify({
+      title: existing.title,
+      slug: existing.slug,
+      body: existing.body,
+      excerpt: existing.excerpt,
+      cover_image: existing.cover_image,
+      published_at: existing.published_at,
+    });
+  }
+  if (newStatus === 'published') snapshot = '';
+  if (newStatus === 'draft' && req.teamRole === 'admin' && status !== undefined) snapshot = '';
+
   const newTitle = title !== undefined ? title : existing.title;
-  const newSlug = slug !== undefined || title !== undefined
-    ? uniqueSlug(slug || newTitle, req.team.id, existing.id)
-    : existing.slug;
+  // While a live snapshot exists, the public URL must not drift — freeze the slug.
+  const newSlug = snapshot
+    ? existing.slug
+    : slug !== undefined || title !== undefined
+      ? uniqueSlug(slug || newTitle, req.team.id, existing.id)
+      : existing.slug;
   const publishedAt =
     newStatus === 'published'
       ? existing.published_at || new Date().toISOString().replace('T', ' ').slice(0, 19)
-      : null;
+      : snapshot
+        ? existing.published_at
+        : null;
   // Leaving draft clears any stale rejection note.
   const reviewNote = newStatus === 'draft' ? existing.review_note : '';
 
   db.prepare(
     `UPDATE content SET title = ?, slug = ?, body = ?, excerpt = ?, cover_image = ?, status = ?,
-     review_note = ?, published_at = ?, updated_at = datetime('now') WHERE id = ?`
+     review_note = ?, published_snapshot = ?, published_at = ?, updated_at = datetime('now') WHERE id = ?`
   ).run(
     newTitle,
     newSlug,
@@ -140,6 +175,7 @@ router.put('/:id', (req, res) => {
     cover_image !== undefined ? String(cover_image) : existing.cover_image,
     newStatus,
     reviewNote,
+    snapshot,
     publishedAt,
     existing.id
   );
@@ -155,7 +191,7 @@ router.post('/:id/approve', (req, res) => {
   if (!row) return res.status(404).json({ error: 'Not found' });
   if (row.status !== 'pending') return res.status(400).json({ error: 'Only pending content can be approved' });
   db.prepare(
-    `UPDATE content SET status = 'published', review_note = '',
+    `UPDATE content SET status = 'published', review_note = '', published_snapshot = '',
      published_at = COALESCE(published_at, datetime('now')), updated_at = datetime('now') WHERE id = ?`
   ).run(row.id);
   res.json(serialize(db.prepare('SELECT * FROM content WHERE id = ?').get(row.id)));
@@ -169,8 +205,9 @@ router.post('/:id/reject', (req, res) => {
   if (!row) return res.status(404).json({ error: 'Not found' });
   if (row.status !== 'pending') return res.status(400).json({ error: 'Only pending content can be rejected' });
   const note = String((req.body || {}).note || '').slice(0, 500);
+  // The live snapshot (if any) stays up — rejection only bounces the edits.
   db.prepare(
-    "UPDATE content SET status = 'draft', review_note = ?, published_at = NULL, updated_at = datetime('now') WHERE id = ?"
+    "UPDATE content SET status = 'draft', review_note = ?, updated_at = datetime('now') WHERE id = ?"
   ).run(note, row.id);
   res.json(serialize(db.prepare('SELECT * FROM content WHERE id = ?').get(row.id)));
 });

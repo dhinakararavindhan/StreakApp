@@ -5,7 +5,7 @@ A multi-company content platform built with Node.js, Express, and SQLite. Any co
 It ships three things in one small app:
 
 - **REST API** (`/api/…`) — auth, companies, members, content, tags, media, settings, platform stats
-- **Admin panel** (`/admin`) — a compact dark UI set in self-hosted Geist Sans, with a top navbar, collapsible sidebar, role-portal logins, live dashboard, approvals queue, command palette (Ctrl/⌘+K), Markdown editor with cover images, and per-company branding controls
+- **Admin panel** (`/admin`) — a compact UI with **light and dark modes** (toggle in the navbar, light by default), set in self-hosted Geist Sans, with a top navbar, collapsible sidebar, role-portal logins, live dashboard, approvals queue, command palette (Ctrl/⌘+K), Markdown editor with cover images, and per-company branding controls
 - **Public sites** — `/` is a directory of company sites; each company publishes at `/t/<slug>` or on its own custom domain
 
 ## The three-tier role architecture
@@ -32,8 +32,8 @@ Users can belong to several companies (with different roles in each) and switch 
 Managers have full CRUD on content, but nothing they touch goes live on its own:
 
 - A manager saves work as **Draft** or submits it as **Pending review** — publishing directly returns 403.
-- Company admins see a badge-counted **Approvals** queue and can **Approve** (goes live) or **Reject** with a note; rejected items return to draft and the note is shown to the author in the editor.
-- If a manager edits already-published content, it is automatically pulled back to **Pending** (off the site) until re-approved — the public site and headless API only ever serve approved content.
+- Company admins see a badge-counted **Approvals** queue with a **side-by-side review**: the live version and the proposed version rendered next to each other with line-level diff highlighting (removals struck through on the left, additions highlighted on the right, changed fields flagged). Approve or reject (with a note) from the queue or the review screen; rejected items return to draft and the note is shown to the author in the editor.
+- If a manager edits already-published content, the edits go to **Pending** while the **previously approved version stays live** (snapshotted, URL frozen) — the public site and headless API only ever serve approved content. Approving swaps the new version in; rejecting keeps the old one up.
 - Admins and superadmins can still publish directly.
 
 ## Admin panel highlights

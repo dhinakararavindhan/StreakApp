@@ -2,12 +2,16 @@
    Roles: superadmin (platform) > admin (company owner) > manager (employee). */
 (() => {
   const app = document.getElementById('app');
+  document.documentElement.dataset.theme = localStorage.getItem('nova_theme') || 'light';
   let me = null;
   let companies = [];
   let company = null; // active company
 
   const esc = (s) =>
     String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+  const ICON_SUN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M19.1 4.9l-1.8 1.8M6.7 17.3l-1.8 1.8"/></svg>';
+  const ICON_MOON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.5 14.5A8.5 8.5 0 019.5 3.5a8.5 8.5 0 1011 11z"/></svg>';
 
   const ICONS = {
     dashboard: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5"/></svg>',
@@ -219,6 +223,9 @@
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
               Search or jump to…<kbd>Ctrl K</kbd>
             </button>
+            <button class="iconbtn" id="theme-toggle" title="Toggle light/dark">
+              ${document.documentElement.dataset.theme === 'light' ? ICON_MOON : ICON_SUN}
+            </button>
             <div class="userbox">
               <a class="avatar" href="#/account" title="Account">${esc(me.username[0].toUpperCase())}</a>
               <span class="name">${esc(me.username)}</span>
@@ -241,6 +248,12 @@
       localStorage.setItem('nova_side', frame.classList.contains('collapsed') ? 'min' : 'full');
     });
     document.getElementById('open-palette').addEventListener('click', openPalette);
+    document.getElementById('theme-toggle').addEventListener('click', () => {
+      const next = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
+      document.documentElement.dataset.theme = next;
+      localStorage.setItem('nova_theme', next);
+      document.getElementById('theme-toggle').innerHTML = next === 'light' ? ICON_MOON : ICON_SUN;
+    });
     if (isCompanyAdmin()) {
       capi('/stats')
         .then((s) => {
@@ -547,6 +560,7 @@
                 <td>${esc(r.author || '—')}</td>
                 <td>${esc(r.updated_at.slice(0, 16))}</td>
                 <td style="white-space:nowrap">
+                  <a class="btn secondary sm" href="#/review/${r.id}">Review</a>
                   <button class="btn sm" data-approve="${r.id}">Approve</button>
                   <button class="btn danger sm" data-reject="${r.id}">Reject</button>
                 </td>
@@ -580,6 +594,120 @@
       );
     }
     await load();
+  }
+
+  // ---------- side-by-side review ----------
+
+  /** Line diff (LCS). Returns aligned lanes: left = live, right = proposed. */
+  function diffLines(a, b) {
+    const A = String(a).split('\n');
+    const B = String(b).split('\n');
+    const n = A.length;
+    const m = B.length;
+    if (n * m > 250000) {
+      // Too large to diff comfortably — show without highlights.
+      return {
+        left: A.map((s) => ({ t: 'same', s })),
+        right: B.map((s) => ({ t: 'same', s })),
+      };
+    }
+    const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+    for (let i = n - 1; i >= 0; i--) {
+      for (let j = m - 1; j >= 0; j--) {
+        dp[i][j] = A[i] === B[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+      }
+    }
+    const left = [];
+    const right = [];
+    let i = 0;
+    let j = 0;
+    while (i < n && j < m) {
+      if (A[i] === B[j]) {
+        left.push({ t: 'same', s: A[i++] });
+        right.push({ t: 'same', s: B[j++] });
+      } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+        left.push({ t: 'del', s: A[i++] });
+      } else {
+        right.push({ t: 'add', s: B[j++] });
+      }
+    }
+    while (i < n) left.push({ t: 'del', s: A[i++] });
+    while (j < m) right.push({ t: 'add', s: B[j++] });
+    return { left, right };
+  }
+
+  function diffPane(lines) {
+    return `<div class="diff-body">${lines
+      .map((l) => `<span class="dl ${l.t === 'same' ? '' : l.t}">${esc(l.s) || '&nbsp;'}</span>`)
+      .join('')}</div>`;
+  }
+
+  function fieldRow(label, value, changed) {
+    return `<div class="diff-field"><div class="fl">${label}</div>
+      <div class="fv">${changed ? `<span class="chg">${esc(value) || '—'}</span>` : esc(value) || '—'}</div></div>`;
+  }
+
+  async function renderReview(id) {
+    const item = await capi(`/content/${id}`);
+    const live = item.live_version;
+    const isPending = item.status === 'pending';
+    const page = shell('#/approvals', `
+      <h1>Review: ${esc(item.title)}
+        <span style="display:flex;gap:0.5rem">
+          <a class="btn secondary sm" href="#/approvals">Back</a>
+          ${isPending ? `<button class="btn sm" id="rv-approve">Approve</button>
+          <button class="btn danger sm" id="rv-reject">Reject</button>` : `<span class="pill ${esc(item.status)}">${esc(item.status)}</span>`}
+        </span>
+      </h1>
+      <div id="panes" class="review-grid"></div>`);
+
+    const body = diffLines(live ? live.body : '', item.body);
+    const leftPane = live
+      ? `<div class="card">
+          ${fieldRow('Title', live.title, false)}
+          ${fieldRow('Excerpt', live.excerpt, false)}
+          ${fieldRow('Cover image', live.cover_image, false)}
+          <div class="diff-field"><div class="fl">Body</div>${diffPane(body.left)}</div>
+        </div>`
+      : `<div class="review-empty">Nothing live yet — this is new content awaiting its first approval.</div>`;
+    const rightPane = `<div class="card">
+        ${fieldRow('Title', item.title, live && live.title !== item.title)}
+        ${fieldRow('Excerpt', item.excerpt, live && live.excerpt !== item.excerpt)}
+        ${fieldRow('Cover image', item.cover_image, live && live.cover_image !== item.cover_image)}
+        <div class="diff-field"><div class="fl">Body</div>${diffPane(
+          live ? body.right : String(item.body).split('\n').map((s) => ({ t: 'add', s }))
+        )}</div>
+      </div>`;
+    page.querySelector('#panes').innerHTML = `
+      <div class="review-pane">
+        <h3>Live version ${live ? `<span class="pill published">on site</span>` : ''}</h3>${leftPane}
+      </div>
+      <div class="review-pane">
+        <h3>Proposed by ${esc(item.author || 'unknown')} <span class="pill pending">pending</span></h3>${rightPane}
+      </div>`;
+
+    if (isPending) {
+      page.querySelector('#rv-approve').addEventListener('click', async () => {
+        try {
+          await capi(`/content/${item.id}/approve`, { method: 'POST' });
+          toast('Approved — now live.');
+          location.hash = '#/approvals';
+        } catch (err) {
+          toast(err.message, 'error');
+        }
+      });
+      page.querySelector('#rv-reject').addEventListener('click', async () => {
+        const note = prompt('Note for the author (optional):');
+        if (note === null) return;
+        try {
+          await capi(`/content/${item.id}/reject`, { method: 'POST', body: { note } });
+          toast('Sent back to draft.');
+          location.hash = '#/approvals';
+        } catch (err) {
+          toast(err.message, 'error');
+        }
+      });
+    }
   }
 
   // ---------- company (profile, branding, members) ----------
@@ -998,6 +1126,8 @@
       if (hash.startsWith('#/content')) return await renderContentList();
       if (hash.startsWith('#/media')) return await renderMedia();
       if (hash.startsWith('#/tags')) return await renderTags();
+      const reviewMatch = hash.match(/^#\/review\/(\d+)/);
+      if (reviewMatch && isCompanyAdmin()) return await renderReview(reviewMatch[1]);
       if (hash.startsWith('#/approvals') && isCompanyAdmin()) return await renderApprovals();
       if (hash.startsWith('#/company')) return await renderCompany();
       if (hash.startsWith('#/platform') && me.role === 'superadmin') return await renderPlatform();

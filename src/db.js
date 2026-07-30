@@ -63,6 +63,7 @@ function init(options = {}) {
       cover_image TEXT NOT NULL DEFAULT '',
       status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'pending', 'published')),
       review_note TEXT NOT NULL DEFAULT '',
+      published_snapshot TEXT NOT NULL DEFAULT '',
       author_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -136,6 +137,11 @@ function migrate() {
     db.exec("ALTER TABLE content ADD COLUMN review_note TEXT NOT NULL DEFAULT ''");
   }
 
+  // content.published_snapshot — the still-live version while edits await review
+  if (!db.prepare('PRAGMA table_info(content)').all().some((c) => c.name === 'published_snapshot')) {
+    db.exec("ALTER TABLE content ADD COLUMN published_snapshot TEXT NOT NULL DEFAULT ''");
+  }
+
   // Approval workflow: the old status CHECK lacks 'pending', which blocks
   // submissions on existing databases — rebuild the content table.
   if (!tableSql('content').includes("'pending'")) {
@@ -152,14 +158,15 @@ function migrate() {
         cover_image TEXT NOT NULL DEFAULT '',
         status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'pending', 'published')),
         review_note TEXT NOT NULL DEFAULT '',
+        published_snapshot TEXT NOT NULL DEFAULT '',
         author_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         updated_at TEXT NOT NULL DEFAULT (datetime('now')),
         published_at TEXT,
         UNIQUE (team_id, slug)
       );
-      INSERT INTO content_migrated (id, team_id, type, title, slug, body, excerpt, cover_image, status, review_note, author_id, created_at, updated_at, published_at)
-        SELECT id, team_id, type, title, slug, body, excerpt, cover_image, status, review_note, author_id, created_at, updated_at, published_at
+      INSERT INTO content_migrated (id, team_id, type, title, slug, body, excerpt, cover_image, status, review_note, published_snapshot, author_id, created_at, updated_at, published_at)
+        SELECT id, team_id, type, title, slug, body, excerpt, cover_image, status, review_note, published_snapshot, author_id, created_at, updated_at, published_at
         FROM content;
       DROP TABLE content;
       ALTER TABLE content_migrated RENAME TO content;
