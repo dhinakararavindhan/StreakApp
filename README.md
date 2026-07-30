@@ -50,20 +50,21 @@ Managers have full CRUD on content, but nothing they touch goes live on its own:
 - Company admins see a badge-counted **Approvals** queue with a **side-by-side review**: the live version and the proposed version rendered next to each other with line-level diff highlighting (removals struck through on the left, additions highlighted on the right, changed fields flagged). Approve or reject (with a note) from the queue or the review screen; rejected items return to draft and the note is shown to the author in the editor.
 - If a manager edits already-published content, the edits go to **Pending** while the **previously approved version stays live** (snapshotted, URL frozen) — the public site and headless API only ever serve approved content. Approving swaps the new version in; rejecting keeps the old one up.
 - Admins and superadmins can still publish directly.
-- **Version history**: every save is recorded and restorable (restores obey the same workflow rules). **Comment threads** let reviewers and authors discuss an item in the editor and review screens. An **audit log** (Activity page) records approvals, rejections, restores, membership and settings changes.
+- **Version history**: every save is recorded and restorable (restores obey the same workflow rules). **Comment threads** (Markdown supported) let reviewers and authors discuss an item in the editor and review screens. An **audit log** (Activity page) records approvals, rejections, restores, membership and settings changes.
 - **Scheduling**: set `publish_at` (go live later) and `expire_at` (come down later) — enforced everywhere published content is served, including feeds, sitemaps, and the headless API.
 
 ## Admin panel highlights
 
 - **Dashboard** — per-company KPIs (published, in review, drafts, posts, pages, media, members) and recently updated content.
 - **Command palette** — Ctrl/⌘+K anywhere: jump between pages, create content, switch companies, and search content by title.
-- **Editor** — Markdown body with media-library image insertion, autosave for drafts, excerpt, tags, slug control, scheduling fields, a cover image picker with live preview, version history with restore, and the item's discussion thread.
+- **Editor** — Markdown body with a formatting toolbar, live Write/Preview toggle, media-library image insertion, autosave for drafts, excerpt (inline Markdown), tags, slug control, language + scheduling fields, a cover image picker with live preview, version history with restore, and the item's discussion thread. Rendered Markdown in the admin is always sanitized.
 - **Company page** — profile, custom domain, theme/branding, headless API reference, and member management with role control.
 - **Platform page** (superadmins) — platform-wide KPIs, newest companies, user administration, and platform settings.
 
 ## Content features
 
-- **Posts and pages** with Markdown bodies, drafts and publishing, excerpts, and **cover images** (shown on site cards, post heroes, and in the headless API).
+- **Markdown everywhere**: post/page bodies (full), excerpts and site descriptions (inline — rendered on cards, heroes, footers, and as `excerpt_html` in the headless API; stripped to plain text for meta tags), and discussion comments.
+- **Posts and pages** with drafts and publishing, excerpts, and **cover images** (shown on site cards, post heroes, and in the headless API).
 - **Slugs** auto-generated from titles and de-duplicated *within each company*.
 - **Tags** per company, with filtering on the public site and in the admin.
 - **Media library** per company — images and files up to 10 MB, served from `/uploads`.
@@ -155,7 +156,7 @@ All `/api` routes accept and return JSON. Authentication uses an httpOnly cookie
 npm test
 ```
 
-43 end-to-end tests (`node --test`, in-memory database): registration, company creation, the three-tier role model, cross-company isolation, content CRUD with cover images, per-company slug scoping, draft/pending/publish visibility, the approval workflow, feeds/sitemaps/SEO, rate limiting, theming, custom-domain routing, the headless API, dashboards, and platform stats.
+44 end-to-end tests (`node --test`, in-memory database): registration, company creation, the three-tier role model, cross-company isolation, content CRUD with cover images, per-company slug scoping, draft/pending/publish visibility, the approval workflow, feeds/sitemaps/SEO, rate limiting, theming, custom-domain routing, the headless API, dashboards, and platform stats.
 
 ## Project layout
 

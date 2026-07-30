@@ -23,6 +23,20 @@ function esc(s) {
     .replace(/"/g, '&quot;');
 }
 
+/** Inline markdown (bold, links, code…) for short fields like excerpts
+    and site descriptions. */
+function mdInline(text) {
+  return marked.parseInline(String(text || ''));
+}
+
+/** Markdown stripped down to plain text — for meta descriptions. */
+function plainText(text) {
+  return String(text || '')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/[#*_`>~]/g, '')
+    .trim();
+}
+
 function platformSettings() {
   const rows = getDb().prepare('SELECT key, value FROM settings').all();
   return Object.fromEntries(rows.map((r) => [r.key, r.value]));
@@ -52,7 +66,7 @@ function themeCss(settings = {}) {
 
 function layout({ title, siteTitle, siteDescription, homeHref, nav = '', content, settings, meta = {} }) {
   const fullTitle = title ? `${title} — ${siteTitle}` : siteTitle;
-  const description = meta.description || siteDescription || '';
+  const description = plainText(meta.description || siteDescription || '');
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -125,7 +139,7 @@ ${(meta.alternates || []).map((a) => `<link rel="alternate" hreflang="${esc(a.la
   <nav>${nav}</nav>
 </div></header>
 <main class="wrap">${content}</main>
-<footer><div class="wrap">${esc(siteDescription)}</div></footer>
+<footer><div class="wrap">${mdInline(siteDescription)}</div></footer>
 </body>
 </html>`;
 }
@@ -172,12 +186,14 @@ function postCard(team, row, base) {
   const cover = row.cover_image
     ? `<img class="cover" src="${esc(row.cover_image)}" alt="">`
     : `<div class="cover placeholder">✶</div>`;
-  const excerpt = row.excerpt || row.body.replace(/[#*_`>\[\]]/g, '').slice(0, 140);
+  const excerpt = row.excerpt
+    ? mdInline(row.excerpt)
+    : esc(row.body.replace(/[#*_`>\[\]]/g, '').slice(0, 140));
   return `<div class="card">
     <a href="${esc(href)}">${cover}</a>
     <div class="pad">
       <h2><a href="${esc(href)}">${esc(row.title)}</a></h2>
-      <p>${esc(excerpt)}</p>
+      <p>${excerpt}</p>
       <div class="meta">${esc(date)} ${tagLinks(row, base)}</div>
     </div>
   </div>`;
@@ -271,7 +287,7 @@ function renderTeamHome(team, onDomain, req, res, locale = null) {
   const base = teamBase(team, onDomain);
   const hero = `<div class="hero">
     <h1>${esc(s.site_title || team.name)}</h1>
-    <p>${esc(tag ? `Tagged “${tag}”` : s.site_description || '')}</p>
+    <p>${tag ? esc(`Tagged “${tag}”`) : mdInline(s.site_description || '')}</p>
     <div class="rule"></div>
   </div>`;
   const content = posts.length
@@ -355,6 +371,7 @@ function publicContentRow(row, { withBody }) {
     slug: row.slug,
     locale: row.locale,
     excerpt: row.excerpt,
+    excerpt_html: mdInline(row.excerpt),
     cover_image: row.cover_image,
     tags,
     published_at: row.published_at,
@@ -546,7 +563,7 @@ router.get('/', (req, res) => {
   const content = `
     <div class="hero">
       <h1>${esc(s.site_title)}</h1>
-      <p>${esc(s.site_description)}</p>
+      <p>${mdInline(s.site_description)}</p>
       <div class="rule"></div>
     </div>
     ${teams.length

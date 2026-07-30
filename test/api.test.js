@@ -732,6 +732,37 @@ test('full company export contains content, settings, and members', async () => 
   assert.ok(dump.content.every((c) => c.published_snapshot === undefined));
 });
 
+
+test('inline markdown renders in excerpts and site descriptions', async () => {
+  await alice(`/api/teams/${aliceTeam.id}/settings`, {
+    method: 'PUT',
+    body: { site_description: 'Docs that **matter**, by [Acme](https://acme.example).' },
+  });
+  await alice(`/api/teams/${aliceTeam.id}/content`, {
+    method: 'POST',
+    body: {
+      type: 'post', title: 'Formatted teaser', status: 'published',
+      excerpt: 'A story about **bold moves** and `clean code`.', body: 'Body.',
+    },
+  });
+
+  const home = await (await fetch(`${base}/t/acme-docs`)).text();
+  assert.ok(home.includes('<strong>bold moves</strong>'));
+  assert.ok(home.includes('<code>clean code</code>'));
+  assert.ok(home.includes('<strong>matter</strong>'));
+  assert.ok(home.includes('href="https://acme.example"'));
+
+  // Meta descriptions stay plain text — no markdown syntax, no tags.
+  const metaLine = home.split('\n').find((l) => l.includes('name="description"'));
+  assert.ok(metaLine.includes('Docs that matter'));
+  assert.ok(!metaLine.includes('**'));
+
+  // Headless API exposes rendered excerpt_html alongside raw excerpt.
+  const item = await (await fetch(`${base}/api/public/acme-docs/content/formatted-teaser`)).json();
+  assert.strictEqual(item.excerpt, 'A story about **bold moves** and `clean code`.');
+  assert.ok(item.excerpt_html.includes('<strong>bold moves</strong>'));
+});
+
 test('health endpoint responds for load balancers', async () => {
   const res = await fetch(`${base}/api/health`);
   assert.strictEqual(res.status, 200);

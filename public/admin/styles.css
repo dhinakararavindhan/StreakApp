@@ -375,3 +375,21 @@ td .path { color: var(--faint); font-size: 0.76rem; }
 .md-preview img { max-width: 100%; border-radius: 8px; }
 .md-preview blockquote { border-left: 3px solid var(--a1); margin-left: 0; padding-left: 1rem; color: var(--muted); }
 .md-preview pre { overflow-x: auto; background: var(--bg-2); border: 1px solid var(--border); border-radius: 8px; padding: 0.8rem; }
+
+/* markdown toolbar */
+.md-toolbar { display: flex; gap: 3px; margin-bottom: 0.4rem; flex-wrap: wrap; }
+.md-toolbar button {
+  background: var(--bg-2); border: 1px solid var(--border-2); color: var(--muted);
+  border-radius: 6px; min-width: 30px; height: 26px; padding: 0 0.5rem; font-size: 0.8rem;
+  display: grid; place-items: center;
+}
+.md-toolbar button:hover { color: var(--fg); border-color: var(--a1); }
+
+/* markdown in comments */
+.comment .md-c p { margin: 0.25rem 0 0; }
+.comment .md-c p:first-child { margin-top: 0.15rem; }
+.comment .md-c code { font-size: 0.82em; }
+.comment .md-c ul, .comment .md-c ol { margin: 0.3rem 0; padding-left: 1.2rem; }
+
+/* editor live preview reads as prose, not code */
+#body-preview { font-family: 'Geist Sans', system-ui, sans-serif; font-size: 0.95rem; }

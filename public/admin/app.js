@@ -10,6 +10,28 @@
   const esc = (s) =>
     String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
+  /** Strip anything executable from rendered markdown before it touches the
+      admin DOM — content and comments are authored by teammates, but the
+      admin session must never be scriptable from content. */
+  function sanitizeHtml(html) {
+    const t = document.createElement('template');
+    t.innerHTML = String(html || '');
+    t.content.querySelectorAll('script,iframe,object,embed,style,link,meta,form').forEach((el) => el.remove());
+    t.content.querySelectorAll('*').forEach((el) => {
+      [...el.attributes].forEach((a) => {
+        const name = a.name.toLowerCase();
+        const value = String(a.value).trim().toLowerCase();
+        if (name.startsWith('on') || (['href', 'src', 'xlink:href', 'action'].includes(name) && value.startsWith('javascript:'))) {
+          el.removeAttribute(a.name);
+        }
+      });
+    });
+    return t.innerHTML;
+  }
+
+  const md = (text) => (window.marked ? sanitizeHtml(window.marked.parse(String(text ?? ''))) : esc(text));
+  const mdInline = (text) => (window.marked ? sanitizeHtml(window.marked.parseInline(String(text ?? ''))) : esc(text));
+
   const ICON_SUN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M19.1 4.9l-1.8 1.8M6.7 17.3l-1.8 1.8"/></svg>';
   const ICON_MOON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.5 14.5A8.5 8.5 0 019.5 3.5a8.5 8.5 0 1011 11z"/></svg>';
 
@@ -402,9 +424,25 @@
         ${reviewNote}
         <div class="card">
           <label>Title</label><input name="title" required value="${esc(item.title)}">
-          <label>Body (Markdown)</label><textarea name="body" rows="18">${esc(item.body)}</textarea>
+          <label style="display:flex;justify-content:space-between;align-items:center;gap:0.6rem">Body (Markdown)
+            <span class="seg" id="body-view" style="margin:0;grid-template-columns:1fr 1fr;width:150px">
+              <button type="button" data-v="write" class="on">Write</button>
+              <button type="button" data-v="preview">Preview</button>
+            </span>
+          </label>
+          <div class="md-toolbar" id="md-toolbar">
+            <button type="button" data-md="bold" title="Bold"><b>B</b></button>
+            <button type="button" data-md="italic" title="Italic"><i>I</i></button>
+            <button type="button" data-md="h2" title="Heading">H</button>
+            <button type="button" data-md="link" title="Link">🔗</button>
+            <button type="button" data-md="list" title="List">•—</button>
+            <button type="button" data-md="quote" title="Quote">❝</button>
+            <button type="button" data-md="code" title="Code">&lt;/&gt;</button>
+          </div>
+          <textarea name="body" rows="18">${esc(item.body)}</textarea>
+          <div id="body-preview" class="diff-body md-preview" style="display:none;min-height:200px"></div>
           <select id="insert-img" style="margin-top:0.5rem"><option value="">Insert image from media library…</option></select>
-          <label>Excerpt</label><textarea name="excerpt" rows="2">${esc(item.excerpt)}</textarea>
+          <label>Excerpt (inline Markdown supported)</label><textarea name="excerpt" rows="2">${esc(item.excerpt)}</textarea>
         </div>
         <div class="card">
           <label>Type</label>
@@ -480,6 +518,56 @@
       e.target.value = '';
       bodyEl.dispatchEvent(new Event('input', { bubbles: true }));
       bodyEl.focus();
+    });
+
+    // Markdown toolbar: wrap the selection or prefix the line.
+    const wrapSel = (before, after = before, placeholder = 'text') => {
+      const start = bodyEl.selectionStart ?? 0;
+      const end = bodyEl.selectionEnd ?? start;
+      const sel = bodyEl.value.slice(start, end) || placeholder;
+      bodyEl.value = bodyEl.value.slice(0, start) + before + sel + after + bodyEl.value.slice(end);
+      bodyEl.focus();
+      bodyEl.selectionStart = start + before.length;
+      bodyEl.selectionEnd = start + before.length + sel.length;
+      bodyEl.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    const prefixLine = (prefix) => {
+      const start = bodyEl.selectionStart ?? 0;
+      const lineStart = bodyEl.value.lastIndexOf('\n', start - 1) + 1;
+      bodyEl.value = bodyEl.value.slice(0, lineStart) + prefix + bodyEl.value.slice(lineStart);
+      bodyEl.focus();
+      bodyEl.selectionStart = bodyEl.selectionEnd = start + prefix.length;
+      bodyEl.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    const MD_ACTIONS = {
+      bold: () => wrapSel('**'),
+      italic: () => wrapSel('*'),
+      h2: () => prefixLine('## '),
+      link: () => wrapSel('[', '](https://)', 'link text'),
+      list: () => prefixLine('- '),
+      quote: () => prefixLine('> '),
+      code: () => wrapSel('`'),
+    };
+    page.querySelectorAll('#md-toolbar [data-md]').forEach((btn) =>
+      btn.addEventListener('click', () => MD_ACTIONS[btn.dataset.md]())
+    );
+
+    // Live Write/Preview toggle for the body.
+    const previewEl = page.querySelector('#body-preview');
+    const toolbarEl = page.querySelector('#md-toolbar');
+    const renderBodyPreview = () => (previewEl.innerHTML = md(bodyEl.value) || '<p class="path">Nothing to preview yet.</p>');
+    page.querySelectorAll('#body-view button').forEach((b) =>
+      b.addEventListener('click', () => {
+        page.querySelectorAll('#body-view button').forEach((x) => x.classList.toggle('on', x === b));
+        const preview = b.dataset.v === 'preview';
+        bodyEl.style.display = preview ? 'none' : '';
+        toolbarEl.style.display = preview ? 'none' : '';
+        previewEl.style.display = preview ? '' : 'none';
+        if (preview) renderBodyPreview();
+      })
+    );
+    bodyEl.addEventListener('input', () => {
+      if (previewEl.style.display !== 'none') renderBodyPreview();
     });
 
     const collect = (f) => ({
@@ -621,11 +709,11 @@
       host.innerHTML = `
         <div class="comments">${rows
           .map(
-            (c) => `<div class="comment"><span class="who">${esc(c.author || 'deleted user')}</span><span class="when">${esc(c.created_at.slice(0, 16))}</span><div>${esc(c.body)}</div></div>`
+            (c) => `<div class="comment"><span class="who">${esc(c.author || 'deleted user')}</span><span class="when">${esc(c.created_at.slice(0, 16))}</span><div class="md-c">${md(c.body)}</div></div>`
           )
           .join('') || '<p class="path" style="margin:0.4rem 0">No comments yet — start the discussion.</p>'}</div>
         <form class="toolbar" style="margin-bottom:0">
-          <input name="body" placeholder="Write a comment…" required style="flex:1">
+          <input name="body" placeholder="Write a comment… (Markdown supported)" required style="flex:1">
           <button class="btn sm">Comment</button>
         </form>`;
       host.querySelector('form').addEventListener('submit', async (e) => {
@@ -913,7 +1001,7 @@
         ${item.cover_image ? `<img class="preview-cover" src="${esc(item.cover_image)}" alt="">` : ''}
         <h1>${esc(item.title)}</h1>
         ${item.excerpt ? `<p class="path">${esc(item.excerpt)}</p>` : ''}
-        ${item.body_html || ''}
+        ${sanitizeHtml(item.body_html || '')}
       </div>`;
 
     page.querySelectorAll('#view-seg button').forEach((b) =>
