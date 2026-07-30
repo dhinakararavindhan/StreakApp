@@ -22,12 +22,17 @@ respond with ONLY a JSON object (no prose, no code fences) shaped exactly like:
   "accent_color": "a hex color like #0e7490, or \\"\\" to use the theme default",
   "heading_font": "one of: sans, serif, mono",
   "layout": "one of: cards, list",
+  "content_types": [ { "key": "room", "name": "Room", "name_plural": "Rooms",
+    "schema": [ { "label": "Price per night (USD)", "kind": "number" } ] } ],
   "pages": [ { "title": "...", "body": "markdown", "excerpt": "" } ],
-  "posts": [ { "title": "...", "body": "markdown", "excerpt": "one sentence", "tags": ["..."] } ]
+  "posts": [ { "title": "...", "body": "markdown", "excerpt": "one sentence", "tags": ["..."] } ],
+  "items": [ { "type": "room", "title": "...", "body": "markdown", "excerpt": "...",
+    "fields": { "price_per_night_usd": 180 } } ]
 }
 Guidelines:
 - Pick the theme, font, and layout that genuinely fit the business (e.g. terminal+mono for dev tools, paper+serif for writers or cafés, noir for portfolios).
 - Write 2-3 pages (About plus what the business needs: Menu, Pricing, Docs, Contact...) and 2-4 posts of real, specific, publishable starter content in the company's voice — no lorem ipsum, no placeholders like [Your Name].
+- content_types and items are OPTIONAL: use them only when the business has structured, repeating content — hotel rooms, real-estate listings, gym classes, courses, tour dates. Field "kind" is one of text, longtext, number, date, url, select (select needs "options": "A, B, C"). Field keys in "items" are the lowercased label with non-alphanumerics as underscores, e.g. "Price per night (USD)" -> "price_per_night_usd"; dates are YYYY-MM-DD; select values must match an option exactly. Omit both for businesses that only need pages and posts.
 - Markdown bodies may use headings, lists, tables, blockquotes, and code blocks where fitting.`;
 
 /** Deterministic offline generator — same shape as the real thing. */

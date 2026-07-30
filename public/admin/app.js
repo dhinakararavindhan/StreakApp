@@ -1396,28 +1396,38 @@
         THEME_GALLERY.map(([key, , bg, fg, accent]) => [key, { bg, fg, accent }])
       );
       api('/site-templates').then(({ templates, ai_available }) => {
-        page.querySelector('#tpl-grid').innerHTML = templates
-          .map((t) => {
-            const c = galleryColors[t.theme] || galleryColors.default;
-            return `<div class="tpl">
-              <div class="tpl-swatch" style="background:${c.bg};color:${c.fg}">
-                <span class="dot" style="background:${t.accent_color || c.accent}"></span>Aa</div>
-              <div class="tpl-info"><b>${esc(t.name)}</b><span>${esc(t.description)}</span>
-                <span class="tpl-meta">${t.pages} page${t.pages === 1 ? '' : 's'} · ${t.posts} post${t.posts === 1 ? '' : 's'}</span></div>
-              <button type="button" class="btn secondary sm" data-tpl="${t.key}">Apply</button>
-            </div>`;
-          })
+        const tplRow = (t) => {
+          const c = galleryColors[t.theme] || galleryColors.default;
+          const pieces = t.pages + t.posts + (t.items || 0);
+          const meta = `${pieces} starter item${pieces === 1 ? '' : 's'}${
+            t.types ? ` · ${t.types} custom type${t.types === 1 ? '' : 's'}` : ''
+          }`;
+          return `<div class="tpl">
+            <div class="tpl-swatch" style="background:${c.bg};color:${c.fg}">
+              <span class="dot" style="background:${t.accent_color || c.accent}"></span>Aa</div>
+            <div class="tpl-info"><b>${esc(t.name)}</b><span>${esc(t.description)}</span>
+              <span class="tpl-meta">${meta}</span></div>
+            <button type="button" class="btn secondary sm" data-tpl="${t.key}">Apply</button>
+          </div>`;
+        };
+        const categories = [...new Set(templates.map((t) => t.category))];
+        page.querySelector('#tpl-grid').innerHTML = categories
+          .map(
+            (cat) =>
+              `<div class="tpl-cat">${esc(cat)}</div>` +
+              templates.filter((t) => t.category === cat).map(tplRow).join('')
+          )
           .join('');
         page.querySelectorAll('[data-tpl]').forEach((btn) =>
           btn.addEventListener('click', async () => {
-            if (!confirm('Apply this starter kit? It updates your site theme and publishes its starter pages and posts. Existing content is untouched.')) return;
+            if (!confirm('Apply this starter kit? It updates your site theme, publishes its starter content, and may add custom content types. Existing content is untouched.')) return;
             btn.disabled = true;
             try {
               const r = await api(`/teams/${company.id}/apply-template`, {
                 method: 'POST',
                 body: { template: btn.dataset.tpl },
               });
-              toast(`Starter kit applied — ${r.created} items published.`);
+              toast(`Starter kit applied — ${r.created} items published${r.types ? `, ${r.types} content type${r.types === 1 ? '' : 's'} added` : ''}.`);
               render();
             } catch (err) {
               toast(err.message, 'error');

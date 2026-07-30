@@ -408,7 +408,12 @@ td .path { color: var(--faint); font-size: 0.76rem; }
 .swatch .tn { line-height: 1.1; }
 
 /* Starter kits + AI site builder */
-.tpl-grid { display: flex; flex-direction: column; gap: 0.45rem; }
+.tpl-grid { display: flex; flex-direction: column; gap: 0.45rem; max-height: 420px; overflow-y: auto; padding-right: 0.3rem; }
+.tpl-cat {
+  font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--muted); margin: 0.5rem 0 0.05rem;
+}
+.tpl-cat:first-child { margin-top: 0; }
 .tpl {
   display: flex; align-items: center; gap: 0.65rem;
   border: 1px solid var(--border-2); border-radius: 9px; padding: 0.5rem 0.6rem;

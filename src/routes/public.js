@@ -186,6 +186,10 @@ function teamNav(team, base, onDomain, loc) {
     .all(team.id, loc)
     .map(liveRow);
   let links = pages.map((p) => `<a href="${esc(base)}/${esc(p.slug)}">${esc(p.title)}</a>`).join('');
+  // Custom-type archives (Rooms, Properties, Classes…) with live items.
+  links += liveTypes(team.id)
+    .map((t) => `<a href="${esc(base)}/c/${esc(t.key)}">${esc(t.name_plural)}</a>`)
+    .join('');
   // Language switcher when the site publishes in several locales.
   const locales = liveLocales(team.id);
   if (locales.length > 1) {
@@ -198,6 +202,18 @@ function teamNav(team, base, onDomain, loc) {
       .join('');
   }
   return onDomain ? links : links + '<a href="/">All sites</a>';
+}
+
+/** Custom content types that currently have live items. */
+function liveTypes(teamId) {
+  return getDb()
+    .prepare(
+      `SELECT ct.key, ct.name, ct.name_plural FROM content_types ct
+       WHERE ct.team_id = ? AND EXISTS (
+         SELECT 1 FROM content WHERE team_id = ct.team_id AND type = ct.key AND ${LIVE}
+       ) ORDER BY ct.name`
+    )
+    .all(teamId);
 }
 
 function tagLinks(row, base) {
@@ -392,6 +408,59 @@ function renderTeamPost(team, onDomain, slug, req, res) {
       },
     })
   );
+}
+
+/** Archive page for a custom content type: /c/<key> lists its live items,
+    with a line of field values under each excerpt. */
+function renderTypeArchive(team, onDomain, typeKey, req, res) {
+  const ct = getType(team.id, String(typeKey).toLowerCase());
+  if (!ct) {
+    return res
+      .status(404)
+      .send(teamLayout(team, onDomain, { title: 'Not found', content: '<div class="hero"><h1>404</h1><p>Nothing here.</p></div>' }));
+  }
+  const rows = getDb()
+    .prepare(`SELECT * FROM content WHERE team_id = ? AND type = ? AND ${LIVE} ORDER BY published_at DESC`)
+    .all(team.id, ct.key)
+    .map(liveRow);
+  const base = teamBase(team, onDomain);
+  const s = teamSettings(team.id);
+  const fieldLine = (row) => {
+    const values = parseFieldValues(row.fields);
+    const shown = ct.schema
+      .filter((f) => f.kind !== 'url' && values[f.key] !== undefined && values[f.key] !== '')
+      .slice(0, 3)
+      .map((f) => `${esc(f.label)}: <b>${esc(String(values[f.key]))}</b>`);
+    return shown.length ? `<div class="meta">${shown.join(' · ')}</div>` : '';
+  };
+  const card = (row) => {
+    const href = `${base}/${row.slug}`;
+    const excerpt = row.excerpt ? mdInline(row.excerpt) : esc(fallbackExcerpt(row.format, row.body));
+    const cover = row.cover_image
+      ? `<img class="cover" src="${esc(row.cover_image)}" alt="">`
+      : `<div class="cover placeholder">✶</div>`;
+    return `<div class="card">
+      <a href="${esc(href)}">${cover}</a>
+      <div class="pad"><h2><a href="${esc(href)}">${esc(row.title)}</a></h2><p>${excerpt}</p>${fieldLine(row)}</div>
+    </div>`;
+  };
+  const rowItem = (row) => {
+    const href = `${base}/${row.slug}`;
+    const excerpt = row.excerpt ? mdInline(row.excerpt) : esc(fallbackExcerpt(row.format, row.body));
+    return `<a class="postrow" href="${esc(href)}"><div>
+      <h2>${esc(row.title)}</h2><p>${excerpt}</p>${fieldLine(row)}
+    </div></a>`;
+  };
+  const hero = `<div class="hero"><h1>${esc(ct.name_plural)}</h1><div class="rule"></div></div>`;
+  const listMode = s.layout === 'list';
+  const content = rows.length
+    ? `${hero}${
+        listMode
+          ? `<div class="postlist">${rows.map(rowItem).join('')}</div>`
+          : `<div class="cards">${rows.map(card).join('')}</div>`
+      }`
+    : `${hero}<p class="meta" style="margin-top:2rem">Nothing here yet.</p>`;
+  res.send(teamLayout(team, onDomain, { title: ct.name_plural, content }));
 }
 
 function renderTeamPage(team, onDomain, slug, req, res) {
@@ -666,6 +735,12 @@ router.get('/posts/:slug', (req, res, next) => {
   renderTeamPost(req.domainTeam, true, req.params.slug, req, res);
 });
 
+// Custom-type archives: /c/rooms lists a type's live items.
+router.get('/c/:typeKey', (req, res, next) => {
+  if (!req.domainTeam) return next();
+  renderTypeArchive(req.domainTeam, true, req.params.typeKey, req, res);
+});
+
 // Path-based company sites (always available, custom domain or not).
 router.get('/t/:team', (req, res) => {
   const team = findTeam(req.params.team);
@@ -677,6 +752,12 @@ router.get('/t/:team/posts/:slug', (req, res) => {
   const team = findTeam(req.params.team);
   if (!team) return res.status(404).send('Company not found');
   renderTeamPost(team, false, req.params.slug, req, res);
+});
+
+router.get('/t/:team/c/:typeKey', (req, res) => {
+  const team = findTeam(req.params.team);
+  if (!team) return res.status(404).send('Company not found');
+  renderTypeArchive(team, false, req.params.typeKey, req, res);
 });
 
 // Locale homes: /t/acme/es — guarded so ordinary page slugs fall through.

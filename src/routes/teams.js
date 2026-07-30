@@ -157,6 +157,7 @@ router.post('/:teamId/ai-build', requireTeamRole('admin'), aiLimiter, async (req
       accent_color: spec.accent_color,
       pages: spec.pages.length,
       posts: spec.posts.length,
+      items: spec.items.length,
       ...result,
     });
   } catch (err) {

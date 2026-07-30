@@ -858,12 +858,55 @@ test('site templates are listed for authenticated users only', async () => {
   const res = await alice('/api/site-templates');
   assert.strictEqual(res.status, 200);
   const body = await res.json();
-  assert.ok(Array.isArray(body.templates) && body.templates.length >= 5);
+  assert.ok(Array.isArray(body.templates) && body.templates.length >= 15);
   const docs = body.templates.find((t) => t.key === 'docs');
   assert.ok(docs);
   assert.strictEqual(docs.theme, 'terminal');
   assert.ok(docs.pages > 0 && docs.posts > 0);
+  assert.ok(body.templates.every((t) => t.category));
+  const hotel = body.templates.find((t) => t.key === 'hotel');
+  assert.strictEqual(hotel.category, 'Food & Hospitality');
+  assert.ok(hotel.types >= 1 && hotel.items >= 2);
+  assert.ok(body.templates.some((t) => t.key === 'restaurant'));
   assert.strictEqual(typeof body.ai_available, 'boolean');
+});
+
+test('business templates install custom types with typed starter content', async () => {
+  const owner = await registerAs('hotelowner', 'hotel-password-1');
+  const team = await (await owner('/api/teams', { method: 'POST', body: { name: 'Harbor House' } })).json();
+  const res = await owner(`/api/teams/${team.id}/apply-template`, { method: 'POST', body: { template: 'hotel' } });
+  assert.strictEqual(res.status, 200);
+  const result = await res.json();
+  assert.strictEqual(result.types, 1);
+  assert.ok(result.created >= 6); // 3 rooms + 2 pages + 1 post
+
+  const types = await (await owner(`/api/teams/${team.id}/content-types`)).json();
+  const room = types.find((t) => t.key === 'room');
+  assert.ok(room);
+  assert.ok(room.schema.some((f) => f.key === 'price_per_night_usd' && f.kind === 'number'));
+
+  // Rooms are live with validated field values, on the site and the API.
+  const rooms = await (await fetch(`${base}/api/public/${team.slug}/content?type=room`)).json();
+  assert.strictEqual(rooms.length, 3);
+  const suite = rooms.find((r) => r.title === 'The Lighthouse Suite');
+  assert.strictEqual(suite.fields.price_per_night_usd, 320);
+  assert.strictEqual(suite.fields.view, 'Sea');
+  const html = await (await fetch(`${base}/t/${team.slug}/${suite.slug}`)).text();
+  assert.ok(html.includes('Price per night (USD)') && html.includes('320'));
+
+  // The site nav links a "Rooms" archive listing every live room.
+  const home = await (await fetch(`${base}/t/${team.slug}`)).text();
+  assert.ok(home.includes(`/t/${team.slug}/c/room`) && home.includes('Rooms'));
+  const archive = await (await fetch(`${base}/t/${team.slug}/c/room`)).text();
+  assert.ok(archive.includes('The Garden Room') && archive.includes('The Attic Hideaway'));
+  assert.ok(archive.includes('View') && archive.includes('Sea'));
+  assert.strictEqual((await fetch(`${base}/t/${team.slug}/c/nope`)).status, 404);
+
+  // Re-applying never duplicates the type (content gets -2 slugs instead).
+  const again = await (await owner(`/api/teams/${team.id}/apply-template`, { method: 'POST', body: { template: 'hotel' } })).json();
+  assert.strictEqual(again.types, 0);
+  const typesAfter = await (await owner(`/api/teams/${team.id}/content-types`)).json();
+  assert.strictEqual(typesAfter.length, 1);
 });
 
 test('applying a starter kit sets the theme and publishes starter content', async () => {
