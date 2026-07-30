@@ -1185,6 +1185,81 @@ Second paragraph with <strong>bold</strong>.]]></content:encoded></item>
   assert.strictEqual(denied.status, 403);
 });
 
+test('site search works on hosted sites and the headless API, with CDN cache headers', async () => {
+  const owner = await registerAs('searcher', 'search-password-1');
+  const team = await (await owner('/api/teams', { method: 'POST', body: { name: 'Search Co' } })).json();
+  const mk = (body) => owner(`/api/teams/${team.id}/content`, { method: 'POST', body });
+  await mk({ type: 'post', title: 'The espresso guide', body: 'Grind fine, tamp level.', status: 'published' });
+  await mk({ type: 'page', title: 'About', body: 'We sell espresso machines.', status: 'published' });
+  await mk({ type: 'post', title: 'Unrelated news', body: 'Nothing here.', status: 'published' });
+  await mk({ type: 'post', title: 'Secret espresso draft', body: 'espresso', status: 'draft' });
+
+  const pageRes = await fetch(`${base}/t/${team.slug}/search?q=espresso`);
+  assert.strictEqual(pageRes.status, 200);
+  assert.ok((pageRes.headers.get('cache-control') || '').includes('stale-while-revalidate'));
+  const html = await pageRes.text();
+  assert.ok(html.includes('The espresso guide') && html.includes('About'));
+  assert.ok(!html.includes('Secret espresso draft')); // drafts never leak
+  assert.ok(!html.includes('Unrelated news'));
+  const empty = await (await fetch(`${base}/t/${team.slug}/search?q=zzzznothing`)).text();
+  assert.ok(empty.includes('Nothing found'));
+  // The nav links the search page.
+  const home = await (await fetch(`${base}/t/${team.slug}`)).text();
+  assert.ok(home.includes(`/t/${team.slug}/search`));
+
+  const apiRes = await fetch(`${base}/api/public/${team.slug}/content?q=espresso`);
+  assert.ok((apiRes.headers.get('cache-control') || '').includes('s-maxage'));
+  const results = await apiRes.json();
+  assert.strictEqual(results.length, 2);
+  assert.ok(results.every((r) => `${r.title}`.includes('espresso') || r.title === 'About'));
+});
+
+test('trash: soft delete, restore, admin-only purge, and duplicate', async () => {
+  const owner = await loginAs('searcher', 'search-password-1');
+  const mgr = await registerAs('trashmgr', 'trash-password-1');
+  const team = await (await owner('/api/teams', { method: 'POST', body: { name: 'Trash Co' } })).json();
+  await owner(`/api/teams/${team.id}/members`, { method: 'POST', body: { username: 'trashmgr', role: 'manager' } });
+  const item = await (
+    await owner(`/api/teams/${team.id}/content`, {
+      method: 'POST',
+      body: { type: 'post', title: 'Keep me safe', body: 'Precious content.', status: 'published', tags: ['Careful'] },
+    })
+  ).json();
+
+  // Duplicate makes a fresh draft with tags and body.
+  const copy = await (await owner(`/api/teams/${team.id}/content/${item.id}/duplicate`, { method: 'POST' })).json();
+  assert.strictEqual(copy.status, 'draft');
+  assert.strictEqual(copy.title, 'Copy of Keep me safe');
+  assert.notStrictEqual(copy.slug, item.slug);
+  assert.deepStrictEqual(copy.tags.map((t) => t.name), ['Careful']);
+
+  // Delete = trash: off the site and the list, visible in /trash.
+  const del = await (await owner(`/api/teams/${team.id}/content/${item.id}`, { method: 'DELETE' })).json();
+  assert.strictEqual(del.trashed, true);
+  assert.strictEqual((await fetch(`${base}/t/${team.slug}/posts/${item.slug}`)).status, 404);
+  const list = await (await owner(`/api/teams/${team.id}/content`)).json();
+  assert.ok(!list.some((r) => r.id === item.id));
+  assert.strictEqual((await owner(`/api/teams/${team.id}/content/${item.id}`)).status, 404);
+  const trash = await (await owner(`/api/teams/${team.id}/content/trash`)).json();
+  assert.ok(trash.some((r) => r.id === item.id));
+
+  // Restore brings it back live, exactly as it was.
+  await owner(`/api/teams/${team.id}/content/${item.id}/untrash`, { method: 'POST' });
+  assert.strictEqual((await fetch(`${base}/t/${team.slug}/posts/${item.slug}`)).status, 200);
+
+  // Purge: managers may trash, only admins may delete forever.
+  await mgr(`/api/teams/${team.id}/content/${item.id}`, { method: 'DELETE' });
+  assert.strictEqual((await mgr(`/api/teams/${team.id}/content/${item.id}`, { method: 'DELETE' })).status, 403);
+  const purge = await (await owner(`/api/teams/${team.id}/content/${item.id}`, { method: 'DELETE' })).json();
+  assert.strictEqual(purge.purged, true);
+  assert.strictEqual((await (await owner(`/api/teams/${team.id}/content/trash`)).json()).length, 0);
+
+  // Trashed items don't count in dashboard stats.
+  const stats = await (await owner(`/api/teams/${team.id}/stats`)).json();
+  assert.strictEqual(stats.trash, 0);
+  assert.strictEqual(stats.posts, 1); // just the duplicate draft
+});
+
 test('health endpoint responds for load balancers', async () => {
   const res = await fetch(`${base}/api/health`);
   assert.strictEqual(res.status, 200);

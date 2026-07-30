@@ -433,3 +433,4 @@ td .path { color: var(--faint); font-size: 0.76rem; }
   border: 1px dashed var(--a1); background: color-mix(in srgb, var(--a1) 6%, transparent);
 }
 .ai-build textarea { width: 100%; }
+.setup-cols { display: flex; gap: 1.2rem; align-items: flex-start; flex-wrap: wrap; }

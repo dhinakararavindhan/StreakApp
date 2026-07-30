@@ -23,7 +23,7 @@ Users can belong to several companies (with different roles in each) and switch 
 ## Onboarding a company
 
 1. **Register** at `/admin` (self-serve; superadmins can switch the platform to invite-only).
-2. **Create the company workspace** — the creator becomes its admin and adds employees by username as managers (or co-admins).
+2. **Create the company workspace** — the creator becomes its admin and adds employees by username as managers (or co-admins). Creation flows straight into a **choose-your-starting-point** screen: pick a business template, describe the company to the AI builder, or start blank.
 3. **Start the site in one click** (optional, from the Company page):
    - **Starter kits** — 41 pre-configured business templates across six categories, searchable in the picker: Food & Hospitality (café, restaurant, boutique hotel, bakery, bar & brewery, food truck), Services (medical clinic, dental practice, veterinary clinic, salon & spa, barbershop, fitness studio, yoga studio, law firm, accounting, IT services, auto repair, contractor, travel agency), Property (real-estate agency, coworking space), Creative & Retail (portfolio, photography, boutique, bookstore, florist, tattoo studio, agency, band), Community & Education (nonprofit, school, museum & gallery, church, daycare, events & weddings), and Product & Publishing (product site, docs, changelog, blog, newsletter, podcast). Each applies a matching theme + typography + layout and publishes real, ready-to-edit starter content — and eleven kits **install custom content types** where the business has structured content: the hotel ships *Rooms* (sleeps, nightly rate, view, booking link), the brewery ships its *Tap list* (style, ABV, price), the travel agency ships *Trips* with departure dates, real estate ships *Properties*, coworking ships *Spaces*, the museum ships *Exhibitions*, plus gym/yoga *Classes*, school *Courses*, band *Shows*, and food-truck *Stops*. Existing content and types are never touched.
    - **AI site builder** — describe the company in a sentence and Claude designs the whole site: theme, headings typeface, layout, accent color, written-in-your-voice starter pages and posts — and, where the business calls for it, custom content types with structured starter items. Requires `ANTHROPIC_API_KEY` on the server (admin-only, rate-limited).
@@ -75,6 +75,9 @@ Managers have full CRUD on content, but nothing they touch goes live on its own:
 - **Tags** per company, with filtering on the public site and in the admin.
 - **Media library** per company — images and files up to 10 MB, served from `/uploads`.
 - **Public sites** with hero sections, card-grid or list layouts, sticky blurred navigation, and per-company theming (11 presets × 3 heading typefaces × accent color × custom CSS).
+- **Site search** on every hosted site — `/search`, linked from the nav, across all live content of every type; the headless API takes `?q=` with the same draft-safe rules.
+- **Trash & duplicate**: deleting content moves it to a per-company trash (off the site instantly, restorable exactly as it was; permanent deletion is admin-only), and any item can be duplicated as a fresh draft with its tags and custom fields.
+- **CDN-ready**: every public page, feed, and API response carries `Cache-Control` with `s-maxage` + `stale-while-revalidate`, so an edge cache or CDN can absorb traffic spikes without config.
 
 ## Quick start
 
@@ -122,6 +125,7 @@ Or roll your own: `docker build -t nova-cms . && docker run -p 3000:3000 -v nova
 | `RATE_LIMIT_LOGIN` / `RATE_LIMIT_REGISTER` | `30` / `30` | Auth attempts allowed per IP per window |
 | `ANTHROPIC_API_KEY` | unset | Enables the AI site builder (without it the feature shows as unavailable) |
 | `NOVA_AI_MODEL` | `claude-opus-5` | Claude model used by the AI site builder |
+| `NOVA_LOG` | unset | Set `json` for structured one-line-per-request logs |
 
 ## API overview
 
@@ -143,7 +147,10 @@ All `/api` routes accept and return JSON. Authentication uses an httpOnly cookie
 | POST | `/api/teams/:id/apply-template` | company admin | Apply a starter kit (`{template}`) — settings + published starter content |
 | POST | `/api/teams/:id/ai-build` | company admin | AI site builder (`{prompt}`) — Claude designs theme + starter content |
 | GET/POST | `/api/teams/:id/content` | member | List (`?type=&status=&tag=&search=`) / create (incl. `cover_image`) |
-| GET/PUT/DELETE | `/api/teams/:id/content/:cid` | member | Read / update / delete one item (managers can't set `published`) |
+| GET/PUT/DELETE | `/api/teams/:id/content/:cid` | member | Read / update / trash one item (managers can't set `published`); DELETE on a trashed item purges — admin only |
+| GET | `/api/teams/:id/content/trash` | member | List trashed items |
+| POST | `/api/teams/:id/content/:cid/untrash` | member | Restore from the trash |
+| POST | `/api/teams/:id/content/:cid/duplicate` | member | Duplicate as a fresh draft (tags + custom fields included) |
 | POST | `/api/teams/:id/content/:cid/approve` | company admin | Approve pending content — goes live |
 | POST | `/api/teams/:id/content/:cid/reject` | company admin | Reject pending content back to draft (`{note}`) |
 | GET | `/api/teams/:id/content/:cid/versions` | member | Version history (newest first) |
@@ -162,7 +169,7 @@ All `/api` routes accept and return JSON. Authentication uses an httpOnly cookie
 | GET/POST/DELETE | `/api/users[/:id]` | superadmin | Platform-wide user administration |
 | GET/PUT | `/api/settings` | — / superadmin | Platform settings incl. `allow_registration` |
 | GET | `/api/public/:company` | — | Public company profile (JSON, CORS-open) |
-| GET | `/api/public/:company/content[/:slug]` | — | Published content as JSON — list (`?type=&tag=&locale=`) or single with `body_html` + `translations` |
+| GET | `/api/public/:company/content[/:slug]` | — | Published content as JSON — list (`?type=&tag=&locale=&q=`) or single with `body_html` + `translations` |
 
 ## Tests
 
@@ -170,7 +177,7 @@ All `/api` routes accept and return JSON. Authentication uses an httpOnly cookie
 npm test
 ```
 
-53 end-to-end tests (`node --test`, in-memory database): registration, company creation, the three-tier role model, cross-company isolation, content CRUD with cover images, per-company slug scoping, draft/pending/publish visibility, the approval workflow, custom content types with field validation, the WordPress/Markdown/Nova importers, feeds/sitemaps/SEO, rate limiting, theming, starter kits and the AI site builder (mock mode), custom-domain routing, the headless API, dashboards, and platform stats.
+55 end-to-end tests (`node --test`, in-memory database): registration, company creation, the three-tier role model, cross-company isolation, content CRUD with cover images, per-company slug scoping, draft/pending/publish visibility, the approval workflow, custom content types with field validation, the WordPress/Markdown/Nova importers, feeds/sitemaps/SEO, rate limiting, theming, starter kits and the AI site builder (mock mode), custom-domain routing, the headless API, dashboards, and platform stats.
 
 ## Project layout
 

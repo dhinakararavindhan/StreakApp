@@ -7,6 +7,16 @@ const { getType, parseFieldValues, BUILTIN_TYPES } = require('../content-types')
 
 const router = express.Router();
 
+// CDN-friendly caching on every public GET: short browser cache, longer
+// edge cache, stale-while-revalidate so traffic spikes never hit origin
+// cold. Admin and authenticated APIs are mounted before this router.
+router.use((req, res, next) => {
+  if (req.method === 'GET') {
+    res.set('Cache-Control', 'public, max-age=60, s-maxage=300, stale-while-revalidate=600');
+  }
+  next();
+});
+
 // Theme presets a company can pick for its site. 'default' follows the
 // visitor's light/dark preference; the rest are fixed brand looks.
 const THEMES = {
@@ -158,6 +168,9 @@ ${(meta.alternates || []).map((a) => `<link rel="alternate" hreflang="${esc(a.la
   figure.body-image figcaption { color: var(--muted); font-size: 0.85rem; margin-top: 0.5rem; text-align: center; }
   .embed-wrap { position: relative; aspect-ratio: 16 / 9; border-radius: 12px; overflow: hidden; background: var(--border); }
   .embed-wrap iframe { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .site-search { display: flex; gap: 0.6rem; margin-top: 1.5rem; }
+  .site-search input { flex: 1; max-width: 420px; padding: 0.6rem 0.9rem; border-radius: 10px; border: 1px solid var(--border); background: color-mix(in srgb, var(--fg) 3%, var(--bg)); color: var(--fg); font: inherit; }
+  .site-search button { padding: 0.6rem 1.1rem; border-radius: 10px; border: none; background: var(--accent); color: var(--bg); font: inherit; font-weight: 600; cursor: pointer; }
   dl.fields { display: grid; grid-template-columns: max-content 1fr; gap: 0.35rem 1.25rem; margin: 0 0 2rem; padding: 1rem 1.25rem; border: 1px solid var(--border); border-radius: 12px; background: color-mix(in srgb, var(--fg) 3%, var(--bg)); }
   dl.fields dt { color: var(--muted); font-size: 0.85rem; font-weight: 600; }
   dl.fields dd { margin: 0; font-size: 0.92rem; }
@@ -201,6 +214,7 @@ function teamNav(team, base, onDomain, loc) {
       })
       .join('');
   }
+  links += `<a href="${esc(base)}/search" title="Search">⌕</a>`;
   return onDomain ? links : links + '<a href="/">All sites</a>';
 }
 
@@ -302,9 +316,9 @@ function findTeam(slug) {
 
 // A row is publicly visible when published, or when a previously approved
 // version is still live while new edits await review (published_snapshot).
-const LIVE = `((status = 'published'
+const LIVE = `(deleted_at IS NULL AND ((status = 'published'
   AND (publish_at IS NULL OR publish_at <= datetime('now'))
-  AND (expire_at IS NULL OR expire_at > datetime('now'))) OR published_snapshot != '')`;
+  AND (expire_at IS NULL OR expire_at > datetime('now'))) OR published_snapshot != ''))`;
 
 /** The version of a row the public should see. */
 function liveRow(row) {
@@ -408,6 +422,46 @@ function renderTeamPost(team, onDomain, slug, req, res) {
       },
     })
   );
+}
+
+/** Site search: /search?q= across all live content, every type. */
+function renderTeamSearch(team, onDomain, req, res) {
+  const q = String(req.query.q || '').trim().slice(0, 100);
+  const base = teamBase(team, onDomain);
+  let results = [];
+  if (q) {
+    const like = `%${q}%`;
+    results = getDb()
+      .prepare(
+        `SELECT * FROM content WHERE team_id = ? AND ${LIVE}
+         AND (title LIKE ? OR excerpt LIKE ? OR body LIKE ?)
+         ORDER BY published_at DESC LIMIT 50`
+      )
+      .all(team.id, like, like, like)
+      .map(liveRow);
+  }
+  const href = (row) => (row.type === 'post' ? `${base}/posts/${row.slug}` : `${base}/${row.slug}`);
+  const rowsHtml = results
+    .map((row) => {
+      const excerpt = row.excerpt ? mdInline(row.excerpt) : esc(fallbackExcerpt(row.format, row.body));
+      return `<a class="postrow" href="${esc(href(row))}"><div>
+        <h2>${esc(row.title)}</h2><p>${excerpt}</p>
+        <div class="meta">${esc(row.type)}</div>
+      </div></a>`;
+    })
+    .join('');
+  const content = `
+    <div class="hero"><h1>Search</h1><div class="rule"></div></div>
+    <form method="get" action="${esc(`${base}/search`)}" class="site-search">
+      <input type="search" name="q" value="${esc(q)}" placeholder="Search this site…" autofocus>
+      <button type="submit">Search</button>
+    </form>
+    ${q
+      ? results.length
+        ? `<p class="meta" style="margin-top:1.5rem">${results.length} result${results.length === 1 ? '' : 's'} for “${esc(q)}”</p><div class="postlist">${rowsHtml}</div>`
+        : `<p class="meta" style="margin-top:2rem">Nothing found for “${esc(q)}”.</p>`
+      : ''}`;
+  res.send(teamLayout(team, onDomain, { title: q ? `Search: ${q}` : 'Search', content }));
 }
 
 /** Archive page for a custom content type: /c/<key> lists its live items,
@@ -539,11 +593,16 @@ router.get('/api/public/:team', cors, (req, res) => {
 router.get('/api/public/:team/content', cors, (req, res) => {
   const team = findTeam(req.params.team);
   if (!team) return res.status(404).json({ error: 'Company not found' });
-  const { type, tag, locale } = req.query;
+  const { type, tag, locale, q } = req.query;
   const where = ['team_id = ?', LIVE];
 
   const params = [team.id];
   if (type) { where.push('type = ?'); params.push(type); }
+  if (q) {
+    where.push('(title LIKE ? OR excerpt LIKE ? OR body LIKE ?)');
+    const like = `%${String(q).slice(0, 100)}%`;
+    params.push(like, like, like);
+  }
   if (locale) { where.push('locale = ?'); params.push(String(locale).toLowerCase()); }
   if (tag) {
     where.push(
@@ -741,6 +800,12 @@ router.get('/c/:typeKey', (req, res, next) => {
   renderTypeArchive(req.domainTeam, true, req.params.typeKey, req, res);
 });
 
+// Site search on a custom domain.
+router.get('/search', (req, res, next) => {
+  if (!req.domainTeam) return next();
+  renderTeamSearch(req.domainTeam, true, req, res);
+});
+
 // Path-based company sites (always available, custom domain or not).
 router.get('/t/:team', (req, res) => {
   const team = findTeam(req.params.team);
@@ -758,6 +823,12 @@ router.get('/t/:team/c/:typeKey', (req, res) => {
   const team = findTeam(req.params.team);
   if (!team) return res.status(404).send('Company not found');
   renderTypeArchive(team, false, req.params.typeKey, req, res);
+});
+
+router.get('/t/:team/search', (req, res) => {
+  const team = findTeam(req.params.team);
+  if (!team) return res.status(404).send('Company not found');
+  renderTeamSearch(team, false, req, res);
 });
 
 // Locale homes: /t/acme/es — guarded so ordinary page slugs fall through.

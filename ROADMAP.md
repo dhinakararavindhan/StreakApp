@@ -56,8 +56,9 @@ From one box to the planet.
 - [ ] Object storage for media (S3-compatible) with local disk as default
 - [ ] Redis-backed cache + rate limiting for multi-node deployments
 - [ ] Automatic TLS for custom domains (ACME/Let's Encrypt integration or first-class Caddy guide)
-- [ ] CDN-friendly caching headers + stale-while-revalidate on public pages and the content API
-- [ ] Observability: structured logs, request metrics, error reporting hooks
+- [x] CDN-friendly caching headers + stale-while-revalidate on public pages and the content API
+- [x] Observability groundwork: structured JSON request logs (`NOVA_LOG=json`)
+- [ ] Observability: request metrics, error reporting hooks
 
 ## Phase 5 — Ecosystem
 
@@ -65,6 +66,9 @@ The moat is other people's work running on Nova.
 
 - [ ] Plugin API (server hooks + admin panel extension points)
 - [x] Theme gallery: 11 presets × heading typefaces (sans/serif/mono) × home layouts (cards/list) × accent + custom CSS
+- [x] Site search on every hosted site (`/search`, linked in the nav) and the headless API (`?q=`)
+- [x] Content trash: soft delete with restore, admin-only permanent purge; one-click duplicate-as-draft
+- [x] New-company onboarding: pick a business template, run the AI builder, or start blank — right at creation
 - [x] Starter kits: 41 business templates across six categories (hospitality, services, property, creative & retail, community & education, product & publishing) — theme + typography + real published starter content in one click, with custom content types where the business has structured data (hotel Rooms, brewery Taps, travel Trips, real-estate Properties, coworking Spaces, museum Exhibitions, gym/yoga Classes, school Courses, band Shows, food-truck Stops)
 - [x] AI site builder: describe the company, Claude designs the theme, writes the starter site, and defines custom content types when the business calls for them (`ANTHROPIC_API_KEY`, admin-only, rate-limited, offline mock mode for tests)
 - [ ] Theme system beyond presets: installable themes, template overrides

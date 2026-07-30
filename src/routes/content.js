@@ -38,7 +38,7 @@ function groupMembers(teamId, rootId) {
   return getDb()
     .prepare(
       `SELECT id, locale, title, slug, status FROM content
-       WHERE team_id = ? AND (id = ? OR translation_of = ?) ORDER BY locale`
+       WHERE team_id = ? AND (id = ? OR translation_of = ?) AND deleted_at IS NULL ORDER BY locale`
     )
     .all(teamId, rootId, rootId);
 }
@@ -117,7 +117,7 @@ function normalizeWhen(value) {
 // List with optional filters: ?type=post&status=pending&tag=news&search=hello
 router.get('/', (req, res) => {
   const { type, status, tag, search, locale } = req.query;
-  const where = ['c.team_id = ?'];
+  const where = ['c.team_id = ?', 'c.deleted_at IS NULL'];
   const params = [req.team.id];
   if (type) { where.push('c.type = ?'); params.push(type); }
   if (status) { where.push('c.status = ?'); params.push(status); }
@@ -140,6 +140,20 @@ router.get('/', (req, res) => {
   res.json(rows.map((r) => serialize(r)));
 });
 
+// The trash: soft-deleted items, restorable or purgeable. Declared before
+// '/:id' so the literal path wins.
+router.get('/trash', (req, res) => {
+  const rows = getDb()
+    .prepare(
+      `SELECT c.*, u.username AS author FROM content c
+       LEFT JOIN users u ON u.id = c.author_id
+       WHERE c.team_id = ? AND c.deleted_at IS NOT NULL
+       ORDER BY c.deleted_at DESC`
+    )
+    .all(req.team.id);
+  res.json(rows.map((r) => serialize(r)));
+});
+
 router.get('/:id', (req, res) => {
   const row = getDb()
     .prepare(
@@ -148,7 +162,7 @@ router.get('/:id', (req, res) => {
        WHERE c.id = ? AND c.team_id = ?`
     )
     .get(req.params.id, req.team.id);
-  if (!row) return res.status(404).json({ error: 'Not found' });
+  if (!row || row.deleted_at) return res.status(404).json({ error: 'Not found' });
   res.json(serialize(row, { withHtml: true }));
 });
 
@@ -315,7 +329,7 @@ router.put('/:id', (req, res) => {
   const existing = db
     .prepare('SELECT * FROM content WHERE id = ? AND team_id = ?')
     .get(req.params.id, req.team.id);
-  if (!existing) return res.status(404).json({ error: 'Not found' });
+  if (!existing || existing.deleted_at) return res.status(404).json({ error: 'Not found' });
 
   const updated = applyUpdate(req, res, existing, req.body || {});
   if (!updated) return; // applyUpdate already responded with an error
@@ -451,15 +465,61 @@ router.post('/:id/comments', (req, res) => {
   res.status(201).json(comment);
 });
 
+// First DELETE moves an item to the trash (off the site, restorable).
+// A DELETE on an already-trashed item purges it permanently — admin only.
 router.delete('/:id', (req, res) => {
   const db = getDb();
   const row = db.prepare('SELECT * FROM content WHERE id = ? AND team_id = ?').get(req.params.id, req.team.id);
   if (!row) return res.status(404).json({ error: 'Not found' });
+  if (row.deleted_at) {
+    if (req.teamRole !== 'admin') {
+      return res.status(403).json({ error: 'Deleting from the trash permanently requires a company admin' });
+    }
+    db.prepare('DELETE FROM content WHERE id = ?').run(row.id);
+    audit(req.team.id, req.user, 'content.purge', row.title);
+    return res.json({ ok: true, purged: true });
+  }
   const wasLive = row.status === 'published' || Boolean(row.published_snapshot);
-  db.prepare('DELETE FROM content WHERE id = ? AND team_id = ?').run(req.params.id, req.team.id);
-  audit(req.team.id, req.user, 'content.delete', row.title);
+  db.prepare("UPDATE content SET deleted_at = datetime('now') WHERE id = ?").run(row.id);
+  audit(req.team.id, req.user, 'content.trash', row.title);
   if (wasLive) deliver(req.team.id, 'content.deleted', contentPayload(req.team, row));
-  res.json({ ok: true });
+  res.json({ ok: true, trashed: true });
+});
+
+// Restore from the trash — the item returns exactly as it left.
+router.post('/:id/untrash', (req, res) => {
+  const db = getDb();
+  const row = db.prepare('SELECT * FROM content WHERE id = ? AND team_id = ?').get(req.params.id, req.team.id);
+  if (!row || !row.deleted_at) return res.status(404).json({ error: 'Not in the trash' });
+  db.prepare("UPDATE content SET deleted_at = NULL, updated_at = datetime('now') WHERE id = ?").run(row.id);
+  audit(req.team.id, req.user, 'content.untrash', row.title);
+  const fresh = db.prepare('SELECT * FROM content WHERE id = ?').get(row.id);
+  if (fresh.status === 'published' || fresh.published_snapshot) {
+    deliver(req.team.id, 'content.published', contentPayload(req.team, fresh));
+  }
+  res.json(serialize(fresh));
+});
+
+// Duplicate an item as a fresh draft (fields, tags, and body included).
+router.post('/:id/duplicate', (req, res) => {
+  const db = getDb();
+  const row = db.prepare('SELECT * FROM content WHERE id = ? AND team_id = ?').get(req.params.id, req.team.id);
+  if (!row || row.deleted_at) return res.status(404).json({ error: 'Not found' });
+  const title = `Copy of ${row.title}`.slice(0, 200);
+  const slug = uniqueSlug(title, req.team.id);
+  const result = db
+    .prepare(
+      `INSERT INTO content (team_id, type, title, slug, body, format, excerpt, cover_image, status, author_id, locale, fields)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?)`
+    )
+    .run(req.team.id, row.type, title, slug, row.body, row.format, row.excerpt, row.cover_image, req.user.id, row.locale, row.fields);
+  db.prepare(
+    'INSERT INTO content_tags (content_id, tag_id) SELECT ?, tag_id FROM content_tags WHERE content_id = ?'
+  ).run(result.lastInsertRowid, row.id);
+  const copy = db.prepare('SELECT * FROM content WHERE id = ?').get(result.lastInsertRowid);
+  saveVersion(copy, req.user.id);
+  audit(req.team.id, req.user, 'content.duplicate', row.title);
+  res.status(201).json(serialize(copy));
 });
 
 module.exports = router;

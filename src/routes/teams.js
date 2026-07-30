@@ -171,11 +171,12 @@ router.get('/:teamId/stats', requireTeamRole('manager'), (req, res) => {
   const db = getDb();
   const one = (sql) => db.prepare(sql).get(req.team.id).n;
   res.json({
-    posts: one("SELECT COUNT(*) AS n FROM content WHERE team_id = ? AND type = 'post'"),
-    pages: one("SELECT COUNT(*) AS n FROM content WHERE team_id = ? AND type = 'page'"),
-    published: one("SELECT COUNT(*) AS n FROM content WHERE team_id = ? AND status = 'published'"),
-    drafts: one("SELECT COUNT(*) AS n FROM content WHERE team_id = ? AND status = 'draft'"),
-    pending: one("SELECT COUNT(*) AS n FROM content WHERE team_id = ? AND status = 'pending'"),
+    posts: one("SELECT COUNT(*) AS n FROM content WHERE team_id = ? AND type = 'post' AND deleted_at IS NULL"),
+    pages: one("SELECT COUNT(*) AS n FROM content WHERE team_id = ? AND type = 'page' AND deleted_at IS NULL"),
+    published: one("SELECT COUNT(*) AS n FROM content WHERE team_id = ? AND status = 'published' AND deleted_at IS NULL"),
+    drafts: one("SELECT COUNT(*) AS n FROM content WHERE team_id = ? AND status = 'draft' AND deleted_at IS NULL"),
+    pending: one("SELECT COUNT(*) AS n FROM content WHERE team_id = ? AND status = 'pending' AND deleted_at IS NULL"),
+    trash: one('SELECT COUNT(*) AS n FROM content WHERE team_id = ? AND deleted_at IS NOT NULL'),
     media: one('SELECT COUNT(*) AS n FROM media WHERE team_id = ?'),
     members: one('SELECT COUNT(*) AS n FROM team_members WHERE team_id = ?'),
     tags: one('SELECT COUNT(*) AS n FROM tags WHERE team_id = ?'),
@@ -183,7 +184,7 @@ router.get('/:teamId/stats', requireTeamRole('manager'), (req, res) => {
       .prepare(
         `SELECT c.id, c.title, c.type, c.status, c.updated_at, u.username AS author
          FROM content c LEFT JOIN users u ON u.id = c.author_id
-         WHERE c.team_id = ? ORDER BY c.updated_at DESC LIMIT 6`
+         WHERE c.team_id = ? AND c.deleted_at IS NULL ORDER BY c.updated_at DESC LIMIT 6`
       )
       .all(req.team.id),
   });
@@ -474,7 +475,7 @@ router.get('/:teamId/export', requireTeamRole('admin'), (req, res) => {
     db.prepare('SELECT key, value FROM team_settings WHERE team_id = ?').all(req.team.id).map((r) => [r.key, r.value])
   );
   const content = db
-    .prepare('SELECT * FROM content WHERE team_id = ? ORDER BY id')
+    .prepare('SELECT * FROM content WHERE team_id = ? AND deleted_at IS NULL ORDER BY id')
     .all(req.team.id)
     .map((row) => {
       const tags = db

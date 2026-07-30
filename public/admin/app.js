@@ -65,6 +65,103 @@
 
   const capi = (path, options) => api(`/teams/${company.id}${path}`, options);
 
+  // ---------- starter picker (Company page + new-company setup) ----------
+
+  function starterPickerHtml() {
+    return `
+      <input id="tpl-filter" placeholder="Search templates — hotel, restaurant, salon…" style="margin-bottom:0.5rem">
+      <div class="tpl-grid" id="tpl-grid">Loading…</div>
+      <div class="ai-build" id="ai-build">
+        <b style="font-size:0.85rem">✦ AI site builder</b>
+        <p style="color:var(--muted);font-size:0.82rem;margin:0.2rem 0 0.5rem">
+          Describe your company in a sentence — Claude picks the theme, typography, and layout,
+          and writes your starter pages and posts.
+        </p>
+        <textarea id="ai-prompt" rows="2" placeholder="A tiny bakery in Lisbon famous for cinnamon rolls and slow mornings"></textarea>
+        <p style="margin:0.5rem 0 0"><button type="button" class="btn" id="ai-go">Build my site</button>
+        <span id="ai-status" style="color:var(--muted);font-size:0.8rem;margin-left:0.5rem"></span></p>
+      </div>`;
+  }
+
+  function mountStarterPicker(page, { confirmApply = true, onApplied } = {}) {
+    const galleryColors = Object.fromEntries(
+      THEME_GALLERY.map(([key, , bg, fg, accent]) => [key, { bg, fg, accent }])
+    );
+    api('/site-templates').then(({ templates, ai_available }) => {
+      const tplRow = (t) => {
+        const c = galleryColors[t.theme] || galleryColors.default;
+        const pieces = t.pages + t.posts + (t.items || 0);
+        const meta = `${pieces} starter item${pieces === 1 ? '' : 's'}${
+          t.types ? ` · ${t.types} custom type${t.types === 1 ? '' : 's'}` : ''
+        }`;
+        return `<div class="tpl">
+          <div class="tpl-swatch" style="background:${c.bg};color:${c.fg}">
+            <span class="dot" style="background:${t.accent_color || c.accent}"></span>Aa</div>
+          <div class="tpl-info"><b>${esc(t.name)}</b><span>${esc(t.description)}</span>
+            <span class="tpl-meta">${meta}</span></div>
+          <button type="button" class="btn secondary sm" data-tpl="${t.key}">Apply</button>
+        </div>`;
+      };
+      const renderTplGrid = (query = '') => {
+        const q = query.trim().toLowerCase();
+        const shown = q
+          ? templates.filter((t) => `${t.name} ${t.description} ${t.category}`.toLowerCase().includes(q))
+          : templates;
+        const categories = [...new Set(shown.map((t) => t.category))];
+        page.querySelector('#tpl-grid').innerHTML = categories.length
+          ? categories
+              .map(
+                (cat) =>
+                  `<div class="tpl-cat">${esc(cat)}</div>` +
+                  shown.filter((t) => t.category === cat).map(tplRow).join('')
+              )
+              .join('')
+          : '<p class="path" style="margin:0.4rem 0">No templates match — try the AI builder below.</p>';
+        bindApply();
+      };
+      page.querySelector('#tpl-filter').addEventListener('input', (e) => renderTplGrid(e.target.value));
+      const bindApply = () => page.querySelectorAll('[data-tpl]').forEach((btn) =>
+        btn.addEventListener('click', async () => {
+          if (confirmApply && !confirm('Apply this starter kit? It updates your site theme, publishes its starter content, and may add custom content types. Existing content is untouched.')) return;
+          btn.disabled = true;
+          try {
+            const r = await api(`/teams/${company.id}/apply-template`, {
+              method: 'POST',
+              body: { template: btn.dataset.tpl },
+            });
+            toast(`Starter kit applied — ${r.created} items published${r.types ? `, ${r.types} content type${r.types === 1 ? '' : 's'} added` : ''}.`);
+            if (onApplied) onApplied(r);
+          } catch (err) {
+            toast(err.message, 'error');
+            btn.disabled = false;
+          }
+        })
+      );
+      renderTplGrid();
+      const aiStatus = page.querySelector('#ai-status');
+      const aiGo = page.querySelector('#ai-go');
+      if (!ai_available) {
+        aiGo.disabled = true;
+        aiStatus.textContent = 'Set ANTHROPIC_API_KEY on the server to enable.';
+      }
+      aiGo.addEventListener('click', async () => {
+        const prompt = page.querySelector('#ai-prompt').value.trim();
+        if (prompt.length < 8) return toast('Describe your company in a sentence or two.', 'error');
+        aiGo.disabled = true;
+        aiStatus.textContent = 'Claude is designing your site — this takes a minute…';
+        try {
+          const r = await api(`/teams/${company.id}/ai-build`, { method: 'POST', body: { prompt } });
+          toast(`Site built: ${r.pages} pages + ${r.posts} posts, "${r.theme}" theme.`);
+          if (onApplied) onApplied(r);
+        } catch (err) {
+          aiGo.disabled = false;
+          aiStatus.textContent = '';
+          toast(err.message, 'error');
+        }
+      });
+    });
+  }
+
   // ---------- toasts ----------
 
   function toast(text, kind = 'ok') {
@@ -192,7 +289,7 @@
         const created = await api('/teams', { method: 'POST', body: { name: f.get('name') } });
         companies.push(created);
         setActiveCompany(created);
-        location.hash = '#/dashboard';
+        location.hash = '#/setup';
         render();
       } catch (err) {
         toast(err.message, 'error');
@@ -316,6 +413,7 @@
           companies.push(created);
           setActiveCompany(created);
           toast(`Company "${created.name}" created.`);
+          location.hash = '#/setup';
           render();
         })
         .catch((err) => toast(err.message, 'error'));
@@ -328,6 +426,40 @@
       renderLogin();
     });
     return document.getElementById('page');
+  }
+
+  // ---------- new-company setup (choose a starting point) ----------
+
+  async function renderSetup() {
+    const page = shell('#/company', `
+      <h1>Set up ${esc(company.name)} <span class="sub">choose a starting point</span></h1>
+      <div class="setup-cols">
+        <div class="card" style="max-width:560px">
+          <b>Start from a business template</b>
+          <p style="color:var(--muted);font-size:0.82rem;margin:0.3rem 0 0.6rem">
+            Pick your kind of business and get a themed site with real starter content —
+            live in one click, editable forever. Or describe your company and let AI design it.
+          </p>
+          ${starterPickerHtml()}
+        </div>
+        <div>
+          <div class="card" style="max-width:320px">
+            <b>Or start blank</b>
+            <p style="color:var(--muted);font-size:0.82rem;margin:0.3rem 0 0.6rem">
+              An empty site with your company name on it. You can apply a template
+              any time later from the Company page.
+            </p>
+            <a class="btn secondary sm" href="#/dashboard">Start blank →</a>
+          </div>
+        </div>
+      </div>`);
+    mountStarterPicker(page, {
+      confirmApply: false,
+      onApplied: () => {
+        location.hash = '#/dashboard';
+        render();
+      },
+    });
   }
 
   // ---------- dashboard ----------
@@ -365,17 +497,19 @@
   async function renderContentList() {
     const page = shell('#/content', '<h1>Content <a class="btn" href="#/edit/new">+ New</a></h1><div id="list">Loading…</div>');
     const listEl = page.querySelector('#list');
-    const state = { type: '', status: '', search: '' };
+    const state = { type: '', status: '', search: '', view: '' };
     const cTypes = await capi('/content-types').catch(() => []);
 
     async function load() {
-      const q = new URLSearchParams(Object.entries(state).filter(([, v]) => v));
+      if (state.view === 'trash') return loadTrash();
+      const q = new URLSearchParams(Object.entries(state).filter(([k, v]) => v && k !== 'view'));
       const rows = await capi(`/content?${q}`);
       listEl.innerHTML = `
         <div class="toolbar">
           <select id="f-type"><option value="">All types</option><option value="post">Posts</option><option value="page">Pages</option>${cTypes.map((t) => `<option value="${esc(t.key)}">${esc(t.name_plural)}</option>`).join('')}</select>
           <select id="f-status"><option value="">All statuses</option><option value="draft">Draft</option><option value="pending">Pending</option><option value="published">Published</option></select>
           <input id="f-search" placeholder="Search…" value="${esc(state.search)}">
+          <button class="btn secondary sm" id="view-trash" style="margin-left:auto">Trash</button>
         </div>
         <table><thead><tr><th>Title</th><th>Type</th><th>Status</th><th>Updated</th><th></th></tr></thead>
         <tbody>${rows
@@ -385,7 +519,8 @@
               <td>${esc(r.type)}</td>
               <td><span class="pill ${esc(r.status)}">${esc(r.status)}</span></td>
               <td>${esc(r.updated_at.slice(0, 16))}</td>
-              <td><button class="btn danger sm" data-del="${r.id}">Delete</button></td>
+              <td style="white-space:nowrap"><button class="btn secondary sm" data-dup="${r.id}" title="Duplicate as draft">⧉</button>
+              <button class="btn danger sm" data-del="${r.id}">Delete</button></td>
             </tr>`
           )
           .join('') || '<tr><td colspan="5">Nothing here yet.</td></tr>'}</tbody></table>`;
@@ -394,12 +529,69 @@
       listEl.querySelector('#f-type').addEventListener('change', (e) => { state.type = e.target.value; load(); });
       listEl.querySelector('#f-status').addEventListener('change', (e) => { state.status = e.target.value; load(); });
       listEl.querySelector('#f-search').addEventListener('change', (e) => { state.search = e.target.value; load(); });
+      listEl.querySelector('#view-trash').addEventListener('click', () => { state.view = 'trash'; load(); });
+      listEl.querySelectorAll('[data-dup]').forEach((btn) =>
+        btn.addEventListener('click', async () => {
+          try {
+            const copy = await capi(`/content/${btn.dataset.dup}/duplicate`, { method: 'POST' });
+            toast('Duplicated as a draft.');
+            location.hash = `#/edit/${copy.id}`;
+          } catch (err) {
+            toast(err.message, 'error');
+          }
+        })
+      );
       listEl.querySelectorAll('[data-del]').forEach((btn) =>
         btn.addEventListener('click', async () => {
-          if (!confirm('Delete this item permanently?')) return;
+          if (!confirm('Move this item to the trash? It leaves the public site immediately; you can restore it later.')) return;
           await capi(`/content/${btn.dataset.del}`, { method: 'DELETE' });
-          toast('Deleted.');
+          toast('Moved to trash.');
           load();
+        })
+      );
+    }
+
+    async function loadTrash() {
+      const rows = await capi('/content/trash');
+      listEl.innerHTML = `
+        <div class="toolbar">
+          <button class="btn secondary sm" id="back-content">← Back to content</button>
+          <span class="path">Items in the trash are off the site. Restore brings them back exactly as they were; permanent deletion is admin-only.</span>
+        </div>
+        <table><thead><tr><th>Title</th><th>Type</th><th>Deleted</th><th></th></tr></thead>
+        <tbody>${rows
+          .map(
+            (r) => `<tr>
+              <td><b>${esc(r.title)}</b><br><span class="path">/${esc(r.slug)}</span></td>
+              <td>${esc(r.type)}</td>
+              <td>${esc((r.deleted_at || '').slice(0, 16))}</td>
+              <td style="white-space:nowrap"><button class="btn secondary sm" data-restore="${r.id}">Restore</button>
+              ${isCompanyAdmin() ? `<button class="btn danger sm" data-purge="${r.id}">Delete forever</button>` : ''}</td>
+            </tr>`
+          )
+          .join('') || '<tr><td colspan="4">The trash is empty.</td></tr>'}</tbody></table>`;
+      listEl.querySelector('#back-content').addEventListener('click', () => { state.view = ''; load(); });
+      listEl.querySelectorAll('[data-restore]').forEach((btn) =>
+        btn.addEventListener('click', async () => {
+          try {
+            await capi(`/content/${btn.dataset.restore}/untrash`, { method: 'POST' });
+            toast('Restored.');
+            load();
+          } catch (err) {
+            toast(err.message, 'error');
+          }
+        })
+      );
+      listEl.querySelectorAll('[data-purge]').forEach((btn) =>
+        btn.addEventListener('click', async () => {
+          if (!confirm('Delete forever? This cannot be undone.')) return;
+          try {
+            await capi(`/content/${btn.dataset.purge}`, { method: 'DELETE' });
+            toast('Deleted permanently.');
+            load();
+          } catch (err) {
+            toast(err.message, 'error');
+          }
         })
       );
     }
@@ -1192,18 +1384,7 @@
           Apply a starter kit — theme, typography, layout, and real starter pages and posts,
           published instantly. Your existing content is never touched.
         </p>
-        <input id="tpl-filter" placeholder="Search templates — hotel, restaurant, salon…" style="margin-bottom:0.5rem">
-        <div class="tpl-grid" id="tpl-grid">Loading…</div>
-        <div class="ai-build" id="ai-build">
-          <b style="font-size:0.85rem">✦ AI site builder</b>
-          <p style="color:var(--muted);font-size:0.82rem;margin:0.2rem 0 0.5rem">
-            Describe your company in a sentence — Claude picks the theme, typography, and layout,
-            and writes your starter pages and posts.
-          </p>
-          <textarea id="ai-prompt" rows="2" placeholder="A tiny bakery in Lisbon famous for cinnamon rolls and slow mornings"></textarea>
-          <p style="margin:0.5rem 0 0"><button type="button" class="btn" id="ai-go">Build my site</button>
-          <span id="ai-status" style="color:var(--muted);font-size:0.8rem;margin-left:0.5rem"></span></p>
-        </div>
+        ${starterPickerHtml()}
       </div>
       <form class="card" id="site-form" style="max-width:520px;margin-top:1.4rem">
         <b>Public site</b>
@@ -1392,83 +1573,8 @@
       page.querySelector('#ts-css').value = settings.custom_css || '';
       page.querySelector('#ts-locale').value = settings.default_locale || 'en';
 
-      // Starter kits + AI site builder
-      const galleryColors = Object.fromEntries(
-        THEME_GALLERY.map(([key, , bg, fg, accent]) => [key, { bg, fg, accent }])
-      );
-      api('/site-templates').then(({ templates, ai_available }) => {
-        const tplRow = (t) => {
-          const c = galleryColors[t.theme] || galleryColors.default;
-          const pieces = t.pages + t.posts + (t.items || 0);
-          const meta = `${pieces} starter item${pieces === 1 ? '' : 's'}${
-            t.types ? ` · ${t.types} custom type${t.types === 1 ? '' : 's'}` : ''
-          }`;
-          return `<div class="tpl">
-            <div class="tpl-swatch" style="background:${c.bg};color:${c.fg}">
-              <span class="dot" style="background:${t.accent_color || c.accent}"></span>Aa</div>
-            <div class="tpl-info"><b>${esc(t.name)}</b><span>${esc(t.description)}</span>
-              <span class="tpl-meta">${meta}</span></div>
-            <button type="button" class="btn secondary sm" data-tpl="${t.key}">Apply</button>
-          </div>`;
-        };
-        const renderTplGrid = (query = '') => {
-          const q = query.trim().toLowerCase();
-          const shown = q
-            ? templates.filter((t) => `${t.name} ${t.description} ${t.category}`.toLowerCase().includes(q))
-            : templates;
-          const categories = [...new Set(shown.map((t) => t.category))];
-          page.querySelector('#tpl-grid').innerHTML = categories.length
-            ? categories
-                .map(
-                  (cat) =>
-                    `<div class="tpl-cat">${esc(cat)}</div>` +
-                    shown.filter((t) => t.category === cat).map(tplRow).join('')
-                )
-                .join('')
-            : '<p class="path" style="margin:0.4rem 0">No templates match — try the AI builder below.</p>';
-          bindApply();
-        };
-        page.querySelector('#tpl-filter').addEventListener('input', (e) => renderTplGrid(e.target.value));
-        const bindApply = () => page.querySelectorAll('[data-tpl]').forEach((btn) =>
-          btn.addEventListener('click', async () => {
-            if (!confirm('Apply this starter kit? It updates your site theme, publishes its starter content, and may add custom content types. Existing content is untouched.')) return;
-            btn.disabled = true;
-            try {
-              const r = await api(`/teams/${company.id}/apply-template`, {
-                method: 'POST',
-                body: { template: btn.dataset.tpl },
-              });
-              toast(`Starter kit applied — ${r.created} items published${r.types ? `, ${r.types} content type${r.types === 1 ? '' : 's'} added` : ''}.`);
-              render();
-            } catch (err) {
-              toast(err.message, 'error');
-              btn.disabled = false;
-            }
-          })
-        );
-        renderTplGrid();
-        const aiStatus = page.querySelector('#ai-status');
-        const aiGo = page.querySelector('#ai-go');
-        if (!ai_available) {
-          aiGo.disabled = true;
-          aiStatus.textContent = 'Set ANTHROPIC_API_KEY on the server to enable.';
-        }
-        aiGo.addEventListener('click', async () => {
-          const prompt = page.querySelector('#ai-prompt').value.trim();
-          if (prompt.length < 8) return toast('Describe your company in a sentence or two.', 'error');
-          aiGo.disabled = true;
-          aiStatus.textContent = 'Claude is designing your site — this takes a minute…';
-          try {
-            const r = await api(`/teams/${company.id}/ai-build`, { method: 'POST', body: { prompt } });
-            toast(`Site built: ${r.pages} pages + ${r.posts} posts, "${r.theme}" theme.`);
-            render();
-          } catch (err) {
-            aiGo.disabled = false;
-            aiStatus.textContent = '';
-            toast(err.message, 'error');
-          }
-        });
-      });
+      // Starter kits + AI site builder (shared with the new-company setup flow)
+      mountStarterPicker(page, { onApplied: () => render() });
 
       page.querySelector('#company-form').addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -1958,6 +2064,7 @@
       if (reviewMatch && isCompanyAdmin()) return await renderReview(reviewMatch[1]);
       if (hash.startsWith('#/approvals') && isCompanyAdmin()) return await renderApprovals();
       if (hash.startsWith('#/activity') && isCompanyAdmin()) return await renderActivity();
+      if (hash.startsWith('#/setup')) return await renderSetup();
       if (hash.startsWith('#/company')) return await renderCompany();
       if (hash.startsWith('#/platform') && me.role === 'superadmin') return await renderPlatform();
       if (hash.startsWith('#/account')) return await renderAccount();

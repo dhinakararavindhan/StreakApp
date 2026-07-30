@@ -22,6 +22,27 @@ function createApp(options = {}) {
   // Behind a reverse proxy (nginx/Caddy/load balancer), trust X-Forwarded-*
   // so req.ip and req.protocol are correct for rate limiting and links.
   if (process.env.TRUST_PROXY === '1') app.set('trust proxy', 1);
+
+  // Structured request logs (one JSON line per request) for log shippers.
+  if (process.env.NOVA_LOG === 'json') {
+    app.use((req, res, next) => {
+      const started = Date.now();
+      res.on('finish', () => {
+        console.log(
+          JSON.stringify({
+            time: new Date().toISOString(),
+            method: req.method,
+            path: req.originalUrl,
+            status: res.statusCode,
+            ms: Date.now() - started,
+            ip: req.ip,
+          })
+        );
+      });
+      next();
+    });
+  }
+
   app.use(securityHeaders);
   app.use(express.json({ limit: '2mb' }));
   app.use(cookieParser());

@@ -76,6 +76,7 @@ function init(options = {}) {
       publish_at TEXT,
       expire_at TEXT,
       fields TEXT NOT NULL DEFAULT '{}',
+      deleted_at TEXT,
       UNIQUE (team_id, slug)
     );
 
@@ -248,6 +249,11 @@ function migrate() {
     db.exec('ALTER TABLE content ADD COLUMN translation_of INTEGER REFERENCES content(id) ON DELETE SET NULL');
   }
 
+  // Trash / soft delete (pre-trash databases)
+  if (!db.prepare('PRAGMA table_info(content)').all().some((c) => c.name === 'deleted_at')) {
+    db.exec('ALTER TABLE content ADD COLUMN deleted_at TEXT');
+  }
+
   // Custom fields (pre-custom-type databases)
   if (!db.prepare('PRAGMA table_info(content)').all().some((c) => c.name === 'fields')) {
     db.exec("ALTER TABLE content ADD COLUMN fields TEXT NOT NULL DEFAULT '{}'");
@@ -284,10 +290,11 @@ function migrate() {
         publish_at TEXT,
         expire_at TEXT,
         fields TEXT NOT NULL DEFAULT '{}',
+        deleted_at TEXT,
         UNIQUE (team_id, slug)
       );
-      INSERT INTO content_migrated (id, team_id, type, title, slug, body, format, excerpt, cover_image, status, review_note, published_snapshot, locale, translation_of, author_id, created_at, updated_at, published_at, publish_at, expire_at, fields)
-        SELECT id, team_id, type, title, slug, body, format, excerpt, cover_image, status, review_note, published_snapshot, locale, translation_of, author_id, created_at, updated_at, published_at, publish_at, expire_at, fields
+      INSERT INTO content_migrated (id, team_id, type, title, slug, body, format, excerpt, cover_image, status, review_note, published_snapshot, locale, translation_of, author_id, created_at, updated_at, published_at, publish_at, expire_at, fields, deleted_at)
+        SELECT id, team_id, type, title, slug, body, format, excerpt, cover_image, status, review_note, published_snapshot, locale, translation_of, author_id, created_at, updated_at, published_at, publish_at, expire_at, fields, deleted_at
         FROM content;
       DROP TABLE content;
       ALTER TABLE content_migrated RENAME TO content;
