@@ -2,9 +2,17 @@ const express = require('express');
 
 const { getDb, slugify, uniqueSlug } = require('../db');
 
-// Mounted at /api/teams/:teamId/content behind requireTeamRole('editor'),
-// which sets req.team — every query below is scoped to that team.
+// Mounted at /api/teams/:teamId/content behind requireTeamRole('manager'),
+// which sets req.team and req.teamRole — every query below is scoped to
+// that company.
+//
+// Approval workflow: managers can create, edit, and delete content, but
+// nothing they touch goes live directly. They may hold work as 'draft' or
+// submit it as 'pending'; only company admins (and superadmins) can move
+// content to 'published' — via approve or by editing as an admin.
 const router = express.Router({ mergeParams: true });
+
+const STATUSES = ['draft', 'pending', 'published'];
 
 function loadTags(contentId) {
   return getDb()
@@ -33,7 +41,7 @@ function serialize(row) {
   return { ...row, tags: loadTags(row.id) };
 }
 
-// List with optional filters: ?type=post&status=published&tag=news&search=hello
+// List with optional filters: ?type=post&status=pending&tag=news&search=hello
 router.get('/', (req, res) => {
   const { type, status, tag, search } = req.query;
   const where = ['c.team_id = ?'];
@@ -70,7 +78,10 @@ router.post('/', (req, res) => {
   const { type = 'post', title, slug, body = '', excerpt = '', cover_image = '', status = 'draft', tags } = req.body || {};
   if (!title) return res.status(400).json({ error: 'title is required' });
   if (!['post', 'page'].includes(type)) return res.status(400).json({ error: 'type must be post or page' });
-  if (!['draft', 'published'].includes(status)) return res.status(400).json({ error: 'status must be draft or published' });
+  if (!STATUSES.includes(status)) return res.status(400).json({ error: 'status must be draft, pending, or published' });
+  if (status === 'published' && req.teamRole !== 'admin') {
+    return res.status(403).json({ error: 'Publishing requires admin approval — submit for review (status "pending") instead' });
+  }
 
   const db = getDb();
   const finalSlug = uniqueSlug(slug || title, req.team.id);
@@ -93,22 +104,34 @@ router.put('/:id', (req, res) => {
   if (!existing) return res.status(404).json({ error: 'Not found' });
 
   const { title, slug, body, excerpt, cover_image, status, tags } = req.body || {};
-  if (status && !['draft', 'published'].includes(status)) {
-    return res.status(400).json({ error: 'status must be draft or published' });
+  if (status && !STATUSES.includes(status)) {
+    return res.status(400).json({ error: 'status must be draft, pending, or published' });
   }
+  if (status === 'published' && req.teamRole !== 'admin' && existing.status !== 'published') {
+    return res.status(403).json({ error: 'Publishing requires admin approval — submit for review (status "pending") instead' });
+  }
+
+  let newStatus = status !== undefined ? status : existing.status;
+  // A manager editing live content pulls it back into review — nothing a
+  // manager writes reaches the site without an admin's approval.
+  if (req.teamRole !== 'admin' && newStatus === 'published') {
+    newStatus = 'pending';
+  }
+
   const newTitle = title !== undefined ? title : existing.title;
   const newSlug = slug !== undefined || title !== undefined
     ? uniqueSlug(slug || newTitle, req.team.id, existing.id)
     : existing.slug;
-  const newStatus = status !== undefined ? status : existing.status;
   const publishedAt =
     newStatus === 'published'
       ? existing.published_at || new Date().toISOString().replace('T', ' ').slice(0, 19)
       : null;
+  // Leaving draft clears any stale rejection note.
+  const reviewNote = newStatus === 'draft' ? existing.review_note : '';
 
   db.prepare(
     `UPDATE content SET title = ?, slug = ?, body = ?, excerpt = ?, cover_image = ?, status = ?,
-     published_at = ?, updated_at = datetime('now') WHERE id = ?`
+     review_note = ?, published_at = ?, updated_at = datetime('now') WHERE id = ?`
   ).run(
     newTitle,
     newSlug,
@@ -116,11 +139,40 @@ router.put('/:id', (req, res) => {
     excerpt !== undefined ? excerpt : existing.excerpt,
     cover_image !== undefined ? String(cover_image) : existing.cover_image,
     newStatus,
+    reviewNote,
     publishedAt,
     existing.id
   );
   if (tags !== undefined) setTags(req.team.id, existing.id, tags);
   res.json(serialize(db.prepare('SELECT * FROM content WHERE id = ?').get(existing.id)));
+});
+
+// Approve a pending item (company admins only) — it goes live.
+router.post('/:id/approve', (req, res) => {
+  if (req.teamRole !== 'admin') return res.status(403).json({ error: 'Company admin access required' });
+  const db = getDb();
+  const row = db.prepare('SELECT * FROM content WHERE id = ? AND team_id = ?').get(req.params.id, req.team.id);
+  if (!row) return res.status(404).json({ error: 'Not found' });
+  if (row.status !== 'pending') return res.status(400).json({ error: 'Only pending content can be approved' });
+  db.prepare(
+    `UPDATE content SET status = 'published', review_note = '',
+     published_at = COALESCE(published_at, datetime('now')), updated_at = datetime('now') WHERE id = ?`
+  ).run(row.id);
+  res.json(serialize(db.prepare('SELECT * FROM content WHERE id = ?').get(row.id)));
+});
+
+// Reject a pending item back to draft, optionally with a note for the author.
+router.post('/:id/reject', (req, res) => {
+  if (req.teamRole !== 'admin') return res.status(403).json({ error: 'Company admin access required' });
+  const db = getDb();
+  const row = db.prepare('SELECT * FROM content WHERE id = ? AND team_id = ?').get(req.params.id, req.team.id);
+  if (!row) return res.status(404).json({ error: 'Not found' });
+  if (row.status !== 'pending') return res.status(400).json({ error: 'Only pending content can be rejected' });
+  const note = String((req.body || {}).note || '').slice(0, 500);
+  db.prepare(
+    "UPDATE content SET status = 'draft', review_note = ?, published_at = NULL, updated_at = datetime('now') WHERE id = ?"
+  ).run(note, row.id);
+  res.json(serialize(db.prepare('SELECT * FROM content WHERE id = ?').get(row.id)));
 });
 
 router.delete('/:id', (req, res) => {

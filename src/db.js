@@ -61,7 +61,8 @@ function init(options = {}) {
       body TEXT NOT NULL DEFAULT '',
       excerpt TEXT NOT NULL DEFAULT '',
       cover_image TEXT NOT NULL DEFAULT '',
-      status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published')),
+      status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'pending', 'published')),
+      review_note TEXT NOT NULL DEFAULT '',
       author_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -128,6 +129,42 @@ function migrate() {
   // content.cover_image (pre-cover databases)
   if (!db.prepare('PRAGMA table_info(content)').all().some((c) => c.name === 'cover_image')) {
     db.exec("ALTER TABLE content ADD COLUMN cover_image TEXT NOT NULL DEFAULT ''");
+  }
+
+  // content.review_note (pre-approval databases)
+  if (!db.prepare('PRAGMA table_info(content)').all().some((c) => c.name === 'review_note')) {
+    db.exec("ALTER TABLE content ADD COLUMN review_note TEXT NOT NULL DEFAULT ''");
+  }
+
+  // Approval workflow: the old status CHECK lacks 'pending', which blocks
+  // submissions on existing databases — rebuild the content table.
+  if (!tableSql('content').includes("'pending'")) {
+    db.pragma('foreign_keys = OFF');
+    db.exec(`
+      CREATE TABLE content_migrated (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+        type TEXT NOT NULL CHECK (type IN ('post', 'page')),
+        title TEXT NOT NULL,
+        slug TEXT NOT NULL,
+        body TEXT NOT NULL DEFAULT '',
+        excerpt TEXT NOT NULL DEFAULT '',
+        cover_image TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'pending', 'published')),
+        review_note TEXT NOT NULL DEFAULT '',
+        author_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        published_at TEXT,
+        UNIQUE (team_id, slug)
+      );
+      INSERT INTO content_migrated (id, team_id, type, title, slug, body, excerpt, cover_image, status, review_note, author_id, created_at, updated_at, published_at)
+        SELECT id, team_id, type, title, slug, body, excerpt, cover_image, status, review_note, author_id, created_at, updated_at, published_at
+        FROM content;
+      DROP TABLE content;
+      ALTER TABLE content_migrated RENAME TO content;
+    `);
+    db.pragma('foreign_keys = ON');
   }
 
   // Role vocabulary: platform admin -> superadmin. Old CHECK constraints

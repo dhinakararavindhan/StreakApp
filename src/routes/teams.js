@@ -111,6 +111,7 @@ router.get('/:teamId/stats', requireTeamRole('manager'), (req, res) => {
     pages: one("SELECT COUNT(*) AS n FROM content WHERE team_id = ? AND type = 'page'"),
     published: one("SELECT COUNT(*) AS n FROM content WHERE team_id = ? AND status = 'published'"),
     drafts: one("SELECT COUNT(*) AS n FROM content WHERE team_id = ? AND status = 'draft'"),
+    pending: one("SELECT COUNT(*) AS n FROM content WHERE team_id = ? AND status = 'pending'"),
     media: one('SELECT COUNT(*) AS n FROM media WHERE team_id = ?'),
     members: one('SELECT COUNT(*) AS n FROM team_members WHERE team_id = ?'),
     tags: one('SELECT COUNT(*) AS n FROM tags WHERE team_id = ?'),

@@ -5,7 +5,7 @@ A multi-company content platform built with Node.js, Express, and SQLite. Any co
 It ships three things in one small app:
 
 - **REST API** (`/api/…`) — auth, companies, members, content, tags, media, settings, platform stats
-- **Admin panel** (`/admin`) — a futuristic dark UI with a live dashboard, command palette (Ctrl/⌘+K), Markdown editor with cover images, and per-company branding controls
+- **Admin panel** (`/admin`) — a compact dark UI set in self-hosted Geist Sans, with a top navbar, collapsible sidebar, role-portal logins, live dashboard, approvals queue, command palette (Ctrl/⌘+K), Markdown editor with cover images, and per-company branding controls
 - **Public sites** — `/` is a directory of company sites; each company publishes at `/t/<slug>` or on its own custom domain
 
 ## The three-tier role architecture
@@ -14,7 +14,7 @@ It ships three things in one small app:
 | --- | --- | --- | --- |
 | Platform | **superadmin** | us — the platform operators | Everything: platform dashboard and stats, all companies, user administration, platform settings (title, open/closed registration) |
 | Company | **admin** | company owners | Run their company: profile, URL slug, custom domain, theme and branding, members and their roles, deletion — plus everything managers can do |
-| Company | **manager** | company employees | Day-to-day content work: posts, pages, media, tags, dashboard |
+| Company | **manager** | company employees | Day-to-day content work: posts, pages, media, tags, dashboard — everything they write goes through admin approval before reaching the site |
 
 Users can belong to several companies (with different roles in each) and switch between them in the sidebar. A company always keeps at least one admin. Superadmins pass through any company as an admin.
 
@@ -27,9 +27,18 @@ Users can belong to several companies (with different roles in each) and switch 
    - **Hosted site**: pick a theme preset (Default, Midnight, Paper, Forest, Ocean), set a brand accent color and custom CSS, and connect a **custom domain** — point DNS at the server and the site is served at the domain root with no platform branding.
    - **Headless**: keep an existing website and pull published content as JSON from the public, CORS-open content API — `GET /api/public/<company>/content` and `…/content/<slug>` (raw Markdown + rendered HTML + cover image). Drafts are never exposed.
 
+## Approval workflow
+
+Managers have full CRUD on content, but nothing they touch goes live on its own:
+
+- A manager saves work as **Draft** or submits it as **Pending review** — publishing directly returns 403.
+- Company admins see a badge-counted **Approvals** queue and can **Approve** (goes live) or **Reject** with a note; rejected items return to draft and the note is shown to the author in the editor.
+- If a manager edits already-published content, it is automatically pulled back to **Pending** (off the site) until re-approved — the public site and headless API only ever serve approved content.
+- Admins and superadmins can still publish directly.
+
 ## Admin panel highlights
 
-- **Dashboard** — per-company KPIs (published, drafts, posts, pages, media, members) and recently updated content.
+- **Dashboard** — per-company KPIs (published, in review, drafts, posts, pages, media, members) and recently updated content.
 - **Command palette** — Ctrl/⌘+K anywhere: jump between pages, create content, switch companies, and search content by title.
 - **Editor** — Markdown body, excerpt, tags, slug control, and a cover image picker fed by the company's media library with live preview.
 - **Company page** — profile, custom domain, theme/branding, headless API reference, and member management with role control.
@@ -88,7 +97,9 @@ All `/api` routes accept and return JSON. Authentication uses an httpOnly cookie
 | PUT/DELETE | `/api/teams/:id/members/:userId` | admin (self-removal allowed) | Change role / remove or leave |
 | GET/PUT | `/api/teams/:id/settings` | member / admin | Site title, description, theme, accent color, custom CSS |
 | GET/POST | `/api/teams/:id/content` | member | List (`?type=&status=&tag=&search=`) / create (incl. `cover_image`) |
-| GET/PUT/DELETE | `/api/teams/:id/content/:cid` | member | Read / update / delete one item |
+| GET/PUT/DELETE | `/api/teams/:id/content/:cid` | member | Read / update / delete one item (managers can't set `published`) |
+| POST | `/api/teams/:id/content/:cid/approve` | company admin | Approve pending content — goes live |
+| POST | `/api/teams/:id/content/:cid/reject` | company admin | Reject pending content back to draft (`{note}`) |
 | GET/DELETE | `/api/teams/:id/tags[/:tagId]` | member | List / delete tags |
 | GET/POST/DELETE | `/api/teams/:id/media[/:mid]` | member | List / upload (multipart `file`) / delete |
 | GET | `/api/platform/stats` | superadmin | Platform-wide KPIs and newest companies |
@@ -103,7 +114,7 @@ All `/api` routes accept and return JSON. Authentication uses an httpOnly cookie
 npm test
 ```
 
-27 end-to-end tests (`node --test`, in-memory database): registration, company creation, the three-tier role model, cross-company isolation, content CRUD with cover images, per-company slug scoping, draft/publish visibility, theming, custom-domain routing, the headless API, dashboards, and platform stats.
+28 end-to-end tests (`node --test`, in-memory database): registration, company creation, the three-tier role model, cross-company isolation, content CRUD with cover images, per-company slug scoping, draft/pending/publish visibility, the approval workflow, theming, custom-domain routing, the headless API, dashboards, and platform stats.
 
 ## Project layout
 

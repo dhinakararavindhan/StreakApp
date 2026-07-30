@@ -17,6 +17,7 @@
     company: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><path d="M3.5 20c0-3 2.5-5 5.5-5s5.5 2 5.5 5"/><circle cx="17" cy="9" r="2.3"/><path d="M17 14.5c2.3 0 4 1.6 4 3.8"/></svg>',
     platform: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 010 18M12 3a14 14 0 000 18"/></svg>',
     account: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/></svg>',
+    approvals: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M8.2 12.4l2.6 2.6 5-5.6"/></svg>',
   };
 
   async function api(path, options = {}) {
@@ -170,13 +171,18 @@
     ['#/content', 'Content', 'content'],
     ['#/media', 'Media', 'media'],
     ['#/tags', 'Tags', 'tags'],
+    ['#/approvals', 'Approvals', 'approvals', 'company-admin'],
     ['#/company', 'Company', 'company'],
     ['#/platform', 'Platform', 'platform', 'superadmin'],
     ['#/account', 'Account', 'account'],
   ];
 
+  const isCompanyAdmin = () => me.role === 'superadmin' || (company && company.my_role === 'admin');
+
   function shell(active, inner) {
-    const links = NAV.filter(([, , , need]) => !need || me.role === need)
+    const links = NAV.filter(([, , , need]) =>
+      !need || (need === 'superadmin' ? me.role === 'superadmin' : need === 'company-admin' ? isCompanyAdmin() : true)
+    )
       .map(
         ([href, label, icon]) =>
           `<a class="navlink ${active === href ? 'active' : ''}" href="${href}" title="${label}">${ICONS[icon]}<span class="label">${label}</span></a>`
@@ -235,6 +241,14 @@
       localStorage.setItem('nova_side', frame.classList.contains('collapsed') ? 'min' : 'full');
     });
     document.getElementById('open-palette').addEventListener('click', openPalette);
+    if (isCompanyAdmin()) {
+      capi('/stats')
+        .then((s) => {
+          const link = document.querySelector('a.navlink[href="#/approvals"]');
+          if (link && s.pending > 0) link.insertAdjacentHTML('beforeend', `<span class="badge">${s.pending}</span>`);
+        })
+        .catch(() => {});
+    }
     document.getElementById('company-switch').addEventListener('change', (e) => {
       const next = companies.find((c) => c.id === Number(e.target.value));
       if (next) {
@@ -273,7 +287,7 @@
     const kpi = (n, l, hi) => `<div class="kpi ${hi ? 'hi' : ''}"><div class="n">${n}</div><div class="l">${l}</div></div>`;
     page.querySelector('#body').innerHTML = `
       <div class="kpis">
-        ${kpi(s.published, 'Published', true)}${kpi(s.drafts, 'Drafts')}${kpi(s.posts, 'Posts')}${kpi(s.pages, 'Pages')}${kpi(s.media, 'Media files')}${kpi(s.members, 'Members')}
+        ${kpi(s.published, 'Published', true)}${kpi(s.pending, 'In review', s.pending > 0)}${kpi(s.drafts, 'Drafts')}${kpi(s.posts, 'Posts')}${kpi(s.pages, 'Pages')}${kpi(s.media, 'Media files')}${kpi(s.members, 'Members')}
       </div>
       <div class="toolbar">
         <a class="btn" href="#/edit/new">+ New content</a>
@@ -308,7 +322,7 @@
       listEl.innerHTML = `
         <div class="toolbar">
           <select id="f-type"><option value="">All types</option><option value="post">Posts</option><option value="page">Pages</option></select>
-          <select id="f-status"><option value="">All statuses</option><option value="draft">Draft</option><option value="published">Published</option></select>
+          <select id="f-status"><option value="">All statuses</option><option value="draft">Draft</option><option value="pending">Pending</option><option value="published">Published</option></select>
           <input id="f-search" placeholder="Search…" value="${esc(state.search)}">
         </div>
         <table><thead><tr><th>Title</th><th>Type</th><th>Status</th><th>Updated</th><th></th></tr></thead>
@@ -348,9 +362,27 @@
       ? { type: 'post', title: '', slug: '', body: '', excerpt: '', cover_image: '', status: 'draft', tags: [] }
       : await capi(`/content/${id}`);
 
+    const canPublish = isCompanyAdmin();
+    // Managers never hold a live 'published' selection — their edits to
+    // live content go back through review.
+    const effectiveStatus = !canPublish && item.status === 'published' ? 'pending' : item.status;
+    const statusOptions = canPublish
+      ? `<option value="draft" ${effectiveStatus === 'draft' ? 'selected' : ''}>Draft</option>
+         <option value="pending" ${effectiveStatus === 'pending' ? 'selected' : ''}>Pending review</option>
+         <option value="published" ${effectiveStatus === 'published' ? 'selected' : ''}>Published</option>`
+      : `<option value="draft" ${effectiveStatus === 'draft' ? 'selected' : ''}>Draft</option>
+         <option value="pending" ${effectiveStatus === 'pending' ? 'selected' : ''}>Submit for approval</option>`;
+    const managerHint = !canPublish
+      ? `<p class="portal-hint" style="margin-top:0.3rem">${item.status === 'published' ? 'This item is live — saving sends your changes back for admin approval.' : 'Publishing requires admin approval.'}</p>`
+      : '';
+    const reviewNote = item.review_note
+      ? `<div class="msg error" style="grid-column:1/-1">Changes requested by an admin: ${esc(item.review_note)}</div>`
+      : '';
+
     const page = shell('#/content', `
       <h1>${isNew ? 'New content' : 'Edit content'} <span class="sub">${esc(company.name)}</span></h1>
       <form id="editor" class="editor-grid">
+        ${reviewNote}
         <div class="card">
           <label>Title</label><input name="title" required value="${esc(item.title)}">
           <label>Body (Markdown)</label><textarea name="body" rows="18">${esc(item.body)}</textarea>
@@ -363,10 +395,8 @@
             <option value="page" ${item.type === 'page' ? 'selected' : ''}>Page</option>
           </select>
           <label>Status</label>
-          <select name="status">
-            <option value="draft" ${item.status === 'draft' ? 'selected' : ''}>Draft</option>
-            <option value="published" ${item.status === 'published' ? 'selected' : ''}>Published</option>
-          </select>
+          <select name="status">${statusOptions}</select>
+          ${managerHint}
           <label>Cover image (URL or pick an upload)</label>
           <input name="cover_image" list="media-list" value="${esc(item.cover_image)}" placeholder="/uploads/…">
           <datalist id="media-list"></datalist>
@@ -495,6 +525,57 @@
           await capi(`/tags/${btn.dataset.del}`, { method: 'DELETE' });
           toast('Deleted.');
           load();
+        })
+      );
+    }
+    await load();
+  }
+
+  // ---------- approvals (company admins) ----------
+
+  async function renderApprovals() {
+    const page = shell('#/approvals', `<h1>Approvals <span class="sub">${esc(company.name)}</span></h1><div id="list">Loading…</div>`);
+    async function load() {
+      const rows = await capi('/content?status=pending');
+      page.querySelector('#list').innerHTML = rows.length
+        ? `<table><thead><tr><th>Title</th><th>Type</th><th>By</th><th>Updated</th><th style="width:1%"></th></tr></thead>
+          <tbody>${rows
+            .map(
+              (r) => `<tr>
+                <td><a href="#/edit/${r.id}"><b>${esc(r.title)}</b></a><br><span class="path">${esc(r.excerpt || r.body.slice(0, 90))}</span></td>
+                <td>${esc(r.type)}</td>
+                <td>${esc(r.author || '—')}</td>
+                <td>${esc(r.updated_at.slice(0, 16))}</td>
+                <td style="white-space:nowrap">
+                  <button class="btn sm" data-approve="${r.id}">Approve</button>
+                  <button class="btn danger sm" data-reject="${r.id}">Reject</button>
+                </td>
+              </tr>`
+            )
+            .join('')}</tbody></table>`
+        : '<p style="color:var(--muted)">Nothing waiting for review — all clear.</p>';
+      page.querySelectorAll('[data-approve]').forEach((btn) =>
+        btn.addEventListener('click', async () => {
+          try {
+            await capi(`/content/${btn.dataset.approve}/approve`, { method: 'POST' });
+            toast('Approved — now live.');
+            load();
+          } catch (err) {
+            toast(err.message, 'error');
+          }
+        })
+      );
+      page.querySelectorAll('[data-reject]').forEach((btn) =>
+        btn.addEventListener('click', async () => {
+          const note = prompt('Note for the author (optional):');
+          if (note === null) return;
+          try {
+            await capi(`/content/${btn.dataset.reject}/reject`, { method: 'POST', body: { note } });
+            toast('Sent back to draft.');
+            load();
+          } catch (err) {
+            toast(err.message, 'error');
+          }
         })
       );
     }
@@ -917,6 +998,7 @@
       if (hash.startsWith('#/content')) return await renderContentList();
       if (hash.startsWith('#/media')) return await renderMedia();
       if (hash.startsWith('#/tags')) return await renderTags();
+      if (hash.startsWith('#/approvals') && isCompanyAdmin()) return await renderApprovals();
       if (hash.startsWith('#/company')) return await renderCompany();
       if (hash.startsWith('#/platform') && me.role === 'superadmin') return await renderPlatform();
       if (hash.startsWith('#/account')) return await renderAccount();

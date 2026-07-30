@@ -1,10 +1,10 @@
-/* Nova CMS admin — compact dark UI, crisp Inter type */
+/* Nova CMS admin — compact dark UI, Geist Sans type */
 
-@font-face { font-family: 'Inter'; font-weight: 400; font-display: swap; src: url('/assets/fonts/inter-latin-400-normal.woff2') format('woff2'); }
-@font-face { font-family: 'Inter'; font-weight: 500; font-display: swap; src: url('/assets/fonts/inter-latin-500-normal.woff2') format('woff2'); }
-@font-face { font-family: 'Inter'; font-weight: 600; font-display: swap; src: url('/assets/fonts/inter-latin-600-normal.woff2') format('woff2'); }
-@font-face { font-family: 'Inter'; font-weight: 700; font-display: swap; src: url('/assets/fonts/inter-latin-700-normal.woff2') format('woff2'); }
-@font-face { font-family: 'Inter'; font-weight: 800; font-display: swap; src: url('/assets/fonts/inter-latin-800-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Geist Sans'; font-weight: 400; font-display: swap; src: url('/assets/fonts/geist-sans-latin-400-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Geist Sans'; font-weight: 500; font-display: swap; src: url('/assets/fonts/geist-sans-latin-500-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Geist Sans'; font-weight: 600; font-display: swap; src: url('/assets/fonts/geist-sans-latin-600-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Geist Sans'; font-weight: 700; font-display: swap; src: url('/assets/fonts/geist-sans-latin-700-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Geist Sans'; font-weight: 800; font-display: swap; src: url('/assets/fonts/geist-sans-latin-800-normal.woff2') format('woff2'); }
 
 :root {
   --bg: #0b0d13;
@@ -34,11 +34,10 @@
 html { font-size: 13.5px; }
 body {
   margin: 0;
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-family: 'Geist Sans', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-  font-feature-settings: 'cv11', 'ss01';
   background: var(--bg);
   color: var(--fg);
   min-height: 100vh;
@@ -246,6 +245,13 @@ td .path { color: var(--faint); font-size: 0.76rem; }
 .pill { border-radius: 999px; padding: 0.08rem 0.55rem; font-size: 0.72rem; font-weight: 600; }
 .pill.published { background: rgba(63, 217, 163, 0.1); color: var(--green); border: 1px solid rgba(63, 217, 163, 0.28); }
 .pill.draft { background: rgba(245, 183, 78, 0.09); color: var(--amber); border: 1px solid rgba(245, 183, 78, 0.28); }
+.pill.pending { background: rgba(109, 124, 255, 0.12); color: #a9b4ff; border: 1px solid rgba(109, 124, 255, 0.35); }
+
+.badge {
+  margin-left: auto; background: var(--grad); color: #fff; border-radius: 999px;
+  font-size: 0.66rem; font-weight: 700; padding: 0.05rem 0.45em; min-width: 1.6em; text-align: center;
+}
+.app.collapsed .badge { display: none; }
 
 .toolbar { display: flex; gap: 0.5rem; margin: 0.8rem 0; flex-wrap: wrap; align-items: center; }
 .toolbar input, .toolbar select { width: auto; }

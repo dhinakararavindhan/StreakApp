@@ -226,6 +226,65 @@ test('team settings change the public site title', async () => {
   assert.ok((await home.text()).includes('Acme Knowledge Base'));
 });
 
+test('approval workflow: managers cannot publish, admins approve or reject', async () => {
+  // Re-add bob as a manager (he left in an earlier test).
+  await alice(`/api/teams/${aliceTeam.id}/members`, {
+    method: 'POST',
+    body: { username: 'bob', role: 'manager' },
+  });
+
+  // Manager cannot publish directly.
+  const direct = await bob(`/api/teams/${aliceTeam.id}/content`, {
+    method: 'POST',
+    body: { type: 'post', title: 'Sneaky launch', status: 'published' },
+  });
+  assert.strictEqual(direct.status, 403);
+
+  // Manager submits for approval instead.
+  const submitted = await bob(`/api/teams/${aliceTeam.id}/content`, {
+    method: 'POST',
+    body: { type: 'post', title: 'Quarterly update', body: 'Numbers look good.', status: 'pending' },
+  });
+  assert.strictEqual(submitted.status, 201);
+  const item = await submitted.json();
+  assert.strictEqual(item.status, 'pending');
+
+  // Pending content is not on the public site or headless API.
+  assert.strictEqual((await fetch(`${base}/t/acme-docs/posts/quarterly-update`)).status, 404);
+  assert.strictEqual((await fetch(`${base}/api/public/acme-docs/content/quarterly-update`)).status, 404);
+
+  // Managers cannot approve; admins can.
+  const managerApprove = await bob(`/api/teams/${aliceTeam.id}/content/${item.id}/approve`, { method: 'POST' });
+  assert.strictEqual(managerApprove.status, 403);
+  const approve = await alice(`/api/teams/${aliceTeam.id}/content/${item.id}/approve`, { method: 'POST' });
+  assert.strictEqual(approve.status, 200);
+  assert.strictEqual((await approve.json()).status, 'published');
+  assert.strictEqual((await fetch(`${base}/t/acme-docs/posts/quarterly-update`)).status, 200);
+
+  // A manager editing live content pulls it back into review.
+  const edit = await bob(`/api/teams/${aliceTeam.id}/content/${item.id}`, {
+    method: 'PUT',
+    body: { body: 'Numbers look even better.' },
+  });
+  assert.strictEqual(edit.status, 200);
+  assert.strictEqual((await edit.json()).status, 'pending');
+  assert.strictEqual((await fetch(`${base}/t/acme-docs/posts/quarterly-update`)).status, 404);
+
+  // Reject with a note — back to draft, note visible to the author.
+  const reject = await alice(`/api/teams/${aliceTeam.id}/content/${item.id}/reject`, {
+    method: 'POST',
+    body: { note: 'Add the revenue table before publishing.' },
+  });
+  assert.strictEqual(reject.status, 200);
+  const rejected = await reject.json();
+  assert.strictEqual(rejected.status, 'draft');
+  assert.strictEqual(rejected.review_note, 'Add the revenue table before publishing.');
+
+  // Dashboard stats count pending items.
+  const stats = await (await alice(`/api/teams/${aliceTeam.id}/stats`)).json();
+  assert.strictEqual(typeof stats.pending, 'number');
+});
+
 test('cover images are stored and exposed on cards and the headless API', async () => {
   const created = await alice(`/api/teams/${aliceTeam.id}/content`, {
     method: 'POST',
