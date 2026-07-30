@@ -36,7 +36,7 @@ Make the newsroom-grade workflow complete.
 - [x] Comment threads on content (reviewer ↔ author), in the editor and the review screen
 - [ ] Slash commands in the editor (deferred)
 
-## Phase 3 — World-scale content 🚧 (in progress)
+## Phase 3 — World-scale content ✅ (shipped)
 
 Content for every audience, in every language, of every shape.
 
@@ -45,8 +45,8 @@ Content for every audience, in every language, of every shape.
 - [x] **API keys**: company-scoped Bearer tokens — `read` (GETs incl. drafts) and `write` (acts as a manager, so writes go through approval); hashes only at rest, shown once
 - [x] Full-company **JSON export** (content, settings, members, media metadata) — no lock-in
 - [x] **Body formats**: Markdown, plain text, raw HTML, image, and embed (YouTube/Vimeo) — per item, format-aware editor and rendering everywhere
-- [ ] **Custom content types**: user-defined schemas — posts/pages become just two built-ins (next)
-- [ ] Importers: WordPress and Markdown-folder (next)
+- [x] **Custom content types**: per-company user-defined types (Jobs, Recipes, Properties…) with typed field schemas (text, longtext, number, date, url, select) — validated on write, editable in the admin, rendered on sites, exposed in the headless API, versioned, and covered by the approval snapshot
+- [x] **Importers**: WordPress WXR exports, Markdown files with front matter, and Nova's own JSON export (full round trip incl. custom types and settings) — export *and* import, so no lock-in in either direction
 
 ## Phase 4 — Scale-out
 

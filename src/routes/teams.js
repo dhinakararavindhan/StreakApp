@@ -1,11 +1,14 @@
 const crypto = require('crypto');
 const express = require('express');
+const multer = require('multer');
 
-const { getDb, uniqueTeamSlug, setTeamDefaults } = require('../db');
+const { getDb, uniqueTeamSlug, setTeamDefaults, slugify } = require('../db');
 const { audit } = require('../audit');
 const { requireAuth, requireTeamRole } = require('../auth');
 const { getTemplate, applySite, normalizeSite } = require('../templates');
+const { listTypes, normalizeSchema, parseFieldValues, BUILTIN_TYPES, FIELD_KINDS } = require('../content-types');
 const { aiAvailable, generateSite } = require('../ai');
+const { insertItem, parseWxr, parseMarkdown, importNovaExport } = require('../importers');
 const { rateLimit } = require('../security');
 const contentRoutes = require('./content');
 const tagRoutes = require('./tags');
@@ -383,6 +386,85 @@ router.delete('/:teamId/api-keys/:keyId', requireTeamRole('admin'), (req, res) =
   res.json({ ok: true });
 });
 
+// ---------- custom content types ----------
+
+router.get('/:teamId/content-types', requireTeamRole('manager'), (req, res) => {
+  res.json(listTypes(req.team.id));
+});
+
+router.post('/:teamId/content-types', requireTeamRole('admin'), (req, res) => {
+  const { name, name_plural, key, schema } = req.body || {};
+  if (!name || !String(name).trim()) return res.status(400).json({ error: 'name is required' });
+  const finalName = String(name).trim().slice(0, 60);
+  const finalKey = slugify(key || finalName).slice(0, 40);
+  if (BUILTIN_TYPES.includes(finalKey)) {
+    return res.status(400).json({ error: `"${finalKey}" is a built-in type` });
+  }
+  const normalized = normalizeSchema(schema);
+  if (normalized.error) return res.status(400).json({ error: normalized.error });
+  const db = getDb();
+  if (db.prepare('SELECT 1 FROM content_types WHERE team_id = ? AND key = ?').get(req.team.id, finalKey)) {
+    return res.status(409).json({ error: `A content type with key "${finalKey}" already exists` });
+  }
+  const result = db
+    .prepare('INSERT INTO content_types (team_id, key, name, name_plural, schema) VALUES (?, ?, ?, ?, ?)')
+    .run(
+      req.team.id,
+      finalKey,
+      finalName,
+      String(name_plural || `${finalName}s`).trim().slice(0, 60),
+      JSON.stringify(normalized.schema)
+    );
+  audit(req.team.id, req.user, 'type.create', finalName, finalKey);
+  const row = db.prepare('SELECT * FROM content_types WHERE id = ?').get(result.lastInsertRowid);
+  res.status(201).json({ ...row, schema: normalized.schema, kinds: FIELD_KINDS });
+});
+
+router.put('/:teamId/content-types/:ctId', requireTeamRole('admin'), (req, res) => {
+  const db = getDb();
+  const existing = db
+    .prepare('SELECT * FROM content_types WHERE id = ? AND team_id = ?')
+    .get(req.params.ctId, req.team.id);
+  if (!existing) return res.status(404).json({ error: 'Not found' });
+  const { name, name_plural, schema } = req.body || {};
+  let newSchema = existing.schema;
+  if (schema !== undefined) {
+    const normalized = normalizeSchema(schema);
+    if (normalized.error) return res.status(400).json({ error: normalized.error });
+    newSchema = JSON.stringify(normalized.schema);
+  }
+  db.prepare('UPDATE content_types SET name = ?, name_plural = ?, schema = ? WHERE id = ?').run(
+    name !== undefined && String(name).trim() ? String(name).trim().slice(0, 60) : existing.name,
+    name_plural !== undefined && String(name_plural).trim()
+      ? String(name_plural).trim().slice(0, 60)
+      : existing.name_plural,
+    newSchema,
+    existing.id
+  );
+  audit(req.team.id, req.user, 'type.update', existing.key);
+  const row = db.prepare('SELECT * FROM content_types WHERE id = ?').get(existing.id);
+  res.json({ ...row, schema: JSON.parse(row.schema) });
+});
+
+// Deleting a type requires it to be unused — content of that type would
+// otherwise be stranded with an undefined schema.
+router.delete('/:teamId/content-types/:ctId', requireTeamRole('admin'), (req, res) => {
+  const db = getDb();
+  const existing = db
+    .prepare('SELECT * FROM content_types WHERE id = ? AND team_id = ?')
+    .get(req.params.ctId, req.team.id);
+  if (!existing) return res.status(404).json({ error: 'Not found' });
+  const used = db
+    .prepare('SELECT COUNT(*) AS n FROM content WHERE team_id = ? AND type = ?')
+    .get(req.team.id, existing.key).n;
+  if (used > 0) {
+    return res.status(409).json({ error: `${used} content item(s) use this type — delete or retype them first` });
+  }
+  db.prepare('DELETE FROM content_types WHERE id = ?').run(existing.id);
+  audit(req.team.id, req.user, 'type.delete', existing.key);
+  res.json({ ok: true });
+});
+
 // ---------- full export (no lock-in) ----------
 
 router.get('/:teamId/export', requireTeamRole('admin'), (req, res) => {
@@ -399,8 +481,14 @@ router.get('/:teamId/export', requireTeamRole('admin'), (req, res) => {
         .all(row.id)
         .map((t) => t.name);
       const { published_snapshot, ...rest } = row;
-      return { ...rest, tags };
+      return { ...rest, fields: parseFieldValues(row.fields), tags };
     });
+  const contentTypes = listTypes(req.team.id).map(({ key, name, name_plural, schema }) => ({
+    key,
+    name,
+    name_plural,
+    schema,
+  }));
   const members = db
     .prepare(
       'SELECT u.username, tm.role, tm.created_at FROM team_members tm JOIN users u ON u.id = tm.user_id WHERE tm.team_id = ?'
@@ -418,8 +506,63 @@ router.get('/:teamId/export', requireTeamRole('admin'), (req, res) => {
     settings,
     members,
     media,
+    content_types: contentTypes,
     content,
   });
+});
+
+// ---------- importers (no lock-in, both directions) ----------
+
+const importUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024, files: 50 },
+});
+
+// Accepts WordPress WXR exports (.xml), Markdown files with front matter
+// (.md), and Nova's own JSON export (.json). Admin-only: published items
+// import as published, everything else as drafts.
+router.post('/:teamId/import', requireTeamRole('admin'), importUpload.array('files', 50), (req, res) => {
+  const files = req.files || [];
+  if (!files.length) return res.status(400).json({ error: 'Upload one or more files in the "files" field' });
+  let imported = 0;
+  let typesCreated = 0;
+  const notes = [];
+  const db = getDb();
+  db.transaction(() => {
+    for (const f of files) {
+      const name = f.originalname || 'file';
+      const text = f.buffer.toString('utf8');
+      try {
+        if (/\.xml$/i.test(name) || /<rss[\s>]/.test(text.slice(0, 2000))) {
+          const { items, skipped } = parseWxr(text);
+          for (const item of items) {
+            insertItem(req.team.id, item, req.user);
+            imported++;
+          }
+          if (!items.length) notes.push(`${name}: no posts or pages found`);
+          else if (skipped.length) notes.push(`${name}: skipped ${skipped.length} non-content item(s)`);
+        } else if (/\.json$/i.test(name)) {
+          const data = JSON.parse(text);
+          if (data.format !== 'nova-cms-export') {
+            notes.push(`${name}: not a Nova export (missing "format": "nova-cms-export")`);
+            continue;
+          }
+          const result = importNovaExport(req.team.id, data, req.user);
+          imported += result.imported;
+          typesCreated += result.types;
+        } else if (/\.(md|markdown|txt)$/i.test(name)) {
+          insertItem(req.team.id, parseMarkdown(text, name), req.user);
+          imported++;
+        } else {
+          notes.push(`${name}: unsupported file type (use .xml, .json, or .md)`);
+        }
+      } catch (err) {
+        notes.push(`${name}: ${err.message}`);
+      }
+    }
+  })();
+  if (imported) audit(req.team.id, req.user, 'content.import', `${imported} item(s)`, `${files.length} file(s)`);
+  res.json({ ok: true, imported, types_created: typesCreated, notes });
 });
 
 // ---------- company-scoped resources ----------

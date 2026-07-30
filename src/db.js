@@ -52,10 +52,12 @@ function init(options = {}) {
       PRIMARY KEY (team_id, user_id)
     );
 
+    -- type is 'post', 'page', or the key of a per-company custom content
+    -- type (content_types table) — validated in the routes, not by CHECK.
     CREATE TABLE IF NOT EXISTS content (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
-      type TEXT NOT NULL CHECK (type IN ('post', 'page')),
+      type TEXT NOT NULL DEFAULT 'post',
       title TEXT NOT NULL,
       slug TEXT NOT NULL,
       body TEXT NOT NULL DEFAULT '',
@@ -73,7 +75,22 @@ function init(options = {}) {
       published_at TEXT,
       publish_at TEXT,
       expire_at TEXT,
+      fields TEXT NOT NULL DEFAULT '{}',
       UNIQUE (team_id, slug)
+    );
+
+    -- Custom content types: per-company schemas beyond the built-in
+    -- post/page. "schema" is a JSON array of {key, label, kind} where kind
+    -- is text|longtext|number|date|url|select (select adds "options").
+    CREATE TABLE IF NOT EXISTS content_types (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+      key TEXT NOT NULL,
+      name TEXT NOT NULL,
+      name_plural TEXT NOT NULL,
+      schema TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE (team_id, key)
     );
 
     CREATE TABLE IF NOT EXISTS content_versions (
@@ -86,6 +103,7 @@ function init(options = {}) {
       excerpt TEXT NOT NULL DEFAULT '',
       cover_image TEXT NOT NULL DEFAULT '',
       status TEXT NOT NULL DEFAULT 'draft',
+      fields TEXT NOT NULL DEFAULT '{}',
       edited_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
@@ -230,31 +248,46 @@ function migrate() {
     db.exec('ALTER TABLE content ADD COLUMN translation_of INTEGER REFERENCES content(id) ON DELETE SET NULL');
   }
 
-  // Approval workflow: the old status CHECK lacks 'pending', which blocks
-  // submissions on existing databases — rebuild the content table.
-  if (!tableSql('content').includes("'pending'")) {
+  // Custom fields (pre-custom-type databases)
+  if (!db.prepare('PRAGMA table_info(content)').all().some((c) => c.name === 'fields')) {
+    db.exec("ALTER TABLE content ADD COLUMN fields TEXT NOT NULL DEFAULT '{}'");
+  }
+  if (!db.prepare('PRAGMA table_info(content_versions)').all().some((c) => c.name === 'fields')) {
+    db.exec("ALTER TABLE content_versions ADD COLUMN fields TEXT NOT NULL DEFAULT '{}'");
+  }
+
+  // Old CHECK constraints pin type to post/page (and, on the oldest
+  // databases, status to draft/published) — rebuild with the full modern
+  // column set. Runs after the ALTERs above so every column exists.
+  if (tableSql('content').includes("CHECK (type IN")) {
     db.pragma('foreign_keys = OFF');
     db.exec(`
       CREATE TABLE content_migrated (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
-        type TEXT NOT NULL CHECK (type IN ('post', 'page')),
+        type TEXT NOT NULL DEFAULT 'post',
         title TEXT NOT NULL,
         slug TEXT NOT NULL,
         body TEXT NOT NULL DEFAULT '',
+        format TEXT NOT NULL DEFAULT 'markdown' CHECK (format IN ('markdown', 'text', 'html', 'image', 'embed')),
         excerpt TEXT NOT NULL DEFAULT '',
         cover_image TEXT NOT NULL DEFAULT '',
         status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'pending', 'published')),
         review_note TEXT NOT NULL DEFAULT '',
         published_snapshot TEXT NOT NULL DEFAULT '',
+        locale TEXT NOT NULL DEFAULT 'en',
+        translation_of INTEGER REFERENCES content(id) ON DELETE SET NULL,
         author_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         updated_at TEXT NOT NULL DEFAULT (datetime('now')),
         published_at TEXT,
+        publish_at TEXT,
+        expire_at TEXT,
+        fields TEXT NOT NULL DEFAULT '{}',
         UNIQUE (team_id, slug)
       );
-      INSERT INTO content_migrated (id, team_id, type, title, slug, body, excerpt, cover_image, status, review_note, published_snapshot, author_id, created_at, updated_at, published_at)
-        SELECT id, team_id, type, title, slug, body, excerpt, cover_image, status, review_note, published_snapshot, author_id, created_at, updated_at, published_at
+      INSERT INTO content_migrated (id, team_id, type, title, slug, body, format, excerpt, cover_image, status, review_note, published_snapshot, locale, translation_of, author_id, created_at, updated_at, published_at, publish_at, expire_at, fields)
+        SELECT id, team_id, type, title, slug, body, format, excerpt, cover_image, status, review_note, published_snapshot, locale, translation_of, author_id, created_at, updated_at, published_at, publish_at, expire_at, fields
         FROM content;
       DROP TABLE content;
       ALTER TABLE content_migrated RENAME TO content;

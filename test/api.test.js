@@ -952,6 +952,171 @@ test('AI site builder: 503 when unconfigured, builds a site in mock mode', async
   }
 });
 
+test('custom content types: schemas, field validation, approval snapshot', async () => {
+  const owner = await registerAs('ctowner', 'ct-password-12');
+  const mgrClient = await registerAs('ctmgr', 'ct-password-34');
+  const team = await (await owner('/api/teams', { method: 'POST', body: { name: 'Talent Co' } })).json();
+  await owner(`/api/teams/${team.id}/members`, { method: 'POST', body: { username: 'ctmgr', role: 'manager' } });
+
+  // Managers cannot define types; reserved keys are rejected.
+  assert.strictEqual(
+    (await mgrClient(`/api/teams/${team.id}/content-types`, { method: 'POST', body: { name: 'X' } })).status,
+    403
+  );
+  assert.strictEqual(
+    (await owner(`/api/teams/${team.id}/content-types`, { method: 'POST', body: { name: 'Post' } })).status,
+    400
+  );
+
+  const created = await owner(`/api/teams/${team.id}/content-types`, {
+    method: 'POST',
+    body: {
+      name: 'Job',
+      name_plural: 'Jobs',
+      schema: [
+        { label: 'Location', kind: 'text' },
+        { label: 'Salary', kind: 'number' },
+        { label: 'Apply link', kind: 'url' },
+        { label: 'Level', kind: 'select', options: 'Junior, Senior' },
+      ],
+    },
+  });
+  assert.strictEqual(created.status, 201);
+  const jobType = await created.json();
+  assert.strictEqual(jobType.key, 'job');
+  assert.deepStrictEqual(jobType.schema.map((f) => f.key), ['location', 'salary', 'apply_link', 'level']);
+
+  // Field values are validated against the schema.
+  const bad = await owner(`/api/teams/${team.id}/content`, {
+    method: 'POST',
+    body: { type: 'job', title: 'X', fields: { level: 'CEO' } },
+  });
+  assert.strictEqual(bad.status, 400);
+  assert.strictEqual(
+    (await owner(`/api/teams/${team.id}/content`, { method: 'POST', body: { type: 'nope', title: 'X' } })).status,
+    400
+  );
+
+  const item = await (
+    await owner(`/api/teams/${team.id}/content`, {
+      method: 'POST',
+      body: {
+        type: 'job',
+        title: 'Thermal engineer',
+        body: 'Own thermal modeling for the OL-8 series.',
+        status: 'published',
+        fields: { location: 'Remote', salary: 140000, apply_link: 'https://example.com/apply', level: 'Senior' },
+      },
+    })
+  ).json();
+  assert.deepStrictEqual(item.fields, {
+    location: 'Remote',
+    salary: 140000,
+    apply_link: 'https://example.com/apply',
+    level: 'Senior',
+  });
+
+  // Fields render on the public article and in the headless API.
+  const html = await (await fetch(`${base}/t/${team.slug}/${item.slug}`)).text();
+  assert.ok(html.includes('Location') && html.includes('Remote') && html.includes('140000'));
+  const headless = await (await fetch(`${base}/api/public/${team.slug}/content/${item.slug}`)).json();
+  assert.strictEqual(headless.fields.level, 'Senior');
+  assert.strictEqual(headless.type, 'job');
+
+  // A manager's field edit goes to review; the approved values stay live.
+  const edited = await (
+    await mgrClient(`/api/teams/${team.id}/content/${item.id}`, {
+      method: 'PUT',
+      body: { fields: { location: 'Berlin', salary: 150000, apply_link: 'https://example.com/apply', level: 'Senior' } },
+    })
+  ).json();
+  assert.strictEqual(edited.status, 'pending');
+  const stillLive = await (await fetch(`${base}/api/public/${team.slug}/content/${item.slug}`)).json();
+  assert.strictEqual(stillLive.fields.location, 'Remote');
+  await owner(`/api/teams/${team.id}/content/${item.id}/approve`, { method: 'POST' });
+  const nowLive = await (await fetch(`${base}/api/public/${team.slug}/content/${item.slug}`)).json();
+  assert.strictEqual(nowLive.fields.location, 'Berlin');
+
+  // A type in use cannot be deleted.
+  assert.strictEqual(
+    (await owner(`/api/teams/${team.id}/content-types/${jobType.id}`, { method: 'DELETE' })).status,
+    409
+  );
+});
+
+test('importers: WordPress WXR, Markdown front matter, and Nova round trip', async () => {
+  const login = await fetch(`${base}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: 'ctowner', password: 'ct-password-12' }),
+  });
+  const cookie = login.headers.get('set-cookie').split(';')[0];
+  const owner = client(cookie);
+  const team = await (await owner('/api/teams', { method: 'POST', body: { name: 'Import Co' } })).json();
+
+  const wxr = `<?xml version="1.0"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:wp="http://wordpress.org/export/1.2/"><channel>
+<item><title>Hello from WordPress</title><wp:post_type>post</wp:post_type><wp:status>publish</wp:status>
+<wp:post_name>hello-wordpress</wp:post_name><wp:post_date_gmt>2024-03-01 10:00:00</wp:post_date_gmt>
+<category domain="post_tag" nicename="news"><![CDATA[News]]></category>
+<content:encoded><![CDATA[First paragraph.
+
+Second paragraph with <strong>bold</strong>.]]></content:encoded></item>
+<item><title>About</title><wp:post_type>page</wp:post_type><wp:status>draft</wp:status>
+<content:encoded><![CDATA[<p>About us.</p>]]></content:encoded></item>
+<item><title>logo.png</title><wp:post_type>attachment</wp:post_type></item>
+</channel></rss>`;
+  const md = ['---', 'title: Notes from the field', 'tags: alpha, beta', 'status: published', '---', '', 'Body **here**.'].join('\n');
+
+  const fd = new FormData();
+  fd.append('files', new Blob([wxr], { type: 'text/xml' }), 'wordpress-export.xml');
+  fd.append('files', new Blob([md], { type: 'text/markdown' }), 'field-notes.md');
+  const res = await fetch(`${base}/api/teams/${team.id}/import`, { method: 'POST', headers: { Cookie: cookie }, body: fd });
+  assert.strictEqual(res.status, 200);
+  const report = await res.json();
+  assert.strictEqual(report.imported, 3);
+
+  const rows = await (await owner(`/api/teams/${team.id}/content`)).json();
+  const wp = rows.find((r) => r.slug === 'hello-wordpress');
+  assert.strictEqual(wp.status, 'published');
+  assert.strictEqual(wp.format, 'html');
+  assert.deepStrictEqual(wp.tags.map((t) => t.name), ['News']);
+  assert.strictEqual(rows.find((r) => r.title === 'About').status, 'draft');
+  assert.strictEqual(rows.find((r) => r.title === 'Notes from the field').format, 'markdown');
+  const site = await (await fetch(`${base}/t/${team.slug}/posts/hello-wordpress`)).text();
+  assert.ok(site.includes('<strong>bold</strong>') && site.includes('<p>First paragraph.</p>'));
+
+  // Nova round trip: export Talent Co (custom type + jobs) into a new company.
+  const talent = (await (await owner('/api/teams')).json()).find((t) => t.name === 'Talent Co');
+  const exported = await (await owner(`/api/teams/${talent.id}/export`)).json();
+  assert.ok(exported.content_types.some((t) => t.key === 'job'));
+  const fresh = await (await owner('/api/teams', { method: 'POST', body: { name: 'Talent Clone' } })).json();
+  const fd2 = new FormData();
+  fd2.append('files', new Blob([JSON.stringify(exported)], { type: 'application/json' }), 'talent-export.json');
+  const res2 = await fetch(`${base}/api/teams/${fresh.id}/import`, { method: 'POST', headers: { Cookie: cookie }, body: fd2 });
+  const report2 = await res2.json();
+  assert.strictEqual(report2.types_created, 1);
+  assert.ok(report2.imported >= 1);
+  const clonedTypes = await (await owner(`/api/teams/${fresh.id}/content-types`)).json();
+  assert.strictEqual(clonedTypes[0].key, 'job');
+  const cloned = await (await owner(`/api/teams/${fresh.id}/content?type=job`)).json();
+  assert.strictEqual(cloned[0].fields.location, 'Berlin');
+
+  // Importing is an admin action.
+  const mgrLogin = await fetch(`${base}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: 'ctmgr', password: 'ct-password-34' }),
+  });
+  const mgrCookie = mgrLogin.headers.get('set-cookie').split(';')[0];
+  const denied = await fetch(`${base}/api/teams/${talent.id}/import`, {
+    method: 'POST',
+    headers: { Cookie: mgrCookie },
+    body: fd2,
+  });
+  assert.strictEqual(denied.status, 403);
+});
+
 test('health endpoint responds for load balancers', async () => {
   const res = await fetch(`${base}/api/health`);
   assert.strictEqual(res.status, 200);

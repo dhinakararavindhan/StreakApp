@@ -366,13 +366,14 @@
     const page = shell('#/content', '<h1>Content <a class="btn" href="#/edit/new">+ New</a></h1><div id="list">Loading…</div>');
     const listEl = page.querySelector('#list');
     const state = { type: '', status: '', search: '' };
+    const cTypes = await capi('/content-types').catch(() => []);
 
     async function load() {
       const q = new URLSearchParams(Object.entries(state).filter(([, v]) => v));
       const rows = await capi(`/content?${q}`);
       listEl.innerHTML = `
         <div class="toolbar">
-          <select id="f-type"><option value="">All types</option><option value="post">Posts</option><option value="page">Pages</option></select>
+          <select id="f-type"><option value="">All types</option><option value="post">Posts</option><option value="page">Pages</option>${cTypes.map((t) => `<option value="${esc(t.key)}">${esc(t.name_plural)}</option>`).join('')}</select>
           <select id="f-status"><option value="">All statuses</option><option value="draft">Draft</option><option value="pending">Pending</option><option value="published">Published</option></select>
           <input id="f-search" placeholder="Search…" value="${esc(state.search)}">
         </div>
@@ -412,8 +413,9 @@
   async function renderEditor(id) {
     const isNew = id === 'new';
     const item = isNew
-      ? { type: 'post', title: '', slug: '', body: '', format: 'markdown', excerpt: '', cover_image: '', status: 'draft', tags: [], publish_at: null, expire_at: null, locale: 'en' }
+      ? { type: 'post', title: '', slug: '', body: '', format: 'markdown', excerpt: '', cover_image: '', status: 'draft', tags: [], fields: {}, publish_at: null, expire_at: null, locale: 'en' }
       : await capi(`/content/${id}`);
+    const cTypes = await capi('/content-types').catch(() => []);
 
     const canPublish = isCompanyAdmin();
     // Managers never hold a live 'published' selection — their edits to
@@ -460,10 +462,12 @@
         </div>
         <div class="card">
           <label>Type</label>
-          <select name="type" ${isNew ? '' : 'disabled'}>
+          <select name="type" id="type-select" ${isNew ? '' : 'disabled'}>
             <option value="post" ${item.type === 'post' ? 'selected' : ''}>Post</option>
             <option value="page" ${item.type === 'page' ? 'selected' : ''}>Page</option>
+            ${cTypes.map((t) => `<option value="${esc(t.key)}" ${item.type === t.key ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}
           </select>
+          <div id="cf-host"></div>
           <label>Body format</label>
           <select name="format" id="fmt-select">
             <option value="markdown" ${item.format === 'markdown' ? 'selected' : ''}>Markdown</option>
@@ -641,6 +645,34 @@
     });
     applyFormatUI();
 
+    // Custom-type fields: inputs generated from the type's schema.
+    const cfHost = page.querySelector('#cf-host');
+    const typeSelect = page.querySelector('#type-select');
+    const renderCustomFields = () => {
+      const ct = cTypes.find((t) => t.key === typeSelect.value);
+      const values = item.fields || {};
+      cfHost.innerHTML = !ct || !ct.schema.length
+        ? ''
+        : ct.schema
+            .map((f) => {
+              const v = values[f.key] !== undefined ? String(values[f.key]) : '';
+              if (f.kind === 'longtext') {
+                return `<label>${esc(f.label)}</label><textarea data-cf="${esc(f.key)}" rows="3">${esc(v)}</textarea>`;
+              }
+              if (f.kind === 'select') {
+                return `<label>${esc(f.label)}</label><select data-cf="${esc(f.key)}"><option value="">—</option>${f.options
+                  .map((o) => `<option value="${esc(o)}" ${o === v ? 'selected' : ''}>${esc(o)}</option>`)
+                  .join('')}</select>`;
+              }
+              const inputType = f.kind === 'number' ? 'number' : f.kind === 'date' ? 'date' : 'text';
+              return `<label>${esc(f.label)}${f.kind === 'url' ? ' (URL)' : ''}</label>
+                <input type="${inputType}" data-cf="${esc(f.key)}" value="${esc(v)}"${f.kind === 'number' ? ' step="any"' : ''}>`;
+            })
+            .join('');
+    };
+    renderCustomFields();
+    typeSelect.addEventListener('change', renderCustomFields);
+
     const collect = (f) => ({
       title: f.get('title'),
       body: f.get('body'),
@@ -653,6 +685,13 @@
       publish_at: f.get('publish_at') || '',
       expire_at: f.get('expire_at') || '',
       tags: f.get('tags').split(',').map((t) => t.trim()).filter(Boolean),
+      ...(page.querySelector('[data-cf]')
+        ? {
+            fields: Object.fromEntries(
+              [...page.querySelectorAll('[data-cf]')].map((el) => [el.dataset.cf, el.value])
+            ),
+          }
+        : {}),
     });
 
     page.querySelector('#editor').addEventListener('submit', async (e) => {
@@ -1235,6 +1274,38 @@
         <div id="key-list"></div>
       </div>
       <div class="card" style="max-width:520px;margin-top:1.4rem">
+        <b>Content types</b>
+        <p style="color:var(--muted);font-size:0.82rem;margin:0.3rem 0 0.6rem">
+          Posts and pages are built in. Define your own — Jobs, Recipes, Properties — with
+          structured fields that show in the editor, on your site, and in the API.
+        </p>
+        <div id="ctype-list"></div>
+        <form id="add-ctype" style="margin-top:0.6rem">
+          <div class="toolbar" style="margin:0 0 0.4rem">
+            <input name="name" placeholder="Type name, e.g. Job" required style="flex:1;min-width:120px">
+            <input name="name_plural" placeholder="Plural (Jobs)" style="max-width:130px">
+          </div>
+          <div id="ctype-fields"></div>
+          <p style="margin:0.5rem 0 0;display:flex;gap:0.5rem">
+            <button type="button" class="btn secondary sm" id="ctype-addfield">+ Field</button>
+            <button class="btn sm">Create type</button>
+          </p>
+        </form>
+      </div>
+      <div class="card" style="max-width:520px;margin-top:1.4rem">
+        <b>Import</b>
+        <p style="color:var(--muted);font-size:0.82rem;margin:0.3rem 0 0.6rem">
+          Bring your content with you: WordPress exports (<code>.xml</code>), Markdown files with
+          front matter (<code>.md</code>), or a Nova export (<code>.json</code>). Published items go
+          live immediately; everything else lands as drafts.
+        </p>
+        <form class="toolbar" id="import-form" style="margin-top:0">
+          <input type="file" name="files" multiple accept=".xml,.json,.md,.markdown,.txt" required style="flex:1;min-width:200px">
+          <button class="btn sm">Import</button>
+        </form>
+        <div id="import-result" style="color:var(--muted);font-size:0.8rem;margin-top:0.4rem"></div>
+      </div>
+      <div class="card" style="max-width:520px;margin-top:1.4rem">
         <b>Export</b>
         <p style="color:var(--muted);font-size:0.82rem;margin:0.3rem 0 0.6rem">Everything — content, settings, members, media metadata — as one JSON file. No lock-in.</p>
         <a class="btn secondary sm" href="/api/teams/${info.id}/export" target="_blank">Download company export</a>
@@ -1487,6 +1558,99 @@
         }
       });
       loadKeys();
+
+      // Content types: list, delete, and a small field-schema builder.
+      const KIND_OPTIONS = ['text', 'longtext', 'number', 'date', 'url', 'select'];
+      async function loadCTypes() {
+        const rows = await api(`/teams/${company.id}/content-types`);
+        page.querySelector('#ctype-list').innerHTML = rows.length
+          ? `<table><thead><tr><th>Type</th><th>Key</th><th>Fields</th><th></th></tr></thead>
+            <tbody>${rows
+              .map(
+                (t) => `<tr><td><b>${esc(t.name)}</b></td><td><code>${esc(t.key)}</code></td>
+                <td>${t.schema.map((f) => `${esc(f.label)} <span class="path">(${esc(f.kind)})</span>`).join(', ') || '—'}</td>
+                <td><button class="btn danger sm" data-del-ctype="${t.id}">Delete</button></td></tr>`
+              )
+              .join('')}</tbody></table>`
+          : '';
+        page.querySelectorAll('[data-del-ctype]').forEach((btn) =>
+          btn.addEventListener('click', async () => {
+            if (!confirm('Delete this content type? Only possible while no content uses it.')) return;
+            try {
+              await api(`/teams/${company.id}/content-types/${btn.dataset.delCtype}`, { method: 'DELETE' });
+              loadCTypes();
+            } catch (err) {
+              toast(err.message, 'error');
+            }
+          })
+        );
+      }
+      const fieldsHost = page.querySelector('#ctype-fields');
+      const addFieldRow = () => {
+        const row = document.createElement('div');
+        row.className = 'toolbar cf-row';
+        row.style.margin = '0 0 0.4rem';
+        row.innerHTML = `
+          <input placeholder="Field label, e.g. Location" class="cf-label" style="flex:1;min-width:120px">
+          <select class="cf-kind" style="width:auto">${KIND_OPTIONS.map((k) => `<option>${k}</option>`).join('')}</select>
+          <input placeholder="Options, comma-separated" class="cf-options" style="display:none;max-width:170px">
+          <button type="button" class="btn danger sm cf-rm">×</button>`;
+        row.querySelector('.cf-kind').addEventListener('change', (e) => {
+          row.querySelector('.cf-options').style.display = e.target.value === 'select' ? '' : 'none';
+        });
+        row.querySelector('.cf-rm').addEventListener('click', () => row.remove());
+        fieldsHost.appendChild(row);
+      };
+      page.querySelector('#ctype-addfield').addEventListener('click', addFieldRow);
+      addFieldRow();
+      page.querySelector('#add-ctype').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const f = new FormData(e.target);
+        const schema = [...fieldsHost.querySelectorAll('.cf-row')]
+          .map((row) => ({
+            label: row.querySelector('.cf-label').value.trim(),
+            kind: row.querySelector('.cf-kind').value,
+            options: row.querySelector('.cf-options').value,
+          }))
+          .filter((field) => field.label);
+        try {
+          await api(`/teams/${company.id}/content-types`, {
+            method: 'POST',
+            body: { name: f.get('name'), name_plural: f.get('name_plural'), schema },
+          });
+          e.target.reset();
+          fieldsHost.innerHTML = '';
+          addFieldRow();
+          toast('Content type created.');
+          loadCTypes();
+        } catch (err) {
+          toast(err.message, 'error');
+        }
+      });
+      loadCTypes();
+
+      // Import: WordPress WXR, Markdown files, or a Nova export.
+      page.querySelector('#import-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const input = e.target.querySelector('[name=files]');
+        if (!input.files.length) return;
+        const fd = new FormData();
+        for (const file of input.files) fd.append('files', file);
+        const resultEl = page.querySelector('#import-result');
+        resultEl.textContent = 'Importing…';
+        try {
+          const r = await api(`/teams/${company.id}/import`, { method: 'POST', body: fd });
+          resultEl.innerHTML = `Imported <b>${r.imported}</b> item(s)${r.types_created ? ` and ${r.types_created} content type(s)` : ''}.${
+            r.notes.length ? `<br>${r.notes.map(esc).join('<br>')}` : ''
+          }`;
+          input.value = '';
+          toast(`Imported ${r.imported} item(s).`);
+          loadCTypes();
+        } catch (err) {
+          resultEl.textContent = '';
+          toast(err.message, 'error');
+        }
+      });
 
       page.querySelector('#add-member').addEventListener('submit', async (e) => {
         e.preventDefault();

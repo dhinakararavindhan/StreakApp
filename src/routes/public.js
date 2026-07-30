@@ -3,6 +3,7 @@ const { marked } = require('marked');
 
 const { getDb } = require('../db');
 const { renderBody, fallbackExcerpt } = require('../render');
+const { getType, parseFieldValues, BUILTIN_TYPES } = require('../content-types');
 
 const router = express.Router();
 
@@ -157,6 +158,9 @@ ${(meta.alternates || []).map((a) => `<link rel="alternate" hreflang="${esc(a.la
   figure.body-image figcaption { color: var(--muted); font-size: 0.85rem; margin-top: 0.5rem; text-align: center; }
   .embed-wrap { position: relative; aspect-ratio: 16 / 9; border-radius: 12px; overflow: hidden; background: var(--border); }
   .embed-wrap iframe { position: absolute; inset: 0; width: 100%; height: 100%; }
+  dl.fields { display: grid; grid-template-columns: max-content 1fr; gap: 0.35rem 1.25rem; margin: 0 0 2rem; padding: 1rem 1.25rem; border: 1px solid var(--border); border-radius: 12px; background: color-mix(in srgb, var(--fg) 3%, var(--bg)); }
+  dl.fields dt { color: var(--muted); font-size: 0.85rem; font-weight: 600; }
+  dl.fields dd { margin: 0; font-size: 0.92rem; }
   footer { border-top: 1px solid var(--border); color: var(--muted); font-size: 0.875rem; }
 </style>
 </head>
@@ -241,7 +245,23 @@ function fullArticle(team, row, base) {
   const date = (row.published_at || row.created_at || '').slice(0, 10);
   const cover = row.cover_image ? `<img class="cover-hero" src="${esc(row.cover_image)}" alt="">` : '';
   const meta = row.type === 'post' ? `<div class="meta">${esc(date)} ${tagLinks(row, base)}</div>` : '';
-  return `<article class="full">${cover}<h1>${esc(row.title)}</h1>${meta}${renderBody(row.format, row.body, row.excerpt)}</article>`;
+  return `<article class="full">${cover}<h1>${esc(row.title)}</h1>${meta}${customFieldsHtml(team, row)}${renderBody(row.format, row.body, row.excerpt)}</article>`;
+}
+
+/** Custom-type field values as a definition list above the body. */
+function customFieldsHtml(team, row) {
+  if (BUILTIN_TYPES.includes(row.type)) return '';
+  const ct = getType(team.id, row.type);
+  if (!ct || !ct.schema.length) return '';
+  const values = parseFieldValues(row.fields);
+  const items = ct.schema
+    .filter((f) => values[f.key] !== undefined && values[f.key] !== '')
+    .map((f) => {
+      const v = String(values[f.key]);
+      const rendered = f.kind === 'url' ? `<a href="${esc(v)}">${esc(v)}</a>` : esc(v);
+      return `<dt>${esc(f.label)}</dt><dd>${rendered}</dd>`;
+    });
+  return items.length ? `<dl class="fields">${items.join('')}</dl>` : '';
 }
 
 function teamLayout(team, onDomain, { title, content, meta = {}, locale }) {
@@ -375,9 +395,10 @@ function renderTeamPost(team, onDomain, slug, req, res) {
 }
 
 function renderTeamPage(team, onDomain, slug, req, res) {
+  // Pages and custom-type items both live at /<slug>; posts keep /posts/<slug>.
   const row = liveRow(
     getDb()
-      .prepare(`SELECT * FROM content WHERE team_id = ? AND type = 'page' AND ${LIVE} AND slug = ?`)
+      .prepare(`SELECT * FROM content WHERE team_id = ? AND type != 'post' AND ${LIVE} AND slug = ?`)
       .get(team.id, slug)
   );
   if (!row) {
@@ -417,6 +438,7 @@ function publicContentRow(row, { withBody }) {
     excerpt: row.excerpt,
     excerpt_html: mdInline(row.excerpt),
     cover_image: row.cover_image,
+    fields: parseFieldValues(row.fields),
     tags,
     published_at: row.published_at,
     updated_at: row.updated_at,
@@ -505,9 +527,10 @@ function livePosts(teamId) {
     .map(liveRow);
 }
 
+// Pages and custom-type items — everything served at /<slug>.
 function livePages(teamId) {
   return getDb()
-    .prepare(`SELECT * FROM content WHERE team_id = ? AND type = 'page' AND ${LIVE} ORDER BY title`)
+    .prepare(`SELECT * FROM content WHERE team_id = ? AND type != 'post' AND ${LIVE} ORDER BY title`)
     .all(teamId)
     .map(liveRow);
 }
