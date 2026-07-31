@@ -1844,6 +1844,56 @@ test('two-factor authentication: setup, login challenge, disable', async () => {
   assert.strictEqual((await (await client2('/api/auth/me')).json()).totp_enabled, false);
 });
 
+test('OpenAPI spec, docs page, and the official JS SDK end to end', async () => {
+  // The spec and reference are served and coherent.
+  const spec = await (await fetch(`${base}/api/openapi.json`)).json();
+  assert.strictEqual(spec.openapi, '3.1.0');
+  assert.ok(spec.paths['/api/teams/{teamId}/content']);
+  assert.ok(spec.paths['/api/public/{company}/content']);
+  assert.ok(spec.components.schemas.Content.properties.status.enum.includes('pending'));
+  const docs = await (await fetch(`${base}/api/docs`)).text();
+  assert.ok(docs.includes('Nova CMS API') && docs.includes('/api/teams/{teamId}/content'));
+  const sdkSource = await (await fetch(`${base}/sdk/nova-sdk.js`)).text();
+  assert.ok(sdkSource.includes('class NovaClient'));
+
+  // Dogfood the SDK against this very server, authenticated by API keys.
+  const { NovaClient, NovaError } = require('../sdk/nova-sdk');
+  const owner = await registerAs('sdkowner', 'sdk-password-123');
+  const team = await (await owner('/api/teams', { method: 'POST', body: { name: 'SDK Co' } })).json();
+  const writeKey = await (await owner(`/api/teams/${team.id}/api-keys`, { method: 'POST', body: { name: 'sdk-w', scope: 'write' } })).json();
+  const readKey = await (await owner(`/api/teams/${team.id}/api-keys`, { method: 'POST', body: { name: 'sdk-r', scope: 'read' } })).json();
+
+  const writer = new NovaClient({ baseUrl: base, apiKey: writeKey.token });
+  const created = await writer.team(team.id).content.create({
+    title: 'Shipped via SDK',
+    body: 'Hello from the client library.',
+    status: 'pending',
+    tags: ['SDK'],
+  });
+  assert.strictEqual(created.status, 'pending'); // write keys go through approval
+
+  // Write keys cannot publish; the SDK surfaces the API's error faithfully.
+  await assert.rejects(
+    () => writer.team(team.id).content.approve(created.id),
+    (err) => err instanceof NovaError && err.status === 403
+  );
+
+  const reader = new NovaClient({ baseUrl: base, apiKey: readKey.token });
+  const drafts = await reader.team(team.id).content.list({ status: 'pending' });
+  assert.ok(drafts.some((r) => r.id === created.id));
+
+  // Approve via session, then read it from the public site API — no key at all.
+  await owner(`/api/teams/${team.id}/content/${created.id}/approve`, { method: 'POST' });
+  const anon = new NovaClient({ baseUrl: base });
+  const posts = await anon.site(team.slug).posts();
+  assert.strictEqual(posts.length, 1);
+  const article = await anon.site(team.slug).get(created.slug);
+  assert.ok(article.body_html.includes('Hello from the client library.'));
+  const found = await anon.site(team.slug).search('client library');
+  assert.strictEqual(found.length, 1);
+  assert.ok((await anon.health()).ok);
+});
+
 test('health endpoint responds for load balancers', async () => {
   const res = await fetch(`${base}/api/health`);
   assert.strictEqual(res.status, 200);

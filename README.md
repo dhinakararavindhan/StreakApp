@@ -154,6 +154,16 @@ PLATFORM_DOMAIN=cms.example.com ACME_EMAIL=you@example.com JWT_SECRET=<random> \
 
 ## API overview
 
+**Machine-readable**: the full API is described in OpenAPI 3.1 at `/api/openapi.json`, with a human-readable reference at **`/api/docs`**. The official **JavaScript SDK** (zero dependencies, Node 18+ and browsers) ships with every install — `<script src="/sdk/nova-sdk.js">` in a page or copy `sdk/` for Node:
+
+```js
+const { NovaClient } = require('./sdk/nova-sdk');
+const nova = new NovaClient({ baseUrl: 'https://cms.example.com', apiKey: 'nova_…' });
+const posts = await nova.site('acme').posts();           // public headless API, no key
+await nova.team(3).content.create({ title: 'Hello' });   // write key → approval workflow
+```
+
+
 All `/api` routes accept and return JSON. Authentication uses an httpOnly cookie set by login/register. Company-scoped routes require membership; superadmins can access any company.
 
 | Method | Route | Access | Description |
@@ -209,7 +219,7 @@ All `/api` routes accept and return JSON. Authentication uses an httpOnly cookie
 npm test
 ```
 
-68 end-to-end tests (`node --test`, in-memory database): registration, company creation, the three-tier role model, cross-company isolation, content CRUD with cover images, per-company slug scoping, draft/pending/publish visibility, the approval workflow, custom content types with field validation, the WordPress/Markdown/Nova importers, feeds/sitemaps/SEO, rate limiting, theming, starter kits and the AI site builder (mock mode), custom-domain routing, the headless API, dashboards, and platform stats.
+69 end-to-end tests (`node --test`, in-memory database): registration, company creation, the three-tier role model, cross-company isolation, content CRUD with cover images, per-company slug scoping, draft/pending/publish visibility, the approval workflow, custom content types with field validation, the WordPress/Markdown/Nova importers, feeds/sitemaps/SEO, rate limiting, theming, starter kits and the AI site builder (mock mode), custom-domain routing, the headless API, dashboards, and platform stats.
 
 ## Project layout
 

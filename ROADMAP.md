@@ -86,7 +86,8 @@ The moat is other people's work running on Nova.
 - [x] Starter kits: 41 business templates across six categories (hospitality, services, property, creative & retail, community & education, product & publishing) — theme + typography + real published starter content in one click, with custom content types where the business has structured data (hotel Rooms, brewery Taps, travel Trips, real-estate Properties, coworking Spaces, museum Exhibitions, gym/yoga Classes, school Courses, band Shows, food-truck Stops)
 - [x] AI site builder: describe the company, Claude designs the theme, writes the starter site, and defines custom content types when the business calls for them (`ANTHROPIC_API_KEY`, admin-only, rate-limited, offline mock mode for tests)
 - [ ] Theme system beyond presets: installable themes, template overrides
-- [ ] Official SDKs (JS/TS first) generated from an OpenAPI spec
+- [x] OpenAPI 3.1 spec (`/api/openapi.json`) + self-hosted API reference (`/api/docs`) + official zero-dependency JS SDK (`/sdk/nova-sdk.js`, Node 18+ and browsers), dogfooded in the test suite
+- [ ] TypeScript types + npm publishing for the SDK (next)
 - [ ] Docs site built on Nova itself (dogfooding), template gallery, showcase
 - [ ] Hosted SaaS offering with billing — the open-source core stays complete
 

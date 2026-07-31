@@ -1,0 +1,8 @@
+{
+  "name": "@nova-cms/sdk",
+  "version": "0.1.0",
+  "description": "Official JavaScript SDK for the Nova CMS API — zero dependencies, Node 18+ and browsers",
+  "main": "nova-sdk.js",
+  "license": "MIT",
+  "keywords": ["nova-cms", "cms", "headless", "sdk"]
+}
