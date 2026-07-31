@@ -109,11 +109,20 @@ docker compose up -d      # builds the image, persists /data, restarts on failur
 
 Or roll your own: `docker build -t nova-cms . && docker run -p 3000:3000 -v nova-data:/data -e JWT_SECRET=<random> nova-cms`. A container healthcheck hits `/api/health`. Behind a TLS proxy set `COOKIE_SECURE=1` and `TRUST_PROXY=1`. CI (GitHub Actions) runs the test suite on every push.
 
+**Automatic TLS for every custom domain**: `deploy/docker-compose.tls.yml` runs Nova behind Caddy with on-demand Let's Encrypt certificates — customers point DNS at your host and get HTTPS on first visit, no per-domain config. Certificate issuance is gated by `/api/tls-check`, which only approves the platform domain (`PLATFORM_DOMAIN`) and connected custom domains, so certs can never be minted for arbitrary names.
+
+```bash
+PLATFORM_DOMAIN=cms.example.com ACME_EMAIL=you@example.com JWT_SECRET=<random> \
+  docker compose -f deploy/docker-compose.tls.yml up -d
+```
+
 ## Production notes
 
 - **Rate limiting**: login and registration are limited per IP (tune with `RATE_LIMIT_LOGIN` / `RATE_LIMIT_REGISTER`).
 - **Security headers** are set on every response; auth cookies are httpOnly + SameSite=Lax (+ Secure when `COOKIE_SECURE=1`).
 - **SEO built in**: every hosted site gets `feed.xml` (RSS), `sitemap.xml`, meta descriptions, and Open Graph tags; `/robots.txt` and the platform sitemap are domain-aware, so a custom-domain site gets its own at the root.
+- **Observability**: `/api/metrics` serves Prometheus metrics (requests by route/status class, latency, uptime) to superadmins or a `METRICS_TOKEN` bearer; set `NOVA_ERROR_WEBHOOK` to receive a JSON report on every unhandled server error; `NOVA_LOG=json` emits one structured log line per request.
+- **Backups**: superadmins download a consistent point-in-time snapshot of the whole platform from `/api/platform/backup` (a plain SQLite file — restore by dropping it into `DATA_DIR`).
 
 ## Configuration
 
@@ -131,6 +140,9 @@ Or roll your own: `docker build -t nova-cms . && docker run -p 3000:3000 -v nova
 | `NOVA_AI_MODEL` | `claude-opus-5` | Claude model used by the AI site builder |
 | `NOVA_LOG` | unset | Set `json` for structured one-line-per-request logs |
 | `NOVA_AI_REVIEW` | on when AI is configured | Set `0` to disable AI pre-review of submissions |
+| `METRICS_TOKEN` | unset | Bearer token granting scrapers access to `/api/metrics` |
+| `NOVA_ERROR_WEBHOOK` | unset | URL POSTed a JSON report on every unhandled server error |
+| `PLATFORM_DOMAIN` | unset | The platform's own hostname (used by the TLS `ask` endpoint) |
 
 ## API overview
 
@@ -183,7 +195,7 @@ All `/api` routes accept and return JSON. Authentication uses an httpOnly cookie
 npm test
 ```
 
-59 end-to-end tests (`node --test`, in-memory database): registration, company creation, the three-tier role model, cross-company isolation, content CRUD with cover images, per-company slug scoping, draft/pending/publish visibility, the approval workflow, custom content types with field validation, the WordPress/Markdown/Nova importers, feeds/sitemaps/SEO, rate limiting, theming, starter kits and the AI site builder (mock mode), custom-domain routing, the headless API, dashboards, and platform stats.
+60 end-to-end tests (`node --test`, in-memory database): registration, company creation, the three-tier role model, cross-company isolation, content CRUD with cover images, per-company slug scoping, draft/pending/publish visibility, the approval workflow, custom content types with field validation, the WordPress/Markdown/Nova importers, feeds/sitemaps/SEO, rate limiting, theming, starter kits and the AI site builder (mock mode), custom-domain routing, the headless API, dashboards, and platform stats.
 
 ## Project layout
 

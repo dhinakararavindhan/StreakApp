@@ -1426,6 +1426,62 @@ test('draft preview: members check unpublished changes on the real site', async 
   assert.ok(pagePreview.includes('Not yet public.'));
 });
 
+test('metrics, backup, TLS check, and error webhook (production ops)', async () => {
+  // Prometheus metrics: superadmin session or METRICS_TOKEN bearer.
+  assert.strictEqual((await fetch(`${base}/api/metrics`)).status, 401);
+  const metricsRes = await admin('/api/metrics');
+  assert.strictEqual(metricsRes.status, 200);
+  const body = await metricsRes.text();
+  assert.ok(body.includes('nova_requests_total{route="api"') && body.includes('nova_uptime_seconds'));
+  process.env.METRICS_TOKEN = 'scrape-me-123';
+  try {
+    const viaToken = await fetch(`${base}/api/metrics`, { headers: { Authorization: 'Bearer scrape-me-123' } });
+    assert.strictEqual(viaToken.status, 200);
+  } finally {
+    delete process.env.METRICS_TOKEN;
+  }
+
+  // Platform backup: a real SQLite snapshot, superadmin-only.
+  assert.strictEqual((await alice('/api/platform/backup')).status, 403);
+  const backup = await admin('/api/platform/backup');
+  assert.strictEqual(backup.status, 200);
+  const bytes = Buffer.from(await backup.arrayBuffer());
+  assert.ok(bytes.subarray(0, 15).toString() === 'SQLite format 3');
+  assert.ok(bytes.length > 4096);
+
+  // Caddy on-demand TLS gate: only domains we actually serve get certs.
+  const team = await (await alice('/api/teams', { method: 'POST', body: { name: 'TLS Co' } })).json();
+  await alice(`/api/teams/${team.id}`, { method: 'PUT', body: { custom_domain: 'www.tls-co.example' } });
+  assert.strictEqual((await fetch(`${base}/api/tls-check?domain=www.tls-co.example`)).status, 200);
+  assert.strictEqual((await fetch(`${base}/api/tls-check?domain=evil.example`)).status, 404);
+  assert.strictEqual((await fetch(`${base}/api/tls-check`)).status, 400);
+
+  // Error webhook: reports fire to NOVA_ERROR_WEBHOOK.
+  const { reportError } = require('../src/observability');
+  const received = [];
+  const receiver = http.createServer((req, res) => {
+    let raw = '';
+    req.on('data', (c) => (raw += c));
+    req.on('end', () => {
+      received.push(JSON.parse(raw));
+      res.end('ok');
+    });
+  });
+  await new Promise((resolve) => receiver.listen(0, resolve));
+  process.env.NOVA_ERROR_WEBHOOK = `http://127.0.0.1:${receiver.address().port}/errors`;
+  try {
+    reportError(new Error('synthetic failure'), { method: 'GET', originalUrl: '/boom' });
+    for (let i = 0; i < 40 && !received.length; i++) await new Promise((r) => setTimeout(r, 25));
+    assert.strictEqual(received.length, 1);
+    assert.strictEqual(received[0].message, 'synthetic failure');
+    assert.strictEqual(received[0].path, '/boom');
+    assert.strictEqual(received[0].source, 'nova-cms');
+  } finally {
+    delete process.env.NOVA_ERROR_WEBHOOK;
+    receiver.close();
+  }
+});
+
 test('health endpoint responds for load balancers', async () => {
   const res = await fetch(`${base}/api/health`);
   assert.strictEqual(res.status, 200);

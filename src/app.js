@@ -2,8 +2,9 @@ const path = require('path');
 const express = require('express');
 const cookieParser = require('cookie-parser');
 
-const { init } = require('./db');
+const { init, getDb } = require('./db');
 const { attachUser, requireAuth } = require('./auth');
+const { metricsMiddleware, renderPrometheus, reportError } = require('./observability');
 const { templateSummaries } = require('./templates');
 const { aiAvailable } = require('./ai');
 const { securityHeaders } = require('./security');
@@ -43,6 +44,7 @@ function createApp(options = {}) {
     });
   }
 
+  app.use(metricsMiddleware);
   app.use(securityHeaders);
   app.use(express.json({ limit: '2mb' }));
   app.use(cookieParser());
@@ -50,6 +52,28 @@ function createApp(options = {}) {
 
   // For load balancers and uptime monitors.
   app.get('/api/health', (req, res) => res.json({ ok: true, version }));
+
+  // Prometheus metrics — superadmin session, or Bearer METRICS_TOKEN for scrapers.
+  app.get('/api/metrics', (req, res) => {
+    const token = process.env.METRICS_TOKEN;
+    const bearer = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+    const allowed = (req.user && req.user.role === 'superadmin') || (token && bearer === token);
+    if (!allowed) return res.status(401).json({ error: 'Superadmin or metrics token required' });
+    res.type('text/plain; version=0.0.4').send(renderPrometheus());
+  });
+
+  // Caddy on-demand TLS "ask" endpoint: 200 only for hostnames this
+  // platform actually serves (its own domain + connected custom domains),
+  // so certificates can never be minted for arbitrary names.
+  app.get('/api/tls-check', (req, res) => {
+    const domain = String(req.query.domain || '').trim().toLowerCase();
+    if (!domain) return res.status(400).send('domain required');
+    const platform = String(process.env.PLATFORM_DOMAIN || '').toLowerCase();
+    const known =
+      (platform && domain === platform) ||
+      Boolean(getDb().prepare('SELECT 1 FROM teams WHERE custom_domain = ?').get(domain));
+    res.status(known ? 200 : 404).send(known ? 'ok' : 'unknown domain');
+  });
 
   // Starter kits for new sites + whether the AI builder is configured.
   app.get('/api/site-templates', requireAuth, (req, res) =>
@@ -80,6 +104,7 @@ function createApp(options = {}) {
   // eslint-disable-next-line no-unused-vars
   app.use((err, req, res, next) => {
     console.error(err);
+    reportError(err, req);
     res.status(500).json({ error: 'Internal server error' });
   });
 

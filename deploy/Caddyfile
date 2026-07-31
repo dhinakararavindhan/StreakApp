@@ -1,0 +1,33 @@
+# Automatic TLS for Nova and every connected custom domain.
+#
+# Caddy issues Let's Encrypt certificates on demand the first time a
+# domain is requested — but only after Nova confirms the domain via
+# /api/tls-check, so certificates can never be minted for names the
+# platform doesn't serve.
+#
+# Usage:
+#   PLATFORM_DOMAIN=cms.example.com ACME_EMAIL=you@example.com caddy run --config deploy/Caddyfile
+# (or use deploy/docker-compose.tls.yml, which wires all of this up)
+
+{
+	email {$ACME_EMAIL}
+	on_demand_tls {
+		ask http://app:3000/api/tls-check
+	}
+}
+
+# The platform's own domain — admin, API, and the company directory.
+{$PLATFORM_DOMAIN} {
+	encode gzip
+	reverse_proxy app:3000
+}
+
+# Every connected customer domain: certificate on first request,
+# renewed automatically, site served at the domain root.
+https:// {
+	tls {
+		on_demand
+	}
+	encode gzip
+	reverse_proxy app:3000
+}

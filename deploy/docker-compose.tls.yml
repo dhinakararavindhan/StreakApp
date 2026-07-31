@@ -1,0 +1,45 @@
+# Production deployment with automatic TLS for the platform domain and
+# every connected customer domain (Caddy + Let's Encrypt on-demand certs).
+#
+#   PLATFORM_DOMAIN=cms.example.com ACME_EMAIL=you@example.com \
+#     docker compose -f deploy/docker-compose.tls.yml up -d
+#
+# Point your platform domain's DNS at this host. Customers point their
+# own domains here too; certificates are issued automatically on first
+# visit, gated by Nova's /api/tls-check.
+
+services:
+  app:
+    build: ..
+    restart: unless-stopped
+    environment:
+      - JWT_SECRET=${JWT_SECRET:?set JWT_SECRET}
+      - PLATFORM_DOMAIN=${PLATFORM_DOMAIN:?set PLATFORM_DOMAIN}
+      - COOKIE_SECURE=1
+      - TRUST_PROXY=1
+      - NOVA_LOG=json
+    volumes:
+      - nova-data:/data
+      - nova-uploads:/app/uploads
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      - PLATFORM_DOMAIN=${PLATFORM_DOMAIN}
+      - ACME_EMAIL=${ACME_EMAIL:?set ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - app
+
+volumes:
+  nova-data:
+  nova-uploads:
+  caddy-data:
+  caddy-config:

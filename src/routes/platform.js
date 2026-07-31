@@ -27,4 +27,15 @@ router.get('/stats', requireSuperadmin, (req, res) => {
   });
 });
 
+// One-click consistent database backup: a point-in-time snapshot of the
+// whole platform as a SQLite file. Works on live databases (better-sqlite3
+// serializes atomically). Restore = drop the file in DATA_DIR as cms.sqlite.
+router.get('/backup', requireSuperadmin, (req, res) => {
+  const snapshot = getDb().serialize();
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-');
+  res.set('Content-Type', 'application/octet-stream');
+  res.set('Content-Disposition', `attachment; filename="nova-backup-${stamp}.sqlite"`);
+  res.send(Buffer.from(snapshot.buffer, snapshot.byteOffset, snapshot.byteLength));
+});
+
 module.exports = router;

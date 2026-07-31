@@ -55,10 +55,10 @@ From one box to the planet.
 - [ ] Database abstraction: Postgres driver alongside SQLite (SQLite stays the zero-config default)
 - [ ] Object storage for media (S3-compatible) with local disk as default
 - [ ] Redis-backed cache + rate limiting for multi-node deployments
-- [ ] Automatic TLS for custom domains (ACME/Let's Encrypt integration or first-class Caddy guide)
+- [x] Automatic TLS for custom domains: first-class Caddy setup (`deploy/Caddyfile` + `deploy/docker-compose.tls.yml`) with on-demand Let's Encrypt certificates gated by `/api/tls-check`, so certs are only ever issued for domains the platform serves
 - [x] CDN-friendly caching headers + stale-while-revalidate on public pages and the content API
-- [x] Observability groundwork: structured JSON request logs (`NOVA_LOG=json`)
-- [ ] Observability: request metrics, error reporting hooks
+- [x] Observability: structured JSON request logs (`NOVA_LOG=json`), Prometheus metrics (`/api/metrics`, superadmin or `METRICS_TOKEN`), error reporting to `NOVA_ERROR_WEBHOOK`
+- [x] One-click consistent platform backups: superadmin downloads a point-in-time SQLite snapshot (`/api/platform/backup`)
 
 ## Phase 5 — Ecosystem
 
