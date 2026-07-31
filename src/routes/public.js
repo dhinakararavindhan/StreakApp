@@ -928,6 +928,33 @@ router.get('/c/:typeKey', (req, res, next) => {
   renderTypeArchive(req.domainTeam, true, req.params.typeKey, req, res);
 });
 
+// Shared preview links: /share/<signed token> shows one item's latest
+// saved version to anyone holding the link — used to send drafts to
+// clients and stakeholders without accounts. Expiring, tamper-proof,
+// never cached, and never listed anywhere.
+router.get('/share/:token', (req, res) => {
+  const { verifyShareToken } = require('../auth');
+  const claim = verifyShareToken(req.params.token);
+  const row = claim
+    ? getDb().prepare('SELECT * FROM content WHERE id = ? AND deleted_at IS NULL').get(claim.contentId)
+    : null;
+  if (!row) {
+    return res.status(404).send('<h1 style="font-family:sans-serif">This preview link is invalid or has expired.</h1>');
+  }
+  const team = getDb().prepare('SELECT * FROM teams WHERE id = ?').get(row.team_id);
+  res.set('Cache-Control', 'private, no-store');
+  res.set('X-Robots-Tag', 'noindex');
+  draftPreview = false;
+  const until = new Date(claim.exp).toISOString().slice(0, 10);
+  const banner = `<div style="background:#3b82f6;color:#fff;font-weight:600;font-size:0.85rem;text-align:center;padding:0.45rem 1rem">🔗 Shared preview — this may be an unpublished draft. Link expires ${esc(until)}.</div>`;
+  const html = teamLayout(team, false, {
+    title: row.title,
+    content: fullArticle(team, row, teamBase(team, false)),
+    locale: row.locale,
+  }).replace('<header class="top">', `${banner}<header class="top">`);
+  res.send(html);
+});
+
 // Site search on a custom domain.
 router.get('/search', (req, res, next) => {
   if (!req.domainTeam) return next();

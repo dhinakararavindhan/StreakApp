@@ -8,6 +8,8 @@ const { FORMATS, renderBody } = require('../render');
 const { isValidType, validateFields, parseFieldValues } = require('../content-types');
 const { aiAvailable, reviewContent, translateContent } = require('../ai');
 const { rateLimit } = require('../security');
+const { notifySubmission, notifyDecision, notifyComment } = require('../notify');
+const { signShareToken } = require('../auth');
 
 // Mounted at /api/teams/:teamId/content behind requireTeamRole('manager'),
 // which sets req.team and req.teamRole — every query below is scoped to
@@ -249,7 +251,10 @@ router.post('/', (req, res) => {
   saveVersion(row, req.user.id);
   audit(req.team.id, req.user, status === 'pending' ? 'content.submit' : 'content.create', title);
   if (row.status === 'published') deliver(req.team.id, 'content.published', contentPayload(req.team, row));
-  if (row.status === 'pending') scheduleAiReview(req.team.id, row.id);
+  if (row.status === 'pending') {
+    scheduleAiReview(req.team.id, row.id);
+    notifySubmission(req.team, row, req.user);
+  }
   res.status(201).json(serialize(row));
 });
 
@@ -359,6 +364,10 @@ function applyUpdate(req, res, existing, fields) {
   ) {
     scheduleAiReview(req.team.id, updated.id);
   }
+  // Entering the queue notifies the company admins (once per submission).
+  if (updated.status === 'pending' && existing.status !== 'pending') {
+    notifySubmission(req.team, updated, req.user);
+  }
   return updated;
 }
 
@@ -448,6 +457,7 @@ router.post('/:id/approve', (req, res) => {
      published_at = COALESCE(published_at, datetime('now')), updated_at = datetime('now') WHERE id = ?`
   ).run(row.id);
   audit(req.team.id, req.user, 'content.approve', row.title);
+  notifyDecision(req.team, row, 'approve', req.user);
   const fresh = db.prepare('SELECT * FROM content WHERE id = ?').get(row.id);
   deliver(req.team.id, hadLiveSnapshot ? 'content.updated' : 'content.published', contentPayload(req.team, fresh));
   res.json(serialize(fresh));
@@ -466,6 +476,7 @@ router.post('/:id/reject', (req, res) => {
     "UPDATE content SET status = 'draft', review_note = ?, ai_review = '', updated_at = datetime('now') WHERE id = ?"
   ).run(note, row.id);
   audit(req.team.id, req.user, 'content.reject', row.title, note);
+  notifyDecision(req.team, row, 'reject', req.user, note);
   res.json(serialize(db.prepare('SELECT * FROM content WHERE id = ?').get(row.id)));
 });
 
@@ -487,10 +498,11 @@ router.get('/:id/comments', (req, res) => {
 
 router.post('/:id/comments', (req, res) => {
   const db = getDb();
-  const row = db.prepare('SELECT id, title FROM content WHERE id = ? AND team_id = ?').get(req.params.id, req.team.id);
+  const row = db.prepare('SELECT id, title, author_id FROM content WHERE id = ? AND team_id = ?').get(req.params.id, req.team.id);
   if (!row) return res.status(404).json({ error: 'Not found' });
   const body = String((req.body || {}).body || '').trim().slice(0, 2000);
   if (!body) return res.status(400).json({ error: 'body is required' });
+  notifyComment(req.team, row, req.user); // participants so far, before this comment lands
   const result = db
     .prepare('INSERT INTO content_comments (content_id, user_id, body) VALUES (?, ?, ?)')
     .run(row.id, req.user.id, body);
@@ -586,6 +598,22 @@ router.post('/:id/ai-translate', aiTranslateLimiter, async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+// Shareable preview link: a signed, expiring URL that shows this item's
+// latest saved version to anyone who has it — no account needed. For
+// sending drafts to clients and stakeholders outside Nova.
+router.post('/:id/share-link', (req, res) => {
+  const db = getDb();
+  const row = db.prepare('SELECT * FROM content WHERE id = ? AND team_id = ?').get(req.params.id, req.team.id);
+  if (!row || row.deleted_at) return res.status(404).json({ error: 'Not found' });
+  const days = Math.min(30, Math.max(1, Number((req.body || {}).days) || 14));
+  const token = signShareToken(row.id, days);
+  audit(req.team.id, req.user, 'content.share_link', row.title, `${days} days`);
+  res.status(201).json({
+    url: `/share/${token}`,
+    expires_at: new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString(),
+  });
 });
 
 // Duplicate an item as a fresh draft (fields, tags, and body included).

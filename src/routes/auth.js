@@ -66,6 +66,28 @@ router.post('/logout', (req, res) => {
   res.json({ ok: true });
 });
 
+// In-app notifications for the signed-in user, newest first.
+router.get('/notifications', requireAuth, (req, res) => {
+  const { getDb } = require('../db');
+  const rows = getDb()
+    .prepare(
+      `SELECT n.id, n.team_id, t.name AS team_name, n.kind, n.text, n.href, n.read, n.created_at
+       FROM notifications n LEFT JOIN teams t ON t.id = n.team_id
+       WHERE n.user_id = ? ORDER BY n.id DESC LIMIT 30`
+    )
+    .all(req.user.id);
+  const unread = getDb()
+    .prepare('SELECT COUNT(*) AS n FROM notifications WHERE user_id = ? AND read = 0')
+    .get(req.user.id).n;
+  res.json({ unread, notifications: rows });
+});
+
+router.post('/notifications/read', requireAuth, (req, res) => {
+  const { getDb } = require('../db');
+  getDb().prepare('UPDATE notifications SET read = 1 WHERE user_id = ?').run(req.user.id);
+  res.json({ ok: true });
+});
+
 router.get('/me', requireAuth, (req, res) => {
   res.json({ id: req.user.id, username: req.user.username, role: req.user.role });
 });

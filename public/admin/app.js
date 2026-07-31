@@ -360,6 +360,11 @@
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
               Search or jump to…<kbd>Ctrl K</kbd>
             </button>
+            <button class="iconbtn" id="bell" title="Notifications" style="position:relative">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+              <span class="bell-dot" id="bell-dot" style="display:none"></span>
+            </button>
+            <div id="bell-panel" class="bell-panel" style="display:none"></div>
             <button class="iconbtn" id="theme-toggle" title="Toggle light/dark">
               ${document.documentElement.dataset.theme === 'light' ? ICON_MOON : ICON_SUN}
             </button>
@@ -385,6 +390,49 @@
       localStorage.setItem('nova_side', frame.classList.contains('collapsed') ? 'min' : 'full');
     });
     document.getElementById('open-palette').addEventListener('click', openPalette);
+
+    // Notifications bell: unread badge + dropdown panel.
+    const bell = document.getElementById('bell');
+    const bellDot = document.getElementById('bell-dot');
+    const bellPanel = document.getElementById('bell-panel');
+    const KIND_ICON = { submission: '📥', approved: '✅', rejected: '↩️', comment: '💬' };
+    async function refreshBell() {
+      try {
+        const { unread } = await api('/auth/notifications');
+        bellDot.style.display = unread > 0 ? '' : 'none';
+      } catch { /* logged out mid-session */ }
+    }
+    refreshBell();
+    bell.addEventListener('click', async () => {
+      if (bellPanel.style.display !== 'none') {
+        bellPanel.style.display = 'none';
+        return;
+      }
+      const { notifications } = await api('/auth/notifications');
+      bellPanel.innerHTML = notifications.length
+        ? notifications
+            .map(
+              (n) => `<a class="bell-item ${n.read ? '' : 'unread'}" data-team="${n.team_id || ''}" href="${esc(n.href || '#/dashboard')}">
+                <span>${KIND_ICON[n.kind] || '🔔'}</span>
+                <span><b>${esc(n.text)}</b><br><span class="path">${esc(n.team_name || '')} · ${esc(n.created_at.slice(0, 16))}</span></span>
+              </a>`
+            )
+            .join('')
+        : '<p class="path" style="padding:0.7rem 0.9rem;margin:0">Nothing yet — approvals, rejections, and comments land here.</p>';
+      bellPanel.style.display = '';
+      api('/auth/notifications/read', { method: 'POST' }).then(refreshBell);
+      bellPanel.querySelectorAll('.bell-item').forEach((a) =>
+        a.addEventListener('click', () => {
+          bellPanel.style.display = 'none';
+          const teamId = Number(a.dataset.team);
+          const target = companies.find((c) => c.id === teamId);
+          if (target && (!company || company.id !== teamId)) setActiveCompany(target);
+        })
+      );
+    });
+    document.addEventListener('click', (e) => {
+      if (!bell.contains(e.target) && !bellPanel.contains(e.target)) bellPanel.style.display = 'none';
+    });
     document.getElementById('theme-toggle').addEventListener('click', () => {
       const next = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
       document.documentElement.dataset.theme = next;
@@ -792,6 +840,7 @@
           <p style="display:flex;gap:0.5rem;flex-wrap:wrap;margin:0.2rem 0 0">
             <a class="btn secondary sm" id="preview-draft" target="_blank" title="See this exact saved version on your real site — visible only to team members">Preview on site ↗</a>
             <a class="btn secondary sm" href="#/review/${id}" title="Side-by-side diff against the live version">Compare with live</a>
+            <button type="button" class="btn secondary sm" id="share-link" title="A signed link anyone can open — no account needed. Expires in 14 days.">🔗 Share preview</button>
           </p>` : ''}
         </div>
       </form>
@@ -799,6 +848,25 @@
       <div class="card" style="margin-top:0.9rem"><b>Translations</b><div id="trans-host" style="margin-top:0.6rem">Loading…</div></div>
       <div class="card" style="margin-top:0.9rem"><b>Discussion</b><div id="comments-host" style="margin-top:0.5rem">Loading…</div></div>
       <div class="card" style="margin-top:0.9rem"><b>Version history</b><div id="history-host" style="margin-top:0.6rem">Loading…</div></div>` : ''}`);
+
+    // Shareable preview link: signed, expiring, works for people without accounts.
+    const shareBtn = page.querySelector('#share-link');
+    if (shareBtn) {
+      shareBtn.addEventListener('click', async () => {
+        try {
+          const r = await capi(`/content/${id}/share-link`, { method: 'POST', body: {} });
+          const full = `${location.origin}${r.url}`;
+          try {
+            await navigator.clipboard.writeText(full);
+            toast(`Share link copied — valid until ${r.expires_at.slice(0, 10)}.`);
+          } catch {
+            prompt(`Share this link (valid until ${r.expires_at.slice(0, 10)}):`, full);
+          }
+        } catch (err) {
+          toast(err.message, 'error');
+        }
+      });
+    }
 
     // Draft preview: the item's site URL with ?preview=draft (member-only view).
     const previewLink = page.querySelector('#preview-draft');

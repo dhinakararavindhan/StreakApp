@@ -109,6 +109,27 @@ function requireTeamRole(requiredRole = 'manager') {
   };
 }
 
+// ---------- signed share tokens (preview links for outsiders) ----------
+
+/** Mint an HMAC-signed, expiring token for sharing one content item. */
+function signShareToken(contentId, days = 14) {
+  const exp = Date.now() + Math.min(30, Math.max(1, days)) * 24 * 60 * 60 * 1000;
+  const payload = `${contentId}.${exp}`;
+  const sig = crypto.createHmac('sha256', JWT_SECRET).update(`share:${payload}`).digest('base64url');
+  return `${payload}.${sig}`;
+}
+
+/** Verify a share token. Returns {contentId, exp} or null (bad/expired). */
+function verifyShareToken(token) {
+  const parts = String(token || '').split('.');
+  if (parts.length !== 3) return null;
+  const [id, exp, sig] = parts;
+  const expected = crypto.createHmac('sha256', JWT_SECRET).update(`share:${id}.${exp}`).digest('base64url');
+  if (sig.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
+  if (Number(exp) < Date.now()) return null;
+  return { contentId: Number(id), exp: Number(exp) };
+}
+
 module.exports = {
   issueToken,
   setAuthCookie,
@@ -117,4 +138,6 @@ module.exports = {
   requireAuth,
   requireSuperadmin,
   requireTeamRole,
+  signShareToken,
+  verifyShareToken,
 };

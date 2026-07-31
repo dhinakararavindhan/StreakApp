@@ -1649,6 +1649,76 @@ test('editorial calendar ICS feed and the content radar', async () => {
   assert.strictEqual(stats.radar.idle_drafts.length, 0);
 });
 
+test('notifications: submissions, decisions, and comments reach the right people', async () => {
+  const boss = await registerAs('notifboss', 'notif-password-1');
+  const writer = await registerAs('notifwriter', 'notif-password-2');
+  const team = await (await boss('/api/teams', { method: 'POST', body: { name: 'Notify Co' } })).json();
+  await boss(`/api/teams/${team.id}/members`, { method: 'POST', body: { username: 'notifwriter', role: 'manager' } });
+
+  // Writer submits → the admin is notified (not the writer).
+  const item = await (
+    await writer(`/api/teams/${team.id}/content`, {
+      method: 'POST',
+      body: { type: 'post', title: 'Big scoop', body: 'Exclusive.', status: 'pending' },
+    })
+  ).json();
+  let bossFeed = await (await boss('/api/auth/notifications')).json();
+  assert.strictEqual(bossFeed.unread, 1);
+  assert.ok(bossFeed.notifications[0].text.includes('notifwriter submitted “Big scoop”'));
+  assert.strictEqual((await (await writer('/api/auth/notifications')).json()).unread, 0);
+
+  // Admin rejects with a note → the writer hears about it, note included.
+  await boss(`/api/teams/${team.id}/content/${item.id}/reject`, { method: 'POST', body: { note: 'Needs a source' } });
+  const writerFeed = await (await writer('/api/auth/notifications')).json();
+  assert.strictEqual(writerFeed.unread, 1);
+  assert.ok(writerFeed.notifications[0].text.includes('sent back to draft'));
+  assert.ok(writerFeed.notifications[0].text.includes('Needs a source'));
+
+  // Resubmit + approve → writer notified again; comment → author notified.
+  await writer(`/api/teams/${team.id}/content/${item.id}`, { method: 'PUT', body: { status: 'pending' } });
+  await boss(`/api/teams/${team.id}/content/${item.id}/approve`, { method: 'POST' });
+  await boss(`/api/teams/${team.id}/content/${item.id}/comments`, { method: 'POST', body: { body: 'Great work' } });
+  const finalFeed = await (await writer('/api/auth/notifications')).json();
+  assert.ok(finalFeed.notifications.some((n) => n.text.includes('approved and is now live')));
+  assert.ok(finalFeed.notifications.some((n) => n.kind === 'comment' && n.text.includes('commented on')));
+
+  // Mark-all-read clears the badge.
+  await writer('/api/auth/notifications/read', { method: 'POST' });
+  assert.strictEqual((await (await writer('/api/auth/notifications')).json()).unread, 0);
+  assert.strictEqual((await fetch(`${base}/api/auth/notifications`)).status, 401);
+});
+
+test('shareable preview links work for outsiders, expire, and resist tampering', async () => {
+  const owner = await loginAs('notifboss', 'notif-password-1');
+  const team = (await (await owner('/api/teams')).json()).find((t) => t.name === 'Notify Co');
+  const draft = await (
+    await owner(`/api/teams/${team.id}/content`, {
+      method: 'POST',
+      body: { type: 'post', title: 'Embargoed launch', body: 'Top secret until Friday.', status: 'draft' },
+    })
+  ).json();
+
+  const link = await (await owner(`/api/teams/${team.id}/content/${draft.id}/share-link`, { method: 'POST', body: { days: 7 } })).json();
+  assert.ok(link.url.startsWith('/share/'));
+
+  // A total outsider (no cookies at all) can open it.
+  const shared = await fetch(`${base}${link.url}`);
+  assert.strictEqual(shared.status, 200);
+  assert.ok((shared.headers.get('cache-control') || '').includes('no-store'));
+  assert.strictEqual(shared.headers.get('x-robots-tag'), 'noindex');
+  const html = await shared.text();
+  assert.ok(html.includes('Top secret until Friday.') && html.includes('Shared preview'));
+
+  // Tampered and expired tokens fail; the plain URL stays 404 for outsiders.
+  const tampered = link.url.replace(/.$/, (c) => (c === 'a' ? 'b' : 'a'));
+  assert.strictEqual((await fetch(`${base}${tampered}`)).status, 404);
+  const { signShareToken, verifyShareToken } = require('../src/auth');
+  const expired = signShareToken(draft.id, 1).split('.');
+  expired[1] = String(Date.now() - 1000);
+  assert.strictEqual(verifyShareToken(expired.join('.')), null);
+  assert.strictEqual((await fetch(`${base}/t/${team.slug}/posts/${draft.slug}`)).status, 404);
+});
+
 test('health endpoint responds for load balancers', async () => {
   const res = await fetch(`${base}/api/health`);
   assert.strictEqual(res.status, 200);
