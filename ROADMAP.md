@@ -21,6 +21,7 @@ Anyone can run Nova in production, safely, today.
 - [x] **CI**: GitHub Actions running the test suite on every push and PR
 - [x] **Security hardening**: rate-limited auth endpoints, security headers, opt-in secure cookies, proxy trust setting
 - [x] **Two-factor authentication**: TOTP (RFC 6238, dependency-free) with verified enable, login challenge, and code-gated disable
+- [x] **Email + password reset**: dependency-free outbound email (`SMTP_URL` with STARTTLS, or `NOVA_EMAIL_WEBHOOK` JSON relay), self-serve "Forgot password?" with single-use expiring links, per-account recovery email, and email copies of workflow notifications
 - [x] **Health endpoint** (`/api/health`) for load balancers and uptime monitors
 - [x] **Open-web citizenship** (every hosted site): RSS feeds, XML sitemaps, robots.txt, meta descriptions and Open Graph tags
 - [x] **License + contribution guide** (MIT) — open source is the adoption engine

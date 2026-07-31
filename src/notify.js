@@ -1,16 +1,31 @@
 /** In-app notifications: the workflow talks back. Authors hear about
     decisions on their work; admins hear about submissions; comment
-    threads notify the people in them. The actor never notifies themself. */
+    threads notify the people in them. The actor never notifies themself.
+    When email is configured, recipients with a recovery email also get
+    a copy in their inbox — fire-and-forget, delivery never blocks. */
 
 const { getDb } = require('./db');
+const { sendEmail, emailEnabled } = require('./mailer');
 
 function push(userIds, teamId, kind, text, href = '') {
   const db = getDb();
   const stmt = db.prepare(
     'INSERT INTO notifications (user_id, team_id, kind, text, href) VALUES (?, ?, ?, ?, ?)'
   );
-  for (const id of new Set(userIds.filter(Boolean))) {
+  const ids = new Set(userIds.filter(Boolean));
+  for (const id of ids) {
     stmt.run(id, teamId, kind, text.slice(0, 300), href);
+  }
+  if (!emailEnabled() || ids.size === 0) return;
+  const team = db.prepare('SELECT name FROM teams WHERE id = ?').get(teamId);
+  for (const id of ids) {
+    const user = db.prepare('SELECT email FROM users WHERE id = ?').get(id);
+    if (!user || !user.email) continue;
+    sendEmail({
+      to: user.email,
+      subject: `[Nova CMS] ${text.slice(0, 120)}`,
+      text: `${text}\n\nCompany: ${team ? team.name : ''}\nOpen Nova CMS to take a look${href ? ` (${href})` : ''}.`,
+    }).catch(() => {});
   }
 }
 

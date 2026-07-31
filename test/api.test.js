@@ -4,6 +4,8 @@ const http = require('node:http');
 
 process.env.ADMIN_USERNAME = 'admin';
 process.env.ADMIN_PASSWORD = 'test-password-123';
+// The suite registers a lot of users; keep the registration limiter out of the way.
+process.env.RATE_LIMIT_REGISTER = '200';
 
 const { createApp } = require('../src/app');
 
@@ -1969,6 +1971,182 @@ test('the in-app tutorial is served for the Help page', async () => {
   const text = await res.text();
   assert.ok(text.includes('# Nova CMS — The Complete Walkthrough'));
   assert.ok(text.includes('Chapter 6') && text.includes('approval workflow'));
+});
+
+test('password reset: forgot → emailed link → reset, tokens single-use', async () => {
+  // A local HTTP receiver stands in for the email service (NOVA_EMAIL_WEBHOOK).
+  const emails = [];
+  const receiver = http.createServer((req, res) => {
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', () => {
+      emails.push(JSON.parse(body));
+      res.end('ok');
+    });
+  });
+  await new Promise((r) => receiver.listen(0, '127.0.0.1', r));
+  const savedHook = process.env.NOVA_EMAIL_WEBHOOK;
+  process.env.NOVA_EMAIL_WEBHOOK = `http://127.0.0.1:${receiver.address().port}/send`;
+  try {
+    // Registration accepts an optional recovery email (case-normalized)…
+    let res = await client()('/api/auth/register', {
+      method: 'POST',
+      body: { username: 'resetme', password: 'first-password-1', email: 'ResetMe@Example.com' },
+    });
+    assert.strictEqual(res.status, 201);
+    // …and no second account can claim it.
+    res = await client()('/api/auth/register', {
+      method: 'POST',
+      body: { username: 'resetme2', password: 'other-password-1', email: 'resetme@example.com' },
+    });
+    assert.strictEqual(res.status, 409);
+
+    // Unknown email → identical generic answer, no account enumeration.
+    res = await client()('/api/auth/forgot', { method: 'POST', body: { email: 'nobody@example.com' } });
+    assert.strictEqual(res.status, 200);
+    assert.ok((await res.json()).message.includes('If that email'));
+
+    res = await client()('/api/auth/forgot', { method: 'POST', body: { email: 'resetme@example.com' } });
+    assert.strictEqual(res.status, 200);
+    for (let i = 0; i < 40 && emails.length === 0; i++) await new Promise((r) => setTimeout(r, 50));
+    assert.strictEqual(emails.length, 1);
+    assert.strictEqual(emails[0].to, 'resetme@example.com');
+    const token = emails[0].text.match(/#\/reset\/([A-Za-z0-9._-]+)/)[1];
+
+    // Weak passwords rejected; a real one completes the reset.
+    res = await client()('/api/auth/reset', { method: 'POST', body: { token, password: 'short' } });
+    assert.strictEqual(res.status, 400);
+    res = await client()('/api/auth/reset', { method: 'POST', body: { token, password: 'brand-new-pass-9' } });
+    assert.strictEqual(res.status, 200);
+
+    // Old password dead, new one live, token spent.
+    res = await client()('/api/auth/login', {
+      method: 'POST',
+      body: { username: 'resetme', password: 'first-password-1' },
+    });
+    assert.strictEqual(res.status, 401);
+    await loginAs('resetme', 'brand-new-pass-9');
+    res = await client()('/api/auth/reset', { method: 'POST', body: { token, password: 'try-again-pass-9' } });
+    assert.strictEqual(res.status, 400);
+
+    // Garbage tokens never pass.
+    res = await client()('/api/auth/reset', { method: 'POST', body: { token: '1.99999999999999.forged', password: 'long-enough-pw-1' } });
+    assert.strictEqual(res.status, 400);
+  } finally {
+    if (savedHook === undefined) delete process.env.NOVA_EMAIL_WEBHOOK;
+    else process.env.NOVA_EMAIL_WEBHOOK = savedHook;
+    receiver.close();
+  }
+});
+
+test('recovery email management + email copies of notifications', async () => {
+  const emails = [];
+  const receiver = http.createServer((req, res) => {
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', () => {
+      emails.push(JSON.parse(body));
+      res.end('ok');
+    });
+  });
+  await new Promise((r) => receiver.listen(0, '127.0.0.1', r));
+  const savedHook = process.env.NOVA_EMAIL_WEBHOOK;
+  process.env.NOVA_EMAIL_WEBHOOK = `http://127.0.0.1:${receiver.address().port}/send`;
+  try {
+    const boss = await registerAs('mailboss', 'mail-password-1');
+    // Bad addresses rejected; a good one lands on /me.
+    assert.strictEqual(
+      (await boss('/api/auth/email', { method: 'POST', body: { email: 'not-an-email' } })).status,
+      400
+    );
+    assert.strictEqual(
+      (await boss('/api/auth/email', { method: 'POST', body: { email: 'boss@example.com' } })).status,
+      200
+    );
+    assert.strictEqual((await (await boss('/api/auth/me')).json()).email, 'boss@example.com');
+    // Another account cannot take it.
+    const writer = await registerAs('mailwriter', 'mail-password-2');
+    assert.strictEqual(
+      (await writer('/api/auth/email', { method: 'POST', body: { email: 'boss@example.com' } })).status,
+      409
+    );
+
+    // A submission notifies the admin in-app AND by email.
+    const team = await (await boss('/api/teams', { method: 'POST', body: { name: 'Mailer Co' } })).json();
+    await boss(`/api/teams/${team.id}/members`, { method: 'POST', body: { username: 'mailwriter', role: 'manager' } });
+    await writer(`/api/teams/${team.id}/content`, {
+      method: 'POST',
+      body: { type: 'post', title: 'Inbox story', body: 'Read all about it.', status: 'pending' },
+    });
+    for (let i = 0; i < 40 && emails.length === 0; i++) await new Promise((r) => setTimeout(r, 50));
+    assert.strictEqual(emails.length, 1);
+    assert.strictEqual(emails[0].to, 'boss@example.com');
+    assert.ok(emails[0].subject.includes('submitted “Inbox story”'));
+    assert.ok(emails[0].text.includes('Mailer Co'));
+
+    // Blank save clears the address.
+    assert.strictEqual((await boss('/api/auth/email', { method: 'POST', body: { email: '' } })).status, 200);
+    assert.strictEqual((await (await boss('/api/auth/me')).json()).email, null);
+  } finally {
+    if (savedHook === undefined) delete process.env.NOVA_EMAIL_WEBHOOK;
+    else process.env.NOVA_EMAIL_WEBHOOK = savedHook;
+    receiver.close();
+  }
+});
+
+test('the SMTP transport speaks to a real (fake) SMTP server', async () => {
+  const net = require('node:net');
+  const commands = [];
+  const body = [];
+  const smtp = net.createServer((sock) => {
+    let raw = '';
+    let inData = false;
+    sock.write('220 fake ESMTP\r\n');
+    sock.on('data', (chunk) => {
+      raw += chunk.toString();
+      let idx;
+      while ((idx = raw.indexOf('\r\n')) !== -1) {
+        const line = raw.slice(0, idx);
+        raw = raw.slice(idx + 2);
+        if (inData) {
+          if (line === '.') {
+            inData = false;
+            sock.write('250 accepted\r\n');
+          } else body.push(line);
+          continue;
+        }
+        commands.push(line);
+        const cmd = line.split(' ')[0].toUpperCase();
+        if (cmd === 'EHLO') sock.write('250-fake\r\n250 AUTH LOGIN\r\n');
+        else if (cmd === 'DATA') { inData = true; sock.write('354 go ahead\r\n'); }
+        else if (cmd === 'QUIT') { sock.write('221 bye\r\n'); sock.end(); }
+        else sock.write('250 ok\r\n');
+      }
+    });
+  });
+  await new Promise((r) => smtp.listen(0, '127.0.0.1', r));
+  const { sendEmail } = require('../src/mailer');
+  const savedUrl = process.env.SMTP_URL;
+  process.env.SMTP_URL = `smtp://box:secret@127.0.0.1:${smtp.address().port}`;
+  try {
+    const ok = await sendEmail({
+      to: 'dev@example.com',
+      subject: 'Hello from Nova',
+      text: 'Line one.\n.a line starting with a dot',
+    });
+    assert.strictEqual(ok, true);
+  } finally {
+    if (savedUrl === undefined) delete process.env.SMTP_URL;
+    else process.env.SMTP_URL = savedUrl;
+    smtp.close();
+  }
+  const message = body.join('\n');
+  assert.ok(commands.some((c) => c.startsWith('MAIL FROM:<')));
+  assert.ok(commands.includes('RCPT TO:<dev@example.com>'));
+  assert.ok(commands.includes('AUTH LOGIN'));
+  assert.ok(message.includes('Subject: Hello from Nova'));
+  assert.ok(message.includes('To: <dev@example.com>'));
+  assert.ok(message.includes('..a line starting with a dot')); // RFC 5321 dot-stuffing
 });
 
 test('health endpoint responds for load balancers', async () => {

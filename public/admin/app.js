@@ -213,10 +213,11 @@
         ${isLogin ? `<div class="seg" id="portal-seg">${segs}</div><p class="portal-hint" id="portal-hint">${PORTALS[portal].hint}</p>` : ''}
         <label>Username</label><input name="username" required autofocus autocomplete="username">
         <label>Password${isLogin ? '' : ' (min 8 chars)'}</label><input name="password" type="password" required autocomplete="${isLogin ? 'current-password' : 'new-password'}">
+        ${isLogin ? '' : '<label>Email <span style="color:var(--muted);font-weight:400">(optional — for password recovery)</span></label><input name="email" type="email" autocomplete="email">'}
         <p><button class="btn" style="width:100%;justify-content:center">${isLogin ? `Sign in as ${PORTALS[portal].label}` : 'Create account'}</button></p>
         <p style="text-align:center;font-size:0.82rem;color:var(--muted)">
           ${isLogin
-            ? 'New here? <a href="#" id="switch">Create an account</a>'
+            ? 'New here? <a href="#" id="switch">Create an account</a> · <a href="#" id="forgot">Forgot password?</a>'
             : 'Already registered? <a href="#" id="switch">Sign in</a>'}
         </p>
       </form></div>`;
@@ -228,6 +229,17 @@
       document.querySelectorAll('#portal-seg button').forEach((b) =>
         b.addEventListener('click', () => renderLogin('login', b.dataset.portal))
       );
+      document.getElementById('forgot').addEventListener('click', async (e) => {
+        e.preventDefault();
+        const email = prompt('Enter your account recovery email:');
+        if (!email) return;
+        try {
+          const r = await api('/auth/forgot', { method: 'POST', body: { email } });
+          toast(r.message || 'If that email belongs to an account, a reset link is on its way.');
+        } catch (err) {
+          toast(err.message, 'error');
+        }
+      });
     }
     document.getElementById('login-form').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -235,7 +247,9 @@
       try {
         me = await api(isLogin ? '/auth/login' : '/auth/register', {
           method: 'POST',
-          body: { username: f.get('username'), password: f.get('password') },
+          body: isLogin
+            ? { username: f.get('username'), password: f.get('password') }
+            : { username: f.get('username'), password: f.get('password'), email: f.get('email') || undefined },
         });
         // Two-factor challenge: correct password, code still required.
         if (me && me.twofa_required) {
@@ -258,6 +272,39 @@
         }
         location.hash = '#/dashboard';
         boot();
+      } catch (err) {
+        toast(err.message, 'error');
+      }
+    });
+  }
+
+  /** Pre-auth password reset — reached from the emailed #/reset/<token> link. */
+  function renderReset(token) {
+    app.innerHTML = `
+      <div class="login-wrap"><form class="login-box" id="reset-form">
+        <div class="brand brand-lg">NOVA<span class="spark"> ✦</span></div>
+        <p class="tagline">Choose a new password for your account.</p>
+        <label>New password (min 8 chars)</label><input name="password" type="password" required autofocus autocomplete="new-password">
+        <label>Repeat new password</label><input name="password2" type="password" required autocomplete="new-password">
+        <p><button class="btn" style="width:100%;justify-content:center">Set new password</button></p>
+        <p style="text-align:center;font-size:0.82rem;color:var(--muted)"><a href="#" id="back-login">Back to sign in</a></p>
+      </form></div>`;
+    document.getElementById('back-login').addEventListener('click', (e) => {
+      e.preventDefault();
+      location.hash = '';
+      renderLogin();
+    });
+    document.getElementById('reset-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const f = new FormData(e.target);
+      if (f.get('password') !== f.get('password2')) {
+        return toast('Passwords do not match', 'error');
+      }
+      try {
+        const r = await api('/auth/reset', { method: 'POST', body: { token, password: f.get('password') } });
+        toast(`Password updated — sign in as ${r.username}.`);
+        location.hash = '';
+        renderLogin();
       } catch (err) {
         toast(err.message, 'error');
       }
@@ -2443,6 +2490,15 @@
         <label>New password (min 8 chars)</label><input name="newPassword" type="password" required autocomplete="new-password">
         <p><button class="btn">Update password</button></p>
       </form>
+      <form class="card" id="email-form" style="max-width:480px;margin-top:1.4rem">
+        <b>Recovery email ${fresh.email ? '<span class="pill published">set</span>' : '<span class="pill draft">not set</span>'}</b>
+        <p style="color:var(--muted);font-size:0.82rem;margin:0.3rem 0 0.6rem">
+          Used for password-reset links and email copies of your notifications.
+          Leave blank and save to remove it.
+        </p>
+        <label>Email address</label><input name="email" type="email" value="${esc(fresh.email || '')}" autocomplete="email" placeholder="you@example.com">
+        <p><button class="btn sm">Save email</button></p>
+      </form>
       <div class="card" style="max-width:480px;margin-top:1.4rem" id="twofa-card">
         <b>Two-factor authentication ${fresh.totp_enabled ? '<span class="pill published">on</span>' : '<span class="pill draft">off</span>'}</b>
         <p style="color:var(--muted);font-size:0.82rem;margin:0.3rem 0 0.6rem">
@@ -2458,6 +2514,20 @@
             : `<button class="btn sm" id="twofa-start">Set up 2FA</button>`}
         </div>
       </div>`);
+
+    page.querySelector('#email-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try {
+        const r = await api('/auth/email', {
+          method: 'POST',
+          body: { email: new FormData(e.target).get('email') },
+        });
+        toast(r.email ? `Recovery email set to ${r.email}.` : 'Recovery email removed.');
+        renderAccount();
+      } catch (err) {
+        toast(err.message, 'error');
+      }
+    });
 
     const twofaBody = page.querySelector('#twofa-body');
     const startBtn = page.querySelector('#twofa-start');
@@ -2749,6 +2819,8 @@
   // ---------- router ----------
 
   async function render() {
+    const resetMatch = location.hash.match(/^#\/reset\/(.+)$/);
+    if (resetMatch) return renderReset(resetMatch[1]);
     if (!me) return boot();
     if (!company) return renderCreateCompany();
     const hash = location.hash || '#/dashboard';
@@ -2783,6 +2855,8 @@
 
   /** Load session + companies, pick the active company, then render. */
   async function boot() {
+    const resetMatch = location.hash.match(/^#\/reset\/(.+)$/);
+    if (resetMatch) return renderReset(resetMatch[1]);
     try {
       me = me || (await api('/auth/me'));
     } catch {

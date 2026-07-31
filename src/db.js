@@ -31,6 +31,7 @@ function init(options = {}) {
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT NOT NULL UNIQUE,
+      email TEXT,
       password_hash TEXT NOT NULL,
       role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('superadmin', 'user')),
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -363,6 +364,12 @@ function migrate() {
   if (!db.prepare('PRAGMA table_info(teams)').all().some((c) => c.name === 'plan')) {
     db.exec('ALTER TABLE teams ADD COLUMN plan TEXT');
   }
+
+  // Account email for recovery + notifications (pre-email databases)
+  if (!db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'email')) {
+    db.exec('ALTER TABLE users ADD COLUMN email TEXT');
+  }
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL');
 
   // Two-factor auth (pre-2FA databases)
   if (!db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'totp_secret')) {

@@ -133,6 +133,7 @@ Every company has a **plan** — `free` (25 content items, 3 members, 100 MB med
 ## Production notes
 
 - **Two-factor authentication**: any user can enable TOTP (Google Authenticator, Authy, 1Password…) from the Account page — dependency-free RFC 6238, verified before it turns on, required at sign-in, and a current code is needed to disable it (a stolen session can't turn it off).
+- **Email + password reset**: set `SMTP_URL` (dependency-free SMTP client with STARTTLS) or `NOVA_EMAIL_WEBHOOK` (JSON POST to any relay) and users get self-serve password resets ("Forgot password?" on the sign-in screen) plus email copies of their workflow notifications. Recovery emails are optional per account (set at registration or on the Account page), reset links expire after an hour, and every outstanding link is invalidated the moment the password changes. Without email configured, everything else works — resets just require an admin.
 - **Rate limiting**: login and registration are limited per IP (tune with `RATE_LIMIT_LOGIN` / `RATE_LIMIT_REGISTER`).
 - **Security headers** are set on every response; auth cookies are httpOnly + SameSite=Lax (+ Secure when `COOKIE_SECURE=1`).
 - **SEO built in**: every hosted site gets `feed.xml` (RSS), `sitemap.xml`, meta descriptions, and Open Graph tags; `/robots.txt` and the platform sitemap are domain-aware, so a custom-domain site gets its own at the root.
@@ -159,6 +160,9 @@ Every company has a **plan** — `free` (25 content items, 3 members, 100 MB med
 | `NOVA_ERROR_WEBHOOK` | unset | URL POSTed a JSON report on every unhandled server error |
 | `PLATFORM_DOMAIN` | unset | The platform's own hostname (used by the TLS `ask` endpoint) |
 | `NOVA_DEFAULT_PLAN` | `pro` | Plan for new companies (`free`/`starter`/`pro`) — set `free` when running as a SaaS |
+| `SMTP_URL` | unset | Outbound email via SMTP, e.g. `smtp://user:pass@smtp.example.com:587` (STARTTLS) or `smtps://…:465` |
+| `NOVA_EMAIL_WEBHOOK` | unset | Alternative email transport: `{from, to, subject, text}` is POSTed as JSON to this URL |
+| `EMAIL_FROM` | `nova@<PLATFORM_DOMAIN>` | Sender address on outbound email |
 
 ## API overview
 
@@ -229,7 +233,7 @@ All `/api` routes accept and return JSON. Authentication uses an httpOnly cookie
 npm test
 ```
 
-71 end-to-end tests (`node --test`, in-memory database): registration, company creation, the three-tier role model, cross-company isolation, content CRUD with cover images, per-company slug scoping, draft/pending/publish visibility, the approval workflow, custom content types with field validation, the WordPress/Markdown/Nova importers, feeds/sitemaps/SEO, rate limiting, theming, starter kits and the AI site builder (mock mode), custom-domain routing, the headless API, dashboards, and platform stats.
+74 end-to-end tests (`node --test`, in-memory database): registration, company creation, the three-tier role model, cross-company isolation, content CRUD with cover images, per-company slug scoping, draft/pending/publish visibility, the approval workflow, custom content types with field validation, the WordPress/Markdown/Nova importers, feeds/sitemaps/SEO, rate limiting, theming, starter kits and the AI site builder (mock mode), custom-domain routing, the headless API, dashboards, platform stats, and password reset over both email transports (webhook receiver + fake SMTP server).
 
 ## Project layout
 

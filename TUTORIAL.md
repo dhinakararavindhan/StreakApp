@@ -88,6 +88,7 @@ Create keys on **Company → API keys** (read = GETs incl. drafts; write = acts 
 ## Chapter 11 — Operate it
 
 - **Security**: 2FA on the Account page; rate limits and security headers by default.
+- **Account recovery**: add a recovery email on the Account page (or at sign-up) and "Forgot password?" on the sign-in screen emails you a single-use reset link — when the operator has configured `SMTP_URL` or `NOVA_EMAIL_WEBHOOK`. Your notifications land in your inbox too.
 - **Observability**: `/api/metrics` (Prometheus), `NOVA_LOG=json`, `NOVA_ERROR_WEBHOOK`.
 - **Backups**: superadmins download a consistent snapshot at `/api/platform/backup`.
 - **Plans**: free/starter/pro with live usage meters — self-hosted defaults to unlimited; SaaS operators set plans from the Platform page.
