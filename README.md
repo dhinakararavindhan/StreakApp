@@ -1,6 +1,6 @@
 # Nova CMS ✦
 
-**The CMS any team on earth can adopt in an afternoon — and never outgrow.** See [ROADMAP.md](ROADMAP.md) for where this is headed.
+**The CMS any team on earth can adopt in an afternoon — and never outgrow.** New here? **[TUTORIAL.md](TUTORIAL.md)** walks the whole product in 15 minutes. See [ROADMAP.md](ROADMAP.md) for where this is headed.
 
 A multi-company content platform built with Node.js, Express, and SQLite. Any company can onboard itself and use Nova to power its website — with its own look, its own domain, its own people, and fully isolated content.
 
