@@ -76,6 +76,12 @@ function createApp(options = {}) {
     res.status(known ? 200 : 404).send(known ? 'ok' : 'unknown domain');
   });
 
+  // The in-app Help page renders the repo tutorial — one source of truth.
+  app.get('/api/help.md', (req, res) => {
+    res.type('text/markdown; charset=utf-8');
+    res.sendFile(path.join(__dirname, '..', 'TUTORIAL.md'));
+  });
+
   // Machine-readable API description + a human-readable reference built
   // from it, plus the browser build of the official JS SDK.
   app.get('/api/openapi.json', (req, res) => res.json(buildSpec()));

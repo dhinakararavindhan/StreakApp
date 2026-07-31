@@ -76,6 +76,7 @@ The moat is other people's work running on Nova.
 - [x] Navigation menu manager: custom `Label | /url` menus overriding the automatic nav
 - [x] Site search on every hosted site (`/search`, linked in the nav) and the headless API (`?q=`)
 - [x] Content trash: soft delete with restore, admin-only permanent purge; one-click duplicate-as-draft
+- [x] Self-serve onboarding: in-app guided tour (role-aware coach marks, first-login invite, replayable) + Help page rendering the full tutorial + ? menu linking tour/tutorial/API docs
 - [x] New-company onboarding: pick a business template, run the AI builder, or start blank — right at creation
 - [x] In-app notifications: submissions notify admins; approvals, rejections (with note), and comments notify authors — bell with unread badge
 - [x] Shareable preview links: signed, expiring, noindex URLs that show drafts to people without accounts

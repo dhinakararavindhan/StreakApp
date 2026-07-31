@@ -64,6 +64,7 @@ Managers have full CRUD on content, but nothing they touch goes live on its own:
 
 ## Admin panel highlights
 
+- **Self-serve onboarding** — a **guided tour** spotlights each area of the admin with step cards (offered on first sign-in, replayable from the ? menu or the command palette; role-aware, so managers skip admin-only stops), and a **Help page** renders the complete tutorial inside the app. Nobody needs to ask how it works.
 - **Dashboard** — per-company KPIs (published, in review, drafts, posts, pages, media, members), recently updated content, and the **content radar**: items expiring within 14 days, submissions stuck in review 7+ days, published pages untouched for 180+ days, and drafts idle for a month — surfaced before anyone asks.
 - **Editorial calendar** — a month view of the whole schedule: 🚀 scheduled go-lives, ✅ published dates, ⏳ expiries. Click any chip to edit; click any *day* to open the Time Machine and see the site as it will look that morning. Subscribe from Google/Outlook/Apple Calendar via `/api/teams/:id/calendar.ics?key=<read API key>`.
 - **Inbox** — contact-form submissions from your site, admin-only, with webhook forwarding.
@@ -228,7 +229,7 @@ All `/api` routes accept and return JSON. Authentication uses an httpOnly cookie
 npm test
 ```
 
-70 end-to-end tests (`node --test`, in-memory database): registration, company creation, the three-tier role model, cross-company isolation, content CRUD with cover images, per-company slug scoping, draft/pending/publish visibility, the approval workflow, custom content types with field validation, the WordPress/Markdown/Nova importers, feeds/sitemaps/SEO, rate limiting, theming, starter kits and the AI site builder (mock mode), custom-domain routing, the headless API, dashboards, and platform stats.
+71 end-to-end tests (`node --test`, in-memory database): registration, company creation, the three-tier role model, cross-company isolation, content CRUD with cover images, per-company slug scoping, draft/pending/publish visibility, the approval workflow, custom content types with field validation, the WordPress/Markdown/Nova importers, feeds/sitemaps/SEO, rate limiting, theming, starter kits and the AI site builder (mock mode), custom-domain routing, the headless API, dashboards, and platform stats.
 
 ## Project layout
 

@@ -435,6 +435,40 @@ td .path { color: var(--faint); font-size: 0.76rem; }
 .ai-build textarea { width: 100%; }
 .setup-cols { display: flex; gap: 1.2rem; align-items: flex-start; flex-wrap: wrap; }
 
+/* Guided tour */
+.tour-ring {
+  position: fixed; z-index: 9000; pointer-events: none; border-radius: 12px;
+  border: 2px solid var(--a1);
+  box-shadow: 0 0 0 6px rgba(109, 124, 255, 0.22), 0 0 0 9999px rgba(8, 10, 18, 0.45);
+  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.tour-card {
+  position: fixed; z-index: 9001; width: 360px; padding: 0.9rem 1rem 0.8rem;
+  background: var(--card, var(--bg)); border: 1px solid var(--border-2); border-radius: 14px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5); transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.tour-card b { font-size: 0.95rem; }
+.tour-card p { margin: 0.3rem 0 0.7rem; font-size: 0.84rem; color: var(--muted); line-height: 1.5; }
+.tour-step {
+  font-size: 0.66rem; font-weight: 700; letter-spacing: 0.08em; color: var(--a1); margin-bottom: 0.2rem;
+}
+.tour-nav { display: flex; gap: 0.4rem; align-items: center; }
+.tour-invite {
+  position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 8000;
+  display: flex; gap: 0.7rem; align-items: center; padding: 0.65rem 1rem;
+  background: var(--card, var(--bg)); border: 1px solid var(--a1); border-radius: 999px;
+  box-shadow: 0 14px 44px rgba(0, 0, 0, 0.4); font-size: 0.86rem;
+}
+
+/* Help page (rendered tutorial) */
+.help-doc { line-height: 1.65; font-size: 0.92rem; }
+.help-doc h1 { font-size: 1.35rem; margin: 0.4rem 0 0.6rem; }
+.help-doc h2 { font-size: 1.05rem; margin: 1.5rem 0 0.4rem; padding-top: 0.6rem; border-top: 1px solid var(--border-2); }
+.help-doc pre { background: color-mix(in srgb, var(--fg) 6%, transparent); border: 1px solid var(--border-2); padding: 0.7rem 0.9rem; border-radius: 9px; overflow-x: auto; font-size: 0.82rem; }
+.help-doc code { font-size: 0.85em; }
+.help-doc blockquote { border-left: 3px solid var(--a1); margin-left: 0; padding-left: 1rem; color: var(--muted); }
+.help-doc hr { border: none; border-top: 1px solid var(--border-2); margin: 1.4rem 0; }
+
 /* Notifications bell */
 .bell-dot {
   position: absolute; top: 4px; right: 4px; width: 8px; height: 8px;

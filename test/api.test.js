@@ -1962,6 +1962,15 @@ test('plans & entitlements: limits enforce, upgrades unlock, self-hosted stays u
   assert.strictEqual(usage.usage.members, 4);
 });
 
+test('the in-app tutorial is served for the Help page', async () => {
+  const res = await fetch(`${base}/api/help.md`);
+  assert.strictEqual(res.status, 200);
+  assert.ok((res.headers.get('content-type') || '').includes('markdown'));
+  const text = await res.text();
+  assert.ok(text.includes('# Nova CMS — The Complete Walkthrough'));
+  assert.ok(text.includes('Chapter 6') && text.includes('approval workflow'));
+});
+
 test('health endpoint responds for load balancers', async () => {
   const res = await fetch(`${base}/api/health`);
   assert.strictEqual(res.status, 200);

@@ -372,6 +372,14 @@
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
               Search or jump to…<kbd>Ctrl K</kbd>
             </button>
+            <button class="iconbtn" id="help-btn" title="Help">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2.4-3 4"/><line x1="12" y1="17.5" x2="12" y2="17.6"/></svg>
+            </button>
+            <div id="help-panel" class="bell-panel" style="display:none;right:7.4rem;width:250px">
+              <a class="bell-item" href="#" id="help-tour"><span>🚀</span><span><b>Take the 60-second tour</b><br><span class="path">A guided walk through the admin</span></span></a>
+              <a class="bell-item" href="#/help"><span>📖</span><span><b>Help &amp; tutorial</b><br><span class="path">The complete walkthrough, in-app</span></span></a>
+              <a class="bell-item" href="/api/docs" target="_blank"><span>🧩</span><span><b>API reference ↗</b><br><span class="path">OpenAPI spec + JS SDK</span></span></a>
+            </div>
             <button class="iconbtn" id="bell" title="Notifications" style="position:relative">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
               <span class="bell-dot" id="bell-dot" style="display:none"></span>
@@ -402,6 +410,38 @@
       localStorage.setItem('nova_side', frame.classList.contains('collapsed') ? 'min' : 'full');
     });
     document.getElementById('open-palette').addEventListener('click', openPalette);
+
+    // Help menu + guided tour entry points.
+    const helpBtn = document.getElementById('help-btn');
+    const helpPanel = document.getElementById('help-panel');
+    helpBtn.addEventListener('click', () => {
+      helpPanel.style.display = helpPanel.style.display === 'none' ? '' : 'none';
+    });
+    document.getElementById('help-tour').addEventListener('click', (e) => {
+      e.preventDefault();
+      helpPanel.style.display = 'none';
+      startTour();
+    });
+    helpPanel.querySelectorAll('a[href="#/help"]').forEach((a) =>
+      a.addEventListener('click', () => (helpPanel.style.display = 'none'))
+    );
+    document.addEventListener('click', (e) => {
+      if (!helpBtn.contains(e.target) && !helpPanel.contains(e.target)) helpPanel.style.display = 'none';
+    });
+    // First visit: offer the tour once, gently.
+    if (!localStorage.getItem('nova_tour_seen')) {
+      localStorage.setItem('nova_tour_seen', '1');
+      setTimeout(() => {
+        const bar = document.createElement('div');
+        bar.className = 'tour-invite';
+        bar.innerHTML = `<span>👋 New here? Take the <b>60-second tour</b> of your workspace.</span>
+          <button class="btn sm" id="tour-yes">Show me around</button>
+          <button class="btn secondary sm" id="tour-no">Maybe later</button>`;
+        document.body.appendChild(bar);
+        bar.querySelector('#tour-yes').addEventListener('click', () => { bar.remove(); startTour(); });
+        bar.querySelector('#tour-no').addEventListener('click', () => bar.remove());
+      }, 900);
+    }
 
     // Notifications bell: unread badge + dropdown panel.
     const bell = document.getElementById('bell');
@@ -2477,6 +2517,120 @@
     });
   }
 
+  // ---------- guided tour (in-app onboarding) ----------
+
+  function tourSteps() {
+    const steps = [
+      { hash: '#/dashboard', sel: '.kpis', title: 'Your dashboard', text: 'Live counts of what’s published, in review, and drafted — plus a radar that flags expiring or stale content before anyone asks.' },
+      { hash: '#/content', sel: '#list', title: 'Content', text: 'Everything your team writes: posts, pages, and your own custom types. Six body formats — including a visual block editor with working contact forms.' },
+      { hash: '#/edit/new', sel: '#editor', title: 'The editor', text: 'Write with live preview, autosave, version history, scheduling, and translations. Check changes on the real site — or share a preview link with anyone, no account needed.' },
+      { hash: '#/calendar', sel: '.cal-grid', title: 'The editorial calendar', text: 'Go-lives 🚀, publishes ✅, and expiries ⏳ by month. Click any day to open the ⏱ Time Machine — the whole site as it will look that morning.' },
+    ];
+    if (isCompanyAdmin()) {
+      steps.push(
+        { hash: '#/approvals', sel: '#list', title: 'Approvals', text: 'Managers never publish directly — submissions queue here, pre-reviewed by AI with a summary and verdict. You approve or reject; the site only ever shows approved work.' },
+        { hash: '#/inbox', sel: '#list', title: 'Inbox', text: 'Messages from your site’s contact forms land here (and on your webhooks).' },
+        { hash: '#/company', sel: '#starter-card', title: 'Your company', text: 'Templates and the AI site builder, 11 themes, custom domains with automatic HTTPS, content types, import/export, webhooks, API keys, and your plan & usage.' }
+      );
+    }
+    steps.push({
+      hash: null, sel: '#help-btn', title: 'Help is always here', text: 'Replay this tour, read the full tutorial, or open the API reference — any time, from this menu. That’s it — go make something! ✦',
+    });
+    return steps;
+  }
+
+  let tourActive = false;
+  async function startTour() {
+    if (tourActive || !company) return;
+    tourActive = true;
+    const steps = tourSteps();
+    let i = 0;
+
+    const ring = document.createElement('div');
+    ring.className = 'tour-ring';
+    const card = document.createElement('div');
+    card.className = 'tour-card';
+    document.body.append(ring, card);
+
+    const waitFor = async (sel) => {
+      for (let t = 0; t < 40; t++) {
+        const el = document.querySelector(sel);
+        if (el) return el;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      return null;
+    };
+
+    async function show(index) {
+      i = index;
+      const step = steps[i];
+      if (step.hash && location.hash !== step.hash) {
+        location.hash = step.hash;
+      }
+      const el = await waitFor(step.sel);
+      if (!el) return end();
+      el.scrollIntoView({ block: 'center', behavior: 'instant' });
+      const r = el.getBoundingClientRect();
+      ring.style.cssText = `top:${r.top - 6}px;left:${r.left - 6}px;width:${r.width + 12}px;height:${r.height + 12}px;`;
+      card.innerHTML = `
+        <div class="tour-step">${i + 1} / ${steps.length}</div>
+        <b>${esc(step.title)}</b>
+        <p>${esc(step.text)}</p>
+        <div class="tour-nav">
+          <button class="btn secondary sm" id="tour-skip">Skip tour</button>
+          <span style="flex:1"></span>
+          ${i > 0 ? '<button class="btn secondary sm" id="tour-back">Back</button>' : ''}
+          <button class="btn sm" id="tour-next">${i === steps.length - 1 ? 'Finish ✦' : 'Next →'}</button>
+        </div>`;
+      // Place the card near the target, clamped to the viewport.
+      const below = r.bottom + 190 < window.innerHeight;
+      card.style.top = `${below ? r.bottom + 14 : Math.max(12, r.top - card.offsetHeight - 190)}px`;
+      card.style.left = `${Math.min(Math.max(12, r.left), window.innerWidth - 372)}px`;
+      requestAnimationFrame(() => {
+        const ch = card.offsetHeight;
+        card.style.top = `${below ? r.bottom + 14 : Math.max(12, r.top - ch - 14)}px`;
+      });
+      card.querySelector('#tour-next').addEventListener('click', () => (i === steps.length - 1 ? end() : show(i + 1)));
+      const back = card.querySelector('#tour-back');
+      if (back) back.addEventListener('click', () => show(i - 1));
+      card.querySelector('#tour-skip').addEventListener('click', end);
+    }
+
+    function end() {
+      ring.remove();
+      card.remove();
+      tourActive = false;
+      document.removeEventListener('keydown', onKey);
+      location.hash = '#/dashboard';
+    }
+    const onKey = (e) => {
+      if (e.key === 'Escape') end();
+      if (e.key === 'ArrowRight' && i < steps.length - 1) show(i + 1);
+    };
+    document.addEventListener('keydown', onKey);
+    await show(0);
+  }
+
+  // ---------- help page (renders the repo tutorial) ----------
+
+  async function renderHelp() {
+    const page = shell('#/help', `
+      <h1>Help &amp; tutorial <span class="sub">everything, self-serve</span></h1>
+      <div class="toolbar" style="margin-top:0.2rem">
+        <button class="btn sm" id="help-start-tour">🚀 Take the 60-second tour</button>
+        <a class="btn secondary sm" href="/api/docs" target="_blank">API reference ↗</a>
+        <a class="btn secondary sm" href="/t/${esc(company.slug)}" target="_blank">Open my site ↗</a>
+      </div>
+      <div class="card help-doc" id="help-doc" style="max-width:820px;margin-top:1rem">Loading…</div>`);
+    page.querySelector('#help-start-tour').addEventListener('click', startTour);
+    try {
+      const text = await (await fetch('/api/help.md')).text();
+      page.querySelector('#help-doc').innerHTML = md(text);
+    } catch {
+      page.querySelector('#help-doc').textContent = 'Could not load the tutorial.';
+    }
+  }
+
   // ---------- command palette ----------
 
   let paletteOpen = false;
@@ -2512,6 +2666,8 @@
         : []),
       ...(me.role === 'superadmin' ? [{ label: 'Go to Platform', k: 'nav', run: () => (location.hash = '#/platform') }] : []),
       { label: 'New content', k: 'create', run: () => (location.hash = '#/edit/new') },
+      { label: 'Take the product tour', k: 'help', run: () => startTour() },
+      { label: 'Help & tutorial', k: 'help', run: () => (location.hash = '#/help') },
       { label: 'Open public site', k: 'open', run: () => window.open(`/t/${company.slug}`, '_blank') },
       ...companies
         .filter((c) => c.id !== company.id)
@@ -2611,6 +2767,7 @@
       if (hash.startsWith('#/setup')) return await renderSetup();
       if (hash.startsWith('#/company')) return await renderCompany();
       if (hash.startsWith('#/platform') && me.role === 'superadmin') return await renderPlatform();
+      if (hash.startsWith('#/help')) return await renderHelp();
       if (hash.startsWith('#/account')) return await renderAccount();
       return await renderDashboard();
     } catch (err) {
