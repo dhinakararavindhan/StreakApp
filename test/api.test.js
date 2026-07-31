@@ -1603,6 +1603,52 @@ test('custom nav menu overrides the automatic navigation', async () => {
   assert.ok(auto.includes('Zebra Page')); // automatic nav returns
 });
 
+test('editorial calendar ICS feed and the content radar', async () => {
+  const owner = await registerAs('calowner', 'cal-password-12');
+  const team = await (await owner('/api/teams', { method: 'POST', body: { name: 'Calendar Co' } })).json();
+  await owner(`/api/teams/${team.id}/content`, {
+    method: 'POST',
+    body: { type: 'post', title: 'Launch day', body: 'Soon.', status: 'published', publish_at: '2031-03-01 09:00' },
+  });
+  await owner(`/api/teams/${team.id}/content`, {
+    method: 'POST',
+    body: { type: 'post', title: 'Old faithful', body: 'Live.', status: 'published' },
+  });
+
+  // Member session gets the feed; anonymous does not.
+  assert.strictEqual((await fetch(`${base}/api/teams/${team.id}/calendar.ics`)).status, 401);
+  const ics = await owner(`/api/teams/${team.id}/calendar.ics`);
+  assert.strictEqual(ics.status, 200);
+  assert.ok((ics.headers.get('content-type') || '').includes('text/calendar'));
+  const text = await ics.text();
+  assert.ok(text.includes('BEGIN:VCALENDAR') && text.includes('🚀 Goes live: Launch day'));
+  assert.ok(text.includes('DTSTART:20310301T090000Z'));
+  assert.ok(text.includes('✅ Published: Old faithful'));
+
+  // A read API key works for calendar apps; another company's key does not.
+  const key = await (await owner(`/api/teams/${team.id}/api-keys`, { method: 'POST', body: { name: 'cal', scope: 'read' } })).json();
+  assert.strictEqual((await fetch(`${base}/api/teams/${team.id}/calendar.ics?key=${key.token}`)).status, 200);
+  const other = await (await owner('/api/teams', { method: 'POST', body: { name: 'Other Cal Co' } })).json();
+  assert.strictEqual((await fetch(`${base}/api/teams/${other.id}/calendar.ics?key=${key.token}`)).status, 401);
+
+  // Radar: age an item directly, then see it flagged in stats.
+  const { getDb } = require('../src/db');
+  getDb()
+    .prepare("UPDATE content SET updated_at = datetime('now', '-200 days') WHERE team_id = ? AND title = 'Old faithful'")
+    .run(team.id);
+  await owner(`/api/teams/${team.id}/content`, {
+    method: 'POST',
+    body: { type: 'post', title: 'Fading offer', body: 'Hurry.', status: 'published', expire_at: '2031-01-01 00:00' },
+  });
+  getDb()
+    .prepare("UPDATE content SET expire_at = datetime('now', '+3 days') WHERE team_id = ? AND title = 'Fading offer'")
+    .run(team.id);
+  const stats = await (await owner(`/api/teams/${team.id}/stats`)).json();
+  assert.ok(stats.radar.stale.some((r) => r.title === 'Old faithful'));
+  assert.ok(stats.radar.expiring.some((r) => r.title === 'Fading offer'));
+  assert.strictEqual(stats.radar.idle_drafts.length, 0);
+});
+
 test('health endpoint responds for load balancers', async () => {
   const res = await fetch(`${base}/api/health`);
   assert.strictEqual(res.status, 200);

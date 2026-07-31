@@ -67,6 +67,8 @@ The moat is other people's work running on Nova.
 
 - [ ] Plugin API (server hooks + admin panel extension points)
 - [x] Theme gallery: 11 presets × heading typefaces (sans/serif/mono) × home layouts (cards/list) × accent + custom CSS
+- [x] Editorial calendar: month view of go-lives, publishes, and expiries; day-click opens the Time Machine; ICS feed for Google/Outlook/Apple Calendar
+- [x] Content radar on the dashboard: expiring soon, stuck in review, stale published pages, idle drafts
 - [x] Contact forms: form blocks on any page, honeypot + rate limiting, admin Inbox, `form.submission` webhooks
 - [x] Image processing: automatic WebP variants on upload (1200px/400px), used by the editor and admin
 - [x] Navigation menu manager: custom `Label | /url` menus overriding the automatic nav

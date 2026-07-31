@@ -189,6 +189,38 @@ router.get('/:teamId/stats', requireTeamRole('manager'), (req, res) => {
          WHERE c.team_id = ? AND c.deleted_at IS NULL ORDER BY c.updated_at DESC LIMIT 6`
       )
       .all(req.team.id),
+    // Content radar: what needs a human's attention, before anyone asks.
+    radar: {
+      stale: db
+        .prepare(
+          `SELECT id, title, updated_at FROM content
+           WHERE team_id = ? AND status = 'published' AND deleted_at IS NULL
+           AND updated_at < datetime('now', '-180 days') ORDER BY updated_at LIMIT 8`
+        )
+        .all(req.team.id),
+      expiring: db
+        .prepare(
+          `SELECT id, title, expire_at FROM content
+           WHERE team_id = ? AND deleted_at IS NULL AND expire_at IS NOT NULL
+           AND expire_at > datetime('now') AND expire_at <= datetime('now', '+14 days')
+           ORDER BY expire_at LIMIT 8`
+        )
+        .all(req.team.id),
+      idle_drafts: db
+        .prepare(
+          `SELECT id, title, updated_at FROM content
+           WHERE team_id = ? AND status = 'draft' AND deleted_at IS NULL
+           AND updated_at < datetime('now', '-30 days') ORDER BY updated_at LIMIT 8`
+        )
+        .all(req.team.id),
+      stuck_reviews: db
+        .prepare(
+          `SELECT id, title, updated_at FROM content
+           WHERE team_id = ? AND status = 'pending' AND deleted_at IS NULL
+           AND updated_at < datetime('now', '-7 days') ORDER BY updated_at LIMIT 8`
+        )
+        .all(req.team.id),
+    },
   });
 });
 
@@ -513,6 +545,65 @@ router.get('/:teamId/export', requireTeamRole('admin'), (req, res) => {
     content_types: contentTypes,
     content,
   });
+});
+
+// ---------- editorial calendar as an ICS feed ----------
+
+// Subscribe to a company's content schedule from Google Calendar, Outlook,
+// or Apple Calendar. Calendar apps can't send cookies, so the feed accepts
+// a read API key as ?key= alongside normal member sessions.
+router.get('/:teamId/calendar.ics', (req, res) => {
+  const db = getDb();
+  const team = db.prepare('SELECT * FROM teams WHERE id = ?').get(req.params.teamId);
+  if (!team) return res.status(404).json({ error: 'Not found' });
+
+  let allowed = false;
+  if (req.user && req.user.role === 'superadmin') allowed = true;
+  else if (req.user && req.user.id) {
+    allowed = Boolean(
+      db.prepare('SELECT 1 FROM team_members WHERE team_id = ? AND user_id = ?').get(team.id, req.user.id)
+    );
+  }
+  if (!allowed && req.query.key) {
+    const hash = crypto.createHash('sha256').update(String(req.query.key)).digest('hex');
+    const key = db.prepare('SELECT team_id FROM api_keys WHERE token_hash = ?').get(hash);
+    allowed = Boolean(key && key.team_id === team.id);
+    if (allowed) db.prepare("UPDATE api_keys SET last_used_at = datetime('now') WHERE token_hash = ?").run(hash);
+  }
+  if (!allowed) return res.status(401).json({ error: 'Member session or a company API key (?key=) required' });
+
+  const icsDate = (s) => `${String(s).slice(0, 19).replace(/[-:]/g, '').replace(' ', 'T')}Z`;
+  const escText = (s) => String(s).replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, ' ');
+  const rows = db
+    .prepare('SELECT id, title, status, publish_at, expire_at, published_at FROM content WHERE team_id = ? AND deleted_at IS NULL')
+    .all(team.id);
+  const events = [];
+  for (const row of rows) {
+    if (row.publish_at) {
+      events.push({ uid: `publish-${row.id}`, at: row.publish_at, summary: `🚀 Goes live: ${row.title}` });
+    } else if (row.published_at && row.status === 'published') {
+      events.push({ uid: `published-${row.id}`, at: row.published_at, summary: `✅ Published: ${row.title}` });
+    }
+    if (row.expire_at) {
+      events.push({ uid: `expire-${row.id}`, at: row.expire_at, summary: `⏳ Expires: ${row.title}` });
+    }
+  }
+  const body = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Nova CMS//EN',
+    `X-WR-CALNAME:${escText(team.name)} — content calendar`,
+    ...events.flatMap((e) => [
+      'BEGIN:VEVENT',
+      `UID:nova-${team.slug}-${e.uid}@nova-cms`,
+      `DTSTART:${icsDate(e.at)}`,
+      `DTSTAMP:${icsDate(new Date().toISOString().slice(0, 19).replace('T', ' '))}`,
+      `SUMMARY:${escText(e.summary)}`,
+      'END:VEVENT',
+    ]),
+    'END:VCALENDAR',
+  ].join('\r\n');
+  res.type('text/calendar').send(body);
 });
 
 // ---------- contact-form inbox ----------

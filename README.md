@@ -62,7 +62,9 @@ Managers have full CRUD on content, but nothing they touch goes live on its own:
 
 ## Admin panel highlights
 
-- **Dashboard** — per-company KPIs (published, in review, drafts, posts, pages, media, members) and recently updated content.
+- **Dashboard** — per-company KPIs (published, in review, drafts, posts, pages, media, members), recently updated content, and the **content radar**: items expiring within 14 days, submissions stuck in review 7+ days, published pages untouched for 180+ days, and drafts idle for a month — surfaced before anyone asks.
+- **Editorial calendar** — a month view of the whole schedule: 🚀 scheduled go-lives, ✅ published dates, ⏳ expiries. Click any chip to edit; click any *day* to open the Time Machine and see the site as it will look that morning. Subscribe from Google/Outlook/Apple Calendar via `/api/teams/:id/calendar.ics?key=<read API key>`.
+- **Inbox** — contact-form submissions from your site, admin-only, with webhook forwarding.
 - **Command palette** — Ctrl/⌘+K anywhere: jump between pages, create content, switch companies, and search content by title.
 - **Editor** — Markdown body with a formatting toolbar, live Write/Preview toggle, media-library image insertion, autosave for drafts, excerpt (inline Markdown), tags, slug control, language + scheduling fields, a cover image picker with live preview, version history with restore, and the item's discussion thread. Rendered Markdown in the admin is always sanitized.
 - **Company page** — profile, custom domain, theme/branding, headless API reference, and member management with role control.
@@ -178,6 +180,7 @@ All `/api` routes accept and return JSON. Authentication uses an httpOnly cookie
 | POST | `/api/teams/:id/content/:cid/versions/:vid/restore` | member | Restore a version (workflow rules apply) |
 | GET/POST | `/api/teams/:id/content/:cid/comments` | member | Discussion thread on an item |
 | GET/DELETE | `/api/teams/:id/forms[/:fid]` | company admin | Contact-form inbox / delete a message |
+| GET | `/api/teams/:id/calendar.ics` | member or `?key=` | Editorial calendar as an ICS feed for calendar apps |
 | POST | `/api/public/:company/forms` | — | Submit a contact form (rate-limited, honeypot-filtered) |
 | GET | `/api/teams/:id/audit` | company admin | Audit log (last 100 entries) |
 | GET/POST/DELETE | `/api/teams/:id/webhooks[/:whid]` | company admin | Manage signed event webhooks |
@@ -200,7 +203,7 @@ All `/api` routes accept and return JSON. Authentication uses an httpOnly cookie
 npm test
 ```
 
-63 end-to-end tests (`node --test`, in-memory database): registration, company creation, the three-tier role model, cross-company isolation, content CRUD with cover images, per-company slug scoping, draft/pending/publish visibility, the approval workflow, custom content types with field validation, the WordPress/Markdown/Nova importers, feeds/sitemaps/SEO, rate limiting, theming, starter kits and the AI site builder (mock mode), custom-domain routing, the headless API, dashboards, and platform stats.
+64 end-to-end tests (`node --test`, in-memory database): registration, company creation, the three-tier role model, cross-company isolation, content CRUD with cover images, per-company slug scoping, draft/pending/publish visibility, the approval workflow, custom content types with field validation, the WordPress/Markdown/Nova importers, feeds/sitemaps/SEO, rate limiting, theming, starter kits and the AI site builder (mock mode), custom-domain routing, the headless API, dashboards, and platform stats.
 
 ## Project layout
 

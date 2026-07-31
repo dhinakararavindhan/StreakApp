@@ -307,6 +307,7 @@
   const NAV = [
     ['#/dashboard', 'Dashboard', 'dashboard'],
     ['#/content', 'Content', 'content'],
+    ['#/calendar', 'Calendar', 'content'],
     ['#/media', 'Media', 'media'],
     ['#/tags', 'Tags', 'tags'],
     ['#/approvals', 'Approvals', 'approvals', 'company-admin'],
@@ -490,7 +491,94 @@
             <td>${esc(r.updated_at.slice(0, 16))}</td>
           </tr>`
         )
-        .join('')}</tbody></table>` : '<p style="color:var(--muted)">Nothing yet — create your first piece of content.</p>'}`;
+        .join('')}</tbody></table>` : '<p style="color:var(--muted)">Nothing yet — create your first piece of content.</p>'}
+      ${(() => {
+        const radar = s.radar || {};
+        const groups = [
+          ['expiring', '⏳ Expiring within 14 days', (r) => `expires ${r.expire_at.slice(0, 10)}`],
+          ['stuck_reviews', '⌛ In review for 7+ days', (r) => `submitted ${r.updated_at.slice(0, 10)}`],
+          ['stale', '🍂 Published, untouched for 180+ days', (r) => `last edit ${r.updated_at.slice(0, 10)}`],
+          ['idle_drafts', '💤 Drafts idle for 30+ days', (r) => `last edit ${r.updated_at.slice(0, 10)}`],
+        ].filter(([key]) => (radar[key] || []).length);
+        if (!groups.length) return '';
+        return `<h2 class="sec">Radar — needs attention</h2>
+          <div class="card" style="max-width:640px">${groups
+            .map(
+              ([key, label, note]) => `<b style="font-size:0.82rem">${label}</b>
+              <ul style="margin:0.25rem 0 0.7rem;padding-left:1.1rem;font-size:0.85rem">${radar[key]
+                .map((r) => `<li><a href="#/edit/${r.id}">${esc(r.title)}</a> <span class="path">— ${esc(note(r))}</span></li>`)
+                .join('')}</ul>`
+            )
+            .join('')}</div>`;
+      })()}`;
+  }
+
+  // ---------- editorial calendar ----------
+
+  async function renderCalendar() {
+    const page = shell('#/calendar', `<h1>Calendar <span class="sub">${esc(company.name)}</span></h1><div id="cal">Loading…</div>`);
+    const rows = await capi('/content');
+    let cursor = new Date();
+    cursor.setDate(1);
+
+    // date (YYYY-MM-DD) -> [{id, title, kind}]
+    const events = new Map();
+    const put = (dateStr, ev) => {
+      if (!dateStr) return;
+      const day = dateStr.slice(0, 10);
+      if (!events.has(day)) events.set(day, []);
+      events.get(day).push(ev);
+    };
+    for (const r of rows) {
+      if (r.publish_at) put(r.publish_at, { id: r.id, title: r.title, kind: 'sched' });
+      else if (r.published_at && r.status === 'published') put(r.published_at, { id: r.id, title: r.title, kind: 'live' });
+      if (r.expire_at) put(r.expire_at, { id: r.id, title: r.title, kind: 'exp' });
+    }
+
+    const KIND = { sched: '🚀', live: '✅', exp: '⏳' };
+    function draw() {
+      const year = cursor.getFullYear();
+      const month = cursor.getMonth();
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const first = new Date(Date.UTC(year, month, 1));
+      const startIdx = (first.getUTCDay() + 6) % 7; // Monday-first
+      const cells = [];
+      for (let i = 0; i < 42; i++) {
+        const d = new Date(Date.UTC(year, month, 1 - startIdx + i));
+        const dStr = d.toISOString().slice(0, 10);
+        const inMonth = d.getUTCMonth() === month;
+        const dayEvents = events.get(dStr) || [];
+        cells.push(`<div class="cal-day ${inMonth ? '' : 'other'} ${dStr === todayStr ? 'today' : ''}" data-day="${dStr}" title="Click to preview the site on this day (time machine)">
+          <div class="cal-num">${d.getUTCDate()}</div>
+          ${dayEvents.slice(0, 3).map((e) => `<a class="cal-chip ${e.kind}" href="#/edit/${e.id}" title="${esc(e.title)}">${KIND[e.kind]} ${esc(e.title)}</a>`).join('')}
+          ${dayEvents.length > 3 ? `<span class="cal-more">+${dayEvents.length - 3} more</span>` : ''}
+        </div>`);
+      }
+      page.querySelector('#cal').innerHTML = `
+        <div class="toolbar" style="align-items:center">
+          <button class="btn secondary sm" id="cal-prev">‹</button>
+          <b style="min-width:150px;text-align:center">${cursor.toLocaleString('en', { month: 'long' })} ${year}</b>
+          <button class="btn secondary sm" id="cal-next">›</button>
+          <button class="btn secondary sm" id="cal-today">Today</button>
+          <span class="path" style="margin-left:auto">🚀 scheduled · ✅ published · ⏳ expires — click any day to time-machine the site</span>
+        </div>
+        <div class="cal-grid">
+          ${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => `<div class="cal-dow">${d}</div>`).join('')}
+          ${cells.join('')}
+        </div>
+        <p class="path" style="margin-top:0.7rem">📅 Subscribe from Google/Outlook/Apple Calendar:
+        <code>/api/teams/${company.id}/calendar.ics?key=&lt;read API key&gt;</code> — create a key on the Company page.</p>`;
+      page.querySelector('#cal-prev').addEventListener('click', () => { cursor = new Date(year, month - 1, 1); draw(); });
+      page.querySelector('#cal-next').addEventListener('click', () => { cursor = new Date(year, month + 1, 1); draw(); });
+      page.querySelector('#cal-today').addEventListener('click', () => { cursor = new Date(); cursor.setDate(1); draw(); });
+      page.querySelectorAll('.cal-day').forEach((cell) =>
+        cell.addEventListener('click', (e) => {
+          if (e.target.closest('.cal-chip')) return; // chips go to the editor
+          window.open(`/t/${company.slug}?preview_at=${cell.dataset.day}T09:00`, '_blank');
+        })
+      );
+    }
+    draw();
   }
 
   // ---------- content list ----------
@@ -2313,6 +2401,7 @@
     const editMatch = hash.match(/^#\/edit\/(\w+)/);
     try {
       if (editMatch) return await renderEditor(editMatch[1]);
+      if (hash.startsWith('#/calendar')) return await renderCalendar();
       if (hash.startsWith('#/content')) return await renderContentList();
       if (hash.startsWith('#/media')) return await renderMedia();
       if (hash.startsWith('#/tags')) return await renderTags();
