@@ -9,6 +9,7 @@ const { isValidType, validateFields, parseFieldValues, expandReferences } = requ
 const { aiAvailable, reviewContent, translateContent } = require('../ai');
 const { rateLimit } = require('../security');
 const { notifySubmission, notifyDecision, notifyComment } = require('../notify');
+const { overLimit, usageOf } = require('../plans');
 const { signShareToken } = require('../auth');
 
 // Mounted at /api/teams/:teamId/content behind requireTeamRole('manager'),
@@ -221,6 +222,8 @@ router.post('/', (req, res) => {
   if (publishAt === undefined || expireAt === undefined) {
     return res.status(400).json({ error: 'publish_at/expire_at must be YYYY-MM-DD HH:MM (UTC) or empty' });
   }
+  const planHit = overLimit(req.team, 'content', usageOf(req.team.id).content + 1);
+  if (planHit) return res.status(planHit.status).json({ error: planHit.error });
 
   const db = getDb();
   const finalLocale = String(locale || teamDefaultLocale(req.team.id)).toLowerCase();
@@ -563,6 +566,8 @@ router.post('/:id/ai-translate', aiTranslateLimiter, async (req, res, next) => {
     if (!aiAvailable()) {
       return res.status(503).json({ error: 'AI translation is not configured — set ANTHROPIC_API_KEY on the server' });
     }
+    const aiHit = overLimit(req.team, 'ai', 1) || overLimit(req.team, 'content', usageOf(req.team.id).content + 1);
+    if (aiHit) return res.status(aiHit.status).json({ error: aiHit.error });
     const target = String((req.body || {}).locale || '').toLowerCase().trim();
     if (!LOCALE_RE.test(target)) {
       return res.status(400).json({ error: 'locale must look like "en", "pt-br", or "zh-hans"' });
@@ -622,6 +627,8 @@ router.post('/:id/duplicate', (req, res) => {
   const db = getDb();
   const row = db.prepare('SELECT * FROM content WHERE id = ? AND team_id = ?').get(req.params.id, req.team.id);
   if (!row || row.deleted_at) return res.status(404).json({ error: 'Not found' });
+  const planHit = overLimit(req.team, 'content', usageOf(req.team.id).content + 1);
+  if (planHit) return res.status(planHit.status).json({ error: planHit.error });
   const title = `Copy of ${row.title}`.slice(0, 200);
   const slug = uniqueSlug(title, req.team.id);
   const result = db

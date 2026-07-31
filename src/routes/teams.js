@@ -9,6 +9,7 @@ const { getTemplate, applySite, normalizeSite } = require('../templates');
 const { listTypes, normalizeSchema, parseFieldValues, BUILTIN_TYPES, FIELD_KINDS } = require('../content-types');
 const { aiAvailable, generateSite } = require('../ai');
 const { insertItem, parseWxr, parseMarkdown, importNovaExport } = require('../importers');
+const { PLANS, DEFAULT_PLAN, planOf, limitsOf, usageOf, overLimit } = require('../plans');
 const { rateLimit } = require('../security');
 const contentRoutes = require('./content');
 const tagRoutes = require('./tags');
@@ -59,7 +60,9 @@ router.post('/', requireAuth, (req, res) => {
   if (!name || !String(name).trim()) return res.status(400).json({ error: 'name is required' });
   const db = getDb();
   const finalSlug = uniqueTeamSlug(slug || name);
-  const result = db.prepare('INSERT INTO teams (name, slug) VALUES (?, ?)').run(String(name).trim(), finalSlug);
+  const result = db
+    .prepare('INSERT INTO teams (name, slug, plan) VALUES (?, ?, ?)')
+    .run(String(name).trim(), finalSlug, DEFAULT_PLAN());
   db.prepare('INSERT INTO team_members (team_id, user_id, role) VALUES (?, ?, ?)').run(
     result.lastInsertRowid,
     req.user.id,
@@ -91,6 +94,8 @@ router.put('/:teamId', requireTeamRole('admin'), (req, res) => {
       if (!DOMAIN_RE.test(domain)) {
         return res.status(400).json({ error: 'custom_domain must be a valid hostname like www.example.com' });
       }
+      const planHit = overLimit(req.team, 'custom_domain', 1);
+      if (planHit) return res.status(planHit.status).json({ error: planHit.error });
       const taken = db
         .prepare('SELECT 1 FROM teams WHERE custom_domain = ? AND id != ?')
         .get(domain, req.team.id);
@@ -135,6 +140,8 @@ router.post('/:teamId/ai-build', requireTeamRole('admin'), aiLimiter, async (req
         error: 'AI builder is not configured — set ANTHROPIC_API_KEY on the server to enable it',
       });
     }
+    const aiHit = overLimit(req.team, 'ai', 1);
+    if (aiHit) return res.status(aiHit.status).json({ error: aiHit.error });
     const prompt = String((req.body || {}).prompt || '').trim();
     if (prompt.length < 8) {
       return res.status(400).json({ error: 'Describe your company in a sentence or two' });
@@ -164,6 +171,20 @@ router.post('/:teamId/ai-build', requireTeamRole('admin'), aiLimiter, async (req
   } catch (err) {
     next(err);
   }
+});
+
+// ---------- plan & usage ----------
+
+router.get('/:teamId/plan', requireTeamRole('manager'), (req, res) => {
+  const plan = planOf(req.team);
+  res.json({
+    plan,
+    label: PLANS[plan].label,
+    price: PLANS[plan].price,
+    limits: limitsOf(req.team),
+    usage: usageOf(req.team.id),
+    plans: Object.entries(PLANS).map(([key, p]) => ({ key, label: p.label, price: p.price, limits: p.limits })),
+  });
 });
 
 // ---------- dashboard stats ----------
@@ -260,6 +281,8 @@ router.post('/:teamId/members', requireTeamRole('admin'), (req, res) => {
   if (db.prepare('SELECT 1 FROM team_members WHERE team_id = ? AND user_id = ?').get(req.team.id, user.id)) {
     return res.status(409).json({ error: 'Already a member of this company' });
   }
+  const planHit = overLimit(req.team, 'members', usageOf(req.team.id).members + 1);
+  if (planHit) return res.status(planHit.status).json({ error: planHit.error });
   db.prepare('INSERT INTO team_members (team_id, user_id, role) VALUES (?, ?, ?)').run(req.team.id, user.id, role);
   audit(req.team.id, req.user, 'member.add', user.username, role);
   res.status(201).json({ id: user.id, username: user.username, role });

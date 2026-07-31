@@ -41,6 +41,7 @@ function init(options = {}) {
       name TEXT NOT NULL,
       slug TEXT NOT NULL UNIQUE,
       custom_domain TEXT,
+      plan TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
@@ -356,6 +357,11 @@ function migrate() {
       ALTER TABLE users_migrated RENAME TO users;
     `);
     db.pragma('foreign_keys = ON');
+  }
+
+  // Plans (pre-entitlement databases)
+  if (!db.prepare('PRAGMA table_info(teams)').all().some((c) => c.name === 'plan')) {
+    db.exec('ALTER TABLE teams ADD COLUMN plan TEXT');
   }
 
   // Two-factor auth (pre-2FA databases)

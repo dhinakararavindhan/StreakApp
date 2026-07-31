@@ -5,6 +5,7 @@ const express = require('express');
 const multer = require('multer');
 
 const { getDb } = require('../db');
+const { overLimit } = require('../plans');
 
 // Image processing is best-effort: if sharp is unavailable on this
 // platform, uploads still work — originals only, no variants.
@@ -91,6 +92,12 @@ router.post('/', (req, res) => {
     if (err) return res.status(400).json({ error: err.message });
     if (!req.file) return res.status(400).json({ error: 'file is required' });
     const db = getDb();
+    const usedBytes = db.prepare('SELECT COALESCE(SUM(size), 0) AS n FROM media WHERE team_id = ?').get(req.team.id).n;
+    const planHit = overLimit(req.team, 'media_mb', (usedBytes + req.file.size) / (1024 * 1024));
+    if (planHit) {
+      fs.rm(path.join(UPLOAD_DIR, req.file.filename), { force: true }, () => {});
+      return res.status(planHit.status).json({ error: planHit.error });
+    }
     const result = db
       .prepare(
         'INSERT INTO media (team_id, filename, original_name, mime_type, size, uploaded_by) VALUES (?, ?, ?, ?, ?, ?)'

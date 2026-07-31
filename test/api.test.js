@@ -1894,6 +1894,74 @@ test('OpenAPI spec, docs page, and the official JS SDK end to end', async () => 
   assert.ok((await anon.health()).ok);
 });
 
+test('plans & entitlements: limits enforce, upgrades unlock, self-hosted stays unlimited', async () => {
+  const owner = await registerAs('planowner', 'plan-password-12');
+  const team = await (await owner('/api/teams', { method: 'POST', body: { name: 'Plan Co' } })).json();
+
+  // Self-hosted default: pro / unlimited — the OSS experience has no walls.
+  const proPlan = await (await owner(`/api/teams/${team.id}/plan`)).json();
+  assert.strictEqual(proPlan.plan, 'pro');
+  assert.strictEqual(proPlan.limits.content, -1);
+
+  // Platform operator downgrades the company to free (the Stripe hook point).
+  assert.strictEqual(
+    (await owner(`/api/platform/teams/${team.id}/plan`, { method: 'PUT', body: { plan: 'free' } })).status,
+    403
+  ); // company admins cannot set their own plan
+  await admin(`/api/platform/teams/${team.id}/plan`, { method: 'PUT', body: { plan: 'free' } });
+  const freePlan = await (await owner(`/api/teams/${team.id}/plan`)).json();
+  assert.strictEqual(freePlan.plan, 'free');
+  assert.strictEqual(freePlan.limits.content, 25);
+
+  // Gated features answer 402 with an upgrade message.
+  const domain = await owner(`/api/teams/${team.id}`, { method: 'PUT', body: { custom_domain: 'www.planco.example' } });
+  assert.strictEqual(domain.status, 402);
+  process.env.NOVA_AI_MOCK = '1';
+  try {
+    const ai = await owner(`/api/teams/${team.id}/ai-build`, { method: 'POST', body: { prompt: 'A tiny bakery somewhere' } });
+    assert.strictEqual(ai.status, 402);
+    assert.ok((await ai.json()).error.includes('upgrade'));
+  } finally {
+    delete process.env.NOVA_AI_MOCK;
+  }
+
+  // The content cap bites at 25 — and duplicate counts too.
+  for (let i = 1; i <= 25; i++) {
+    const r = await owner(`/api/teams/${team.id}/content`, { method: 'POST', body: { title: `Item ${i}` } });
+    assert.strictEqual(r.status, 201, `item ${i}`);
+  }
+  const over = await owner(`/api/teams/${team.id}/content`, { method: 'POST', body: { title: 'Item 26' } });
+  assert.strictEqual(over.status, 402);
+  assert.ok((await over.json()).error.includes('25'));
+  const list = await (await owner(`/api/teams/${team.id}/content`)).json();
+  assert.strictEqual(
+    (await owner(`/api/teams/${team.id}/content/${list[0].id}/duplicate`, { method: 'POST' })).status,
+    402
+  );
+
+  // Member cap: free allows 3 total.
+  await registerAs('planm1', 'plan-password-m1');
+  await registerAs('planm2', 'plan-password-m2');
+  await registerAs('planm3', 'plan-password-m3');
+  await owner(`/api/teams/${team.id}/members`, { method: 'POST', body: { username: 'planm1' } });
+  await owner(`/api/teams/${team.id}/members`, { method: 'POST', body: { username: 'planm2' } });
+  assert.strictEqual(
+    (await owner(`/api/teams/${team.id}/members`, { method: 'POST', body: { username: 'planm3' } })).status,
+    402
+  );
+
+  // Upgrading lifts every wall.
+  await admin(`/api/platform/teams/${team.id}/plan`, { method: 'PUT', body: { plan: 'pro' } });
+  assert.strictEqual((await owner(`/api/teams/${team.id}/content`, { method: 'POST', body: { title: 'Item 26' } })).status, 201);
+  assert.strictEqual(
+    (await owner(`/api/teams/${team.id}/members`, { method: 'POST', body: { username: 'planm3' } })).status,
+    201
+  );
+  const usage = await (await owner(`/api/teams/${team.id}/plan`)).json();
+  assert.strictEqual(usage.usage.content, 26);
+  assert.strictEqual(usage.usage.members, 4);
+});
+
 test('health endpoint responds for load balancers', async () => {
   const res = await fetch(`${base}/api/health`);
   assert.strictEqual(res.status, 200);

@@ -123,6 +123,12 @@ PLATFORM_DOMAIN=cms.example.com ACME_EMAIL=you@example.com JWT_SECRET=<random> \
   docker compose -f deploy/docker-compose.tls.yml up -d
 ```
 
+## Plans & entitlements (SaaS-ready)
+
+Every company has a **plan** — `free` (25 content items, 3 members, 100 MB media, no AI, no custom domain), `starter` ($19/mo tier: 500 items, 10 members, 2 GB, AI + domain), or `pro` (unlimited). Limits are enforced at creation points with clear `402` responses naming the limit and the fix; the Company page shows live usage meters; the Platform page lets the operator set any company's plan (that's where a billing provider like Stripe plugs in: checkout webhook → `PUT /api/platform/teams/:id/plan`).
+
+**Self-hosted installs default every company to `pro`** — the open-source experience never hits a wall. SaaS operators set `NOVA_DEFAULT_PLAN=free`.
+
 ## Production notes
 
 - **Two-factor authentication**: any user can enable TOTP (Google Authenticator, Authy, 1Password…) from the Account page — dependency-free RFC 6238, verified before it turns on, required at sign-in, and a current code is needed to disable it (a stolen session can't turn it off).
@@ -151,6 +157,7 @@ PLATFORM_DOMAIN=cms.example.com ACME_EMAIL=you@example.com JWT_SECRET=<random> \
 | `METRICS_TOKEN` | unset | Bearer token granting scrapers access to `/api/metrics` |
 | `NOVA_ERROR_WEBHOOK` | unset | URL POSTed a JSON report on every unhandled server error |
 | `PLATFORM_DOMAIN` | unset | The platform's own hostname (used by the TLS `ask` endpoint) |
+| `NOVA_DEFAULT_PLAN` | `pro` | Plan for new companies (`free`/`starter`/`pro`) — set `free` when running as a SaaS |
 
 ## API overview
 
@@ -176,6 +183,8 @@ All `/api` routes accept and return JSON. Authentication uses an httpOnly cookie
 | GET/POST | `/api/teams` | ✓ | My companies (superadmin: all) / create one — creator becomes its admin |
 | GET/PUT/DELETE | `/api/teams/:id` | member / admin / admin | Read / update (name, slug, custom_domain) / delete |
 | GET | `/api/teams/:id/stats` | member | Dashboard KPIs + recent content |
+| GET | `/api/teams/:id/plan` | member | Plan, limits, live usage, and the plan catalog |
+| PUT | `/api/platform/teams/:id/plan` | superadmin | Set a company's plan (billing hook point) |
 | GET/POST | `/api/teams/:id/members` | member / admin | List / add by username (`{username, role: admin\|manager}`) |
 | PUT/DELETE | `/api/teams/:id/members/:userId` | admin (self-removal allowed) | Change role / remove or leave |
 | GET/PUT | `/api/teams/:id/settings` | member / admin | Site title, description, theme, accent color, custom CSS |
@@ -219,7 +228,7 @@ All `/api` routes accept and return JSON. Authentication uses an httpOnly cookie
 npm test
 ```
 
-69 end-to-end tests (`node --test`, in-memory database): registration, company creation, the three-tier role model, cross-company isolation, content CRUD with cover images, per-company slug scoping, draft/pending/publish visibility, the approval workflow, custom content types with field validation, the WordPress/Markdown/Nova importers, feeds/sitemaps/SEO, rate limiting, theming, starter kits and the AI site builder (mock mode), custom-domain routing, the headless API, dashboards, and platform stats.
+70 end-to-end tests (`node --test`, in-memory database): registration, company creation, the three-tier role model, cross-company isolation, content CRUD with cover images, per-company slug scoping, draft/pending/publish visibility, the approval workflow, custom content types with field validation, the WordPress/Markdown/Nova importers, feeds/sitemaps/SEO, rate limiting, theming, starter kits and the AI site builder (mock mode), custom-domain routing, the headless API, dashboards, and platform stats.
 
 ## Project layout
 

@@ -89,7 +89,8 @@ The moat is other people's work running on Nova.
 - [x] OpenAPI 3.1 spec (`/api/openapi.json`) + self-hosted API reference (`/api/docs`) + official zero-dependency JS SDK (`/sdk/nova-sdk.js`, Node 18+ and browsers), dogfooded in the test suite
 - [ ] TypeScript types + npm publishing for the SDK (next)
 - [ ] Docs site built on Nova itself (dogfooding), template gallery, showcase
-- [ ] Hosted SaaS offering with billing — the open-source core stays complete
+- [x] Plans & entitlements: free/starter/pro with enforced limits (content, members, media, AI, custom domains), live usage meters, operator plan management, 402 upgrade prompts — self-hosted defaults to unlimited
+- [ ] Stripe billing integration on top of the plan system (checkout, webhooks → plan changes, invoices) — the open-source core stays complete
 
 ## Operating principles
 

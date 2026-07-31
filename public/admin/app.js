@@ -1919,6 +1919,10 @@
         </form>
         <div id="import-result" style="color:var(--muted);font-size:0.8rem;margin-top:0.4rem"></div>
       </div>
+      <div class="card" style="max-width:520px;margin-top:1.4rem" id="plan-card">
+        <b>Plan &amp; usage</b>
+        <div id="plan-body" style="margin-top:0.4rem">Loading…</div>
+      </div>
       <div class="card" style="max-width:520px;margin-top:1.4rem">
         <b>Export</b>
         <p style="color:var(--muted);font-size:0.82rem;margin:0.3rem 0 0.6rem">Everything — content, settings, members, media metadata — as one JSON file. No lock-in.</p>
@@ -2008,6 +2012,30 @@
 
       // Starter kits + AI site builder (shared with the new-company setup flow)
       mountStarterPicker(page, { onApplied: () => render() });
+
+      // Plan & usage
+      capi('/plan').then((p) => {
+        const meter = (label, used, limit) => {
+          const unlimited = limit === -1;
+          const pct = unlimited ? 0 : Math.min(100, Math.round((used / limit) * 100));
+          return `<div style="margin:0.35rem 0">
+            <div style="display:flex;justify-content:space-between;font-size:0.8rem">
+              <span>${label}</span><span class="path">${used} / ${unlimited ? '∞' : limit}</span>
+            </div>
+            ${unlimited ? '' : `<div style="height:5px;border-radius:3px;background:var(--border-2);overflow:hidden">
+              <div style="height:100%;width:${pct}%;background:${pct >= 90 ? '#ef4444' : 'var(--a1)'}"></div></div>`}
+          </div>`;
+        };
+        page.querySelector('#plan-body').innerHTML = `
+          <p style="margin:0 0 0.4rem"><span class="pill published">${esc(p.label)}</span>
+          <span class="path" style="margin-left:0.4rem">${esc(p.price)}</span></p>
+          ${meter('Content items', p.usage.content, p.limits.content)}
+          ${meter('Members', p.usage.members, p.limits.members)}
+          ${meter('Media (MB)', p.usage.media_mb, p.limits.media_mb)}
+          <p class="path" style="margin:0.5rem 0 0">AI features: ${p.limits.ai ? 'included' : 'not on this plan'} ·
+          custom domain: ${p.limits.custom_domain ? 'included' : 'not on this plan'}.
+          ${p.plan === 'pro' ? '' : 'Plans are managed by the platform operator.'}</p>`;
+      }).catch(() => {});
 
       page.querySelector('#company-form').addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -2265,10 +2293,13 @@
       </div>
 
       <h2 class="sec">Newest companies</h2>
-      <table><thead><tr><th>Company</th><th>Members</th><th>Published</th><th>Created</th></tr></thead>
+      <table><thead><tr><th>Company</th><th>Plan</th><th>Members</th><th>Published</th><th>Created</th></tr></thead>
       <tbody>${stats.recent_companies
         .map(
           (c) => `<tr><td><a href="/t/${esc(c.slug)}" target="_blank"><b>${esc(c.name)}</b></a></td>
+          <td><select data-plan="${c.id}" style="width:auto">
+            ${['free', 'starter', 'pro'].map((p) => `<option value="${p}" ${(c.plan || 'pro') === p ? 'selected' : ''}>${p}</option>`).join('')}
+          </select></td>
           <td>${c.member_count}</td><td>${c.published_count}</td><td>${esc(c.created_at.slice(0, 10))}</td></tr>`
         )
         .join('')}</tbody></table>
@@ -2292,6 +2323,17 @@
         </label>
         <p><button class="btn">Save</button></p>
       </form>`;
+
+    page.querySelectorAll('[data-plan]').forEach((sel) =>
+      sel.addEventListener('change', async () => {
+        try {
+          await api(`/platform/teams/${sel.dataset.plan}/plan`, { method: 'PUT', body: { plan: sel.value } });
+          toast(`Plan set to ${sel.value}.`);
+        } catch (err) {
+          toast(err.message, 'error');
+        }
+      })
+    );
 
     function renderUserRows(rows) {
       page.querySelector('#user-list').innerHTML = `
