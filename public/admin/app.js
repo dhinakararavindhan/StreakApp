@@ -310,6 +310,7 @@
     ['#/media', 'Media', 'media'],
     ['#/tags', 'Tags', 'tags'],
     ['#/approvals', 'Approvals', 'approvals', 'company-admin'],
+    ['#/inbox', 'Inbox', 'activity', 'company-admin'],
     ['#/activity', 'Activity', 'activity', 'company-admin'],
     ['#/company', 'Company', 'company'],
     ['#/platform', 'Platform', 'platform', 'superadmin'],
@@ -648,6 +649,7 @@
             <button type="button" data-md="code" title="Code">&lt;/&gt;</button>
           </div>
           <textarea name="body" rows="18">${esc(item.body)}</textarea>
+          <div id="block-editor" style="display:none"></div>
           <div id="body-preview" class="diff-body md-preview" style="display:none;min-height:200px"></div>
           <select id="insert-img" style="margin-top:0.5rem"><option value="">Insert image from media library…</option></select>
           <label>Excerpt (inline Markdown supported)</label><textarea name="excerpt" rows="2">${esc(item.excerpt)}</textarea>
@@ -662,6 +664,7 @@
           <div id="cf-host"></div>
           <label>Body format</label>
           <select name="format" id="fmt-select">
+            <option value="blocks" ${item.format === 'blocks' ? 'selected' : ''}>Blocks (visual editor)</option>
             <option value="markdown" ${item.format === 'markdown' ? 'selected' : ''}>Markdown</option>
             <option value="text" ${item.format === 'text' ? 'selected' : ''}>Plain text</option>
             <option value="html" ${item.format === 'html' ? 'selected' : ''}>HTML</option>
@@ -736,13 +739,16 @@
     updatePreview();
     capi('/media')
       .then((rows) => {
-        const images = rows.filter((m) => m.mime_type.startsWith('image/'));
+        // Prefer the web-optimized @md variant when the upload has one.
+        const images = rows
+          .filter((m) => m.mime_type.startsWith('image/'))
+          .map((m) => ({ ...m, best: (m.variants && m.variants.md) || m.url }));
         page.querySelector('#media-list').innerHTML = images
-          .map((m) => `<option value="${esc(m.url)}">${esc(m.original_name)}</option>`)
+          .map((m) => `<option value="${esc(m.best)}">${esc(m.original_name)}</option>`)
           .join('');
         page.querySelector('#insert-img').insertAdjacentHTML(
           'beforeend',
-          images.map((m) => `<option value="${esc(m.url)}">${esc(m.original_name)}</option>`).join('')
+          images.map((m) => `<option value="${esc(m.best)}">${esc(m.original_name)}</option>`).join('')
         );
       })
       .catch(() => {});
@@ -760,6 +766,30 @@
           .map((par) => `<p>${esc(par).replace(/\n/g, '<br>')}</p>`)
           .join('');
       }
+      if (fmt === 'blocks') {
+        let arr = [];
+        try {
+          arr = JSON.parse(body || '[]');
+        } catch { /* not JSON yet */ }
+        if (!Array.isArray(arr)) arr = [];
+        const html = arr
+          .map((b) => {
+            switch (b && b.t) {
+              case 'h': return `<h${Math.min(4, Math.max(2, b.level || 2))}>${mdInline(b.md || '')}</h${Math.min(4, Math.max(2, b.level || 2))}>`;
+              case 'quote': return `<blockquote><p>${mdInline(b.md || '')}</p></blockquote>`;
+              case 'list': return `<${b.ordered ? 'ol' : 'ul'}>${(b.items || []).map((i) => `<li>${mdInline(i)}</li>`).join('')}</${b.ordered ? 'ol' : 'ul'}>`;
+              case 'code': return `<pre><code>${esc(b.code || '')}</code></pre>`;
+              case 'img': return b.src ? `<figure style="margin:0"><img src="${esc(b.src)}" style="max-width:100%;border-radius:8px">${b.caption ? `<figcaption class="path">${esc(b.caption)}</figcaption>` : ''}</figure>` : '';
+              case 'embed': return b.url ? `<p class="path">▶ ${esc(b.url)}</p>` : '';
+              case 'button': return b.href ? `<p><a class="btn sm" href="${esc(b.href)}">${esc(b.label || 'Learn more')}</a></p>` : '';
+              case 'hr': return '<hr>';
+              case 'form': return '<p class="path">[ contact form ]</p>';
+              default: return b && b.md ? `<p>${mdInline(b.md)}</p>` : '';
+            }
+          })
+          .join('');
+        return sanitizeHtml(html);
+      }
       if (fmt === 'html') return sanitizeHtml(body);
       if (fmt === 'image') {
         return body ? `<figure class="body-image" style="margin:0"><img src="${esc(String(body).trim())}" style="max-width:100%;border-radius:8px"></figure>` : '';
@@ -772,6 +802,7 @@
 
     // Adapt the editing surface to the chosen format.
     const FORMAT_UI = {
+      blocks: { label: 'Body (blocks)', toolbar: false, rows: 4, mono: true, insert: null, ph: '' },
       markdown: { label: 'Body (Markdown)', toolbar: true, rows: 18, mono: true, insert: 'Insert image from media library…', ph: '' },
       text: { label: 'Body (plain text)', toolbar: false, rows: 18, mono: false, insert: null, ph: 'Plain text — blank lines start new paragraphs.' },
       html: { label: 'Body (raw HTML — rendered as-is on your site)', toolbar: false, rows: 18, mono: true, insert: null, ph: '<section>…</section>' },
@@ -780,17 +811,152 @@
     };
     const applyFormatUI = () => {
       const ui = FORMAT_UI[currentFormat()] || FORMAT_UI.markdown;
+      const isBlocks = currentFormat() === 'blocks';
       page.querySelector('#body-label').textContent = ui.label;
       page.querySelector('#md-toolbar').style.display = ui.toolbar ? '' : 'none';
       bodyEl.rows = ui.rows;
       bodyEl.placeholder = ui.ph;
       bodyEl.style.fontFamily = ui.mono ? '' : "'Geist Sans', system-ui, sans-serif";
+      // Blocks: the JSON body lives in the hidden textarea; the visual
+      // editor is the interface.
+      bodyEl.style.display = isBlocks ? 'none' : '';
+      blockHost.style.display = isBlocks ? '' : 'none';
+      if (isBlocks) mountBlockEditor();
       const insertSel = page.querySelector('#insert-img');
       insertSel.style.display = ui.insert ? '' : 'none';
       if (ui.insert) insertSel.options[0].textContent = ui.insert;
       if (previewEl.style.display !== 'none') renderBodyPreview();
     };
     fmtSelect.addEventListener('change', applyFormatUI);
+
+    // ---------- block editor ----------
+
+    const blockHost = page.querySelector('#block-editor');
+    let blocks = null; // lazily parsed from the body JSON
+
+    const BLOCK_DEFS = {
+      p: { name: 'Paragraph', make: () => ({ t: 'p', md: '' }) },
+      h: { name: 'Heading', make: () => ({ t: 'h', level: 2, md: '' }) },
+      img: { name: 'Image', make: () => ({ t: 'img', src: '', caption: '' }) },
+      list: { name: 'List', make: () => ({ t: 'list', ordered: false, items: [] }) },
+      quote: { name: 'Quote', make: () => ({ t: 'quote', md: '' }) },
+      code: { name: 'Code', make: () => ({ t: 'code', code: '' }) },
+      embed: { name: 'Video', make: () => ({ t: 'embed', url: '' }) },
+      button: { name: 'Button', make: () => ({ t: 'button', label: '', href: '' }) },
+      hr: { name: 'Divider', make: () => ({ t: 'hr' }) },
+      form: { name: 'Contact form', make: () => ({ t: 'form' }) },
+    };
+
+    function loadBlocks() {
+      try {
+        const parsed = JSON.parse(bodyEl.value || '[]');
+        if (Array.isArray(parsed)) return parsed;
+      } catch {
+        // fall through
+      }
+      // Switching a non-empty markdown/text body into blocks: keep the words.
+      return bodyEl.value.trim() ? [{ t: 'p', md: bodyEl.value }] : [{ t: 'p', md: '' }];
+    }
+
+    function syncBlocks() {
+      bodyEl.value = JSON.stringify(blocks);
+      bodyEl.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    function blockInputs(b, i) {
+      const on = (attr) => `data-bi="${i}" data-attr="${attr}"`;
+      switch (b.t) {
+        case 'h':
+          return `<div class="toolbar" style="margin:0">
+            <select ${on('level')} style="width:auto"><option value="2" ${b.level === 2 ? 'selected' : ''}>H2</option><option value="3" ${b.level === 3 ? 'selected' : ''}>H3</option><option value="4" ${b.level === 4 ? 'selected' : ''}>H4</option></select>
+            <input ${on('md')} value="${esc(b.md || '')}" placeholder="Heading text" style="flex:1"></div>`;
+        case 'img':
+          return `<input ${on('src')} value="${esc(b.src || '')}" placeholder="Image URL — or pick below" list="media-list">
+            <input ${on('caption')} value="${esc(b.caption || '')}" placeholder="Caption (optional)" style="margin-top:0.3rem">
+            ${b.src ? `<img src="${esc(b.src)}" style="max-width:200px;border-radius:8px;margin-top:0.4rem">` : ''}`;
+        case 'list':
+          return `<label class="path" style="display:flex;gap:0.4rem;align-items:center;margin:0 0 0.3rem"><input type="checkbox" ${on('ordered')} ${b.ordered ? 'checked' : ''} style="width:auto"> numbered</label>
+            <textarea ${on('items')} rows="3" placeholder="One item per line">${esc((b.items || []).join('\n'))}</textarea>`;
+        case 'code':
+          return `<textarea ${on('code')} rows="4" placeholder="Code" style="font-family:ui-monospace,monospace">${esc(b.code || '')}</textarea>`;
+        case 'embed':
+          return `<input ${on('url')} value="${esc(b.url || '')}" placeholder="YouTube or Vimeo URL">`;
+        case 'button':
+          return `<div class="toolbar" style="margin:0">
+            <input ${on('label')} value="${esc(b.label || '')}" placeholder="Button text" style="flex:1">
+            <input ${on('href')} value="${esc(b.href || '')}" placeholder="/page or https://…" style="flex:1"></div>`;
+        case 'hr':
+          return '<hr style="margin:0.2rem 0">';
+        case 'form':
+          return '<p class="path" style="margin:0">A contact form renders here — submissions land in your Inbox and on webhooks.</p>';
+        case 'quote':
+        case 'p':
+        default:
+          return `<textarea ${on('md')} rows="${b.t === 'quote' ? 2 : 3}" placeholder="${b.t === 'quote' ? 'Quote' : 'Write… (inline Markdown: **bold**, [links](…))'}">${esc(b.md || '')}</textarea>`;
+      }
+    }
+
+    function mountBlockEditor() {
+      if (!blocks) blocks = loadBlocks();
+      blockHost.innerHTML = `
+        ${blocks
+          .map(
+            (b, i) => `<div class="block-card">
+              <div class="block-head">
+                <span>${BLOCK_DEFS[b.t] ? BLOCK_DEFS[b.t].name : b.t}</span>
+                <span class="block-tools">
+                  <button type="button" data-bmove="${i}|-1" title="Move up">↑</button>
+                  <button type="button" data-bmove="${i}|1" title="Move down">↓</button>
+                  <button type="button" data-bdel="${i}" title="Remove">✕</button>
+                </span>
+              </div>
+              ${blockInputs(b, i)}
+            </div>`
+          )
+          .join('')}
+        <div class="block-add">${Object.entries(BLOCK_DEFS)
+          .map(([key, def]) => `<button type="button" data-badd="${key}">+ ${def.name}</button>`)
+          .join('')}</div>`;
+
+      blockHost.querySelectorAll('[data-bi]').forEach((el) =>
+        el.addEventListener('input', () => {
+          const b = blocks[Number(el.dataset.bi)];
+          const attr = el.dataset.attr;
+          if (attr === 'items') b.items = el.value.split('\n').map((s) => s.trim()).filter(Boolean);
+          else if (attr === 'ordered') b.ordered = el.checked;
+          else if (attr === 'level') b.level = Number(el.value);
+          else b[attr] = el.value;
+          syncBlocks();
+        })
+      );
+      blockHost.querySelectorAll('[data-bmove]').forEach((btn) =>
+        btn.addEventListener('click', () => {
+          const [i, dir] = btn.dataset.bmove.split('|').map(Number);
+          const j = i + dir;
+          if (j < 0 || j >= blocks.length) return;
+          [blocks[i], blocks[j]] = [blocks[j], blocks[i]];
+          syncBlocks();
+          mountBlockEditor();
+        })
+      );
+      blockHost.querySelectorAll('[data-bdel]').forEach((btn) =>
+        btn.addEventListener('click', () => {
+          blocks.splice(Number(btn.dataset.bdel), 1);
+          syncBlocks();
+          mountBlockEditor();
+        })
+      );
+      blockHost.querySelectorAll('[data-badd]').forEach((btn) =>
+        btn.addEventListener('click', () => {
+          blocks.push(BLOCK_DEFS[btn.dataset.badd].make());
+          syncBlocks();
+          mountBlockEditor();
+          const added = blockHost.querySelectorAll('.block-card');
+          const focusable = added[added.length - 1] && added[added.length - 1].querySelector('textarea, input:not([type=checkbox])');
+          if (focusable) focusable.focus();
+        })
+      );
+    }
 
     // Media picker: inserts markdown at the cursor, or fills the URL for image bodies.
     page.querySelector('#insert-img').addEventListener('change', (e) => {
@@ -848,8 +1014,10 @@
       b.addEventListener('click', () => {
         page.querySelectorAll('#body-view button').forEach((x) => x.classList.toggle('on', x === b));
         const preview = b.dataset.v === 'preview';
-        bodyEl.style.display = preview ? 'none' : '';
-        toolbarEl.style.display = preview ? 'none' : '';
+        const isBlocks = currentFormat() === 'blocks';
+        bodyEl.style.display = preview || isBlocks ? 'none' : '';
+        blockHost.style.display = !preview && isBlocks ? '' : 'none';
+        toolbarEl.style.display = preview || !FORMAT_UI[currentFormat()].toolbar ? 'none' : '';
         previewEl.style.display = preview ? '' : 'none';
         if (preview) renderBodyPreview();
       })
@@ -1295,6 +1463,37 @@
       <div class="fv">${changed ? `<span class="chg">${esc(value) || '—'}</span>` : esc(value) || '—'}</div></div>`;
   }
 
+  // ---------- inbox (contact-form submissions) ----------
+
+  async function renderInbox() {
+    const page = shell('#/inbox', `<h1>Inbox <span class="sub">${esc(company.name)}</span></h1><div id="list">Loading…</div>`);
+    async function load() {
+      const rows = await capi('/forms');
+      page.querySelector('#list').innerHTML = rows.length
+        ? `<p style="color:var(--muted);font-size:0.85rem">Messages from the contact forms on your site. Add a form to any page with the block editor's <b>Form</b> block.</p>
+          <table><thead><tr><th>From</th><th>Message</th><th>When</th><th></th></tr></thead>
+          <tbody>${rows
+            .map(
+              (r) => `<tr>
+                <td><b>${esc(r.name)}</b><br><a href="mailto:${esc(r.email)}" class="path">${esc(r.email)}</a></td>
+                <td style="max-width:420px;white-space:pre-wrap">${esc(r.message)}</td>
+                <td>${esc(r.created_at.slice(0, 16))}</td>
+                <td><button class="btn danger sm" data-del="${r.id}">Delete</button></td>
+              </tr>`
+            )
+            .join('')}</tbody></table>`
+        : '<p style="color:var(--muted)">No messages yet. Add a <b>Form</b> block to a page (block editor) and enquiries land here — and on your webhooks as <code>form.submission</code>.</p>';
+      page.querySelectorAll('[data-del]').forEach((btn) =>
+        btn.addEventListener('click', async () => {
+          if (!confirm('Delete this message?')) return;
+          await capi(`/forms/${btn.dataset.del}`, { method: 'DELETE' });
+          load();
+        })
+      );
+    }
+    await load();
+  }
+
   async function renderReview(id) {
     const item = await capi(`/content/${id}`);
     const live = item.live_version;
@@ -1467,6 +1666,8 @@
         </select>
         <label>Accent color (hex, e.g. #dc2626 — blank for theme default)</label>
         <input name="accent_color" id="ts-accent" placeholder="#2563eb">
+        <label>Navigation menu — one "Label | /url" per line (blank: automatic from pages). External links allowed.</label>
+        <textarea name="nav_links" id="ts-nav" rows="3" placeholder="Menu | /menu&#10;Book a table | https://book.example.com"></textarea>
         <label>Custom CSS (applied to your public site only)</label>
         <textarea name="custom_css" id="ts-css" rows="5" placeholder="h1 { letter-spacing: -0.02em; }"></textarea>
         <label>Default language (site home + feeds; other locales get /t/&lt;slug&gt;/&lt;locale&gt;)</label>
@@ -1624,6 +1825,7 @@
       markSwatch();
       page.querySelector('#ts-accent').value = settings.accent_color || '';
       page.querySelector('#ts-css').value = settings.custom_css || '';
+      page.querySelector('#ts-nav').value = settings.nav_links || '';
       page.querySelector('#ts-locale').value = settings.default_locale || 'en';
 
       // Starter kits + AI site builder (shared with the new-company setup flow)
@@ -1657,6 +1859,7 @@
               theme: f.get('theme'),
               accent_color: f.get('accent_color'),
               custom_css: f.get('custom_css'),
+              nav_links: f.get('nav_links'),
               heading_font: f.get('heading_font'),
               layout: f.get('layout'),
               default_locale: (f.get('default_locale') || 'en').toLowerCase(),
@@ -2116,6 +2319,7 @@
       const reviewMatch = hash.match(/^#\/review\/(\d+)/);
       if (reviewMatch) return await renderReview(reviewMatch[1]);
       if (hash.startsWith('#/approvals') && isCompanyAdmin()) return await renderApprovals();
+      if (hash.startsWith('#/inbox') && isCompanyAdmin()) return await renderInbox();
       if (hash.startsWith('#/activity') && isCompanyAdmin()) return await renderActivity();
       if (hash.startsWith('#/setup')) return await renderSetup();
       if (hash.startsWith('#/company')) return await renderCompany();

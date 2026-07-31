@@ -185,6 +185,13 @@ ${(meta.alternates || []).map((a) => `<link rel="alternate" hreflang="${esc(a.la
   figure.body-image figcaption { color: var(--muted); font-size: 0.85rem; margin-top: 0.5rem; text-align: center; }
   .embed-wrap { position: relative; aspect-ratio: 16 / 9; border-radius: 12px; overflow: hidden; background: var(--border); }
   .embed-wrap iframe { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .btn-block { display: inline-block; background: var(--accent); color: var(--bg); font-weight: 600; padding: 0.6rem 1.3rem; border-radius: 10px; }
+  .btn-block:hover { text-decoration: none; filter: brightness(1.08); }
+  .contact-form { display: flex; flex-direction: column; gap: 0.9rem; max-width: 480px; margin: 1.5rem 0; }
+  .contact-form label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.9rem; color: var(--muted); }
+  .contact-form input, .contact-form textarea { padding: 0.55rem 0.8rem; border-radius: 9px; border: 1px solid var(--border); background: color-mix(in srgb, var(--fg) 3%, var(--bg)); color: var(--fg); font: inherit; }
+  .contact-form button { align-self: flex-start; padding: 0.6rem 1.3rem; border-radius: 10px; border: none; background: var(--accent); color: var(--bg); font: inherit; font-weight: 600; cursor: pointer; }
+  .contact-form .hp { position: absolute; left: -9999px; height: 0; width: 0; opacity: 0; }
   .site-search { display: flex; gap: 0.6rem; margin-top: 1.5rem; }
   .site-search input { flex: 1; max-width: 420px; padding: 0.6rem 0.9rem; border-radius: 10px; border: 1px solid var(--border); background: color-mix(in srgb, var(--fg) 3%, var(--bg)); color: var(--fg); font: inherit; }
   .site-search button { padding: 0.6rem 1.1rem; border-radius: 10px; border: none; background: var(--accent); color: var(--bg); font: inherit; font-weight: 600; cursor: pointer; }
@@ -213,15 +220,31 @@ function teamBase(team, onDomain) {
 }
 
 function teamNav(team, base, onDomain, loc) {
-  const pages = getDb()
-    .prepare(`SELECT * FROM content WHERE team_id = ? AND type = 'page' AND locale = ? AND ${LIVE()} ORDER BY title`)
-    .all(team.id, loc)
-    .map(liveRow);
-  let links = pages.map((p) => `<a href="${esc(base)}/${esc(p.slug)}">${esc(p.title)}</a>`).join('');
-  // Custom-type archives (Rooms, Properties, Classes…) with live items.
-  links += liveTypes(team.id)
-    .map((t) => `<a href="${esc(base)}/c/${esc(t.key)}">${esc(t.name_plural)}</a>`)
-    .join('');
+  const s = teamSettings(team.id);
+  let links;
+  if (String(s.nav_links || '').trim()) {
+    // Custom menu: one "Label | /url" per line, in order. Absolute URLs
+    // pass through; site-relative paths get the team base prefixed.
+    links = String(s.nav_links)
+      .split('\n')
+      .map((line) => {
+        const [label, url] = line.split('|').map((part) => (part || '').trim());
+        if (!label || !url) return '';
+        const href = /^(https?:)?\/\//.test(url) ? url : `${base}${url.startsWith('/') ? url : `/${url}`}`;
+        return `<a href="${esc(href)}">${esc(label)}</a>`;
+      })
+      .join('');
+  } else {
+    const pages = getDb()
+      .prepare(`SELECT * FROM content WHERE team_id = ? AND type = 'page' AND locale = ? AND ${LIVE()} ORDER BY title`)
+      .all(team.id, loc)
+      .map(liveRow);
+    links = pages.map((p) => `<a href="${esc(base)}/${esc(p.slug)}">${esc(p.title)}</a>`).join('');
+    // Custom-type archives (Rooms, Properties, Classes…) with live items.
+    links += liveTypes(team.id)
+      .map((t) => `<a href="${esc(base)}/c/${esc(t.key)}">${esc(t.name_plural)}</a>`)
+      .join('');
+  }
   // Language switcher when the site publishes in several locales.
   const locales = liveLocales(team.id);
   if (locales.length > 1) {
@@ -294,7 +317,7 @@ function fullArticle(team, row, base) {
   const date = (row.published_at || row.created_at || '').slice(0, 10);
   const cover = row.cover_image ? `<img class="cover-hero" src="${esc(row.cover_image)}" alt="">` : '';
   const meta = row.type === 'post' ? `<div class="meta">${esc(date)} ${tagLinks(row, base)}</div>` : '';
-  return `<article class="full">${cover}<h1>${esc(row.title)}</h1>${meta}${customFieldsHtml(team, row)}${renderBody(row.format, row.body, row.excerpt)}</article>`;
+  return `<article class="full">${cover}<h1>${esc(row.title)}</h1>${meta}${customFieldsHtml(team, row)}${renderBody(row.format, row.body, row.excerpt, { formAction: `/api/public/${team.slug}/forms` })}</article>`;
 }
 
 /** Custom-type field values as a definition list above the body. */
@@ -612,7 +635,7 @@ function renderTeamPage(team, onDomain, slug, req, res) {
 // ---------- headless content API (public, CORS-open, published only) ----------
 // Companies that keep their own frontend can pull content from here.
 
-function publicContentRow(row, { withBody }) {
+function publicContentRow(row, { withBody, formAction }) {
   const tags = getDb()
     .prepare('SELECT t.name, t.slug FROM tags t JOIN content_tags ct ON ct.tag_id = t.id WHERE ct.content_id = ?')
     .all(row.id);
@@ -633,7 +656,7 @@ function publicContentRow(row, { withBody }) {
   };
   if (withBody) {
     base.body = row.body;
-    base.body_html = renderBody(row.format, row.body, row.excerpt);
+    base.body_html = renderBody(row.format, row.body, row.excerpt, { formAction });
   }
   return base;
 }
@@ -691,12 +714,52 @@ router.get('/api/public/:team/content/:slug', cors, (req, res) => {
       .get(team.id, req.params.slug)
   );
   if (!row) return res.status(404).json({ error: 'Not found' });
-  const out = publicContentRow(row, { withBody: true });
+  const out = publicContentRow(row, { withBody: true, formAction: `/api/public/${team.slug}/forms` });
   out.locale = row.locale;
   out.translations = liveAlternates(team.id, row)
     .filter((a) => a.id !== row.id)
     .map((a) => ({ locale: a.locale, slug: a.slug, title: a.title }));
   res.json(out);
+});
+
+// ---------- contact-form submissions ----------
+
+const { deliver } = require('../webhooks');
+const { rateLimit } = require('../security');
+
+const formLimiter = rateLimit({ windowMs: 10 * 60 * 1000, max: 10, name: 'form submissions' });
+
+router.post('/api/public/:team/forms', formLimiter, express.urlencoded({ extended: false }), express.json(), (req, res) => {
+  const team = findTeam(req.params.team);
+  if (!team) return res.status(404).json({ error: 'Company not found' });
+  const { name, email, message, website } = req.body || {};
+  // Honeypot: the hidden "website" field is invisible to humans. Bots that
+  // fill it get a cheerful 200 and nothing is stored.
+  if (String(website || '').trim() !== '') return res.status(200).json({ ok: true });
+  const clean = {
+    name: String(name || '').trim().slice(0, 120),
+    email: String(email || '').trim().slice(0, 200),
+    message: String(message || '').trim().slice(0, 5000),
+  };
+  if (!clean.name || !clean.message || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(clean.email)) {
+    return res.status(400).json({ error: 'name, a valid email, and a message are required' });
+  }
+  getDb()
+    .prepare('INSERT INTO form_submissions (team_id, name, email, message) VALUES (?, ?, ?, ?)')
+    .run(team.id, clean.name, clean.email, clean.message);
+  deliver(team.id, 'form.submission', { company: team.slug, ...clean, at: new Date().toISOString() });
+
+  if ((req.headers.accept || '').includes('application/json')) return res.status(201).json({ ok: true });
+  // Browser form posts get a small themed thank-you page.
+  res
+    .status(201)
+    .send(
+      teamLayout(team, false, {
+        title: 'Message sent',
+        content: `<div class="hero"><h1>Thank you!</h1><p>Your message is on its way — we'll get back to you soon.</p><div class="rule"></div></div>
+        <p style="margin-top:1.5rem"><a href="/t/${esc(team.slug)}">← Back to the site</a></p>`,
+      })
+    );
 });
 
 // ---------- custom-domain resolution ----------

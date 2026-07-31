@@ -34,6 +34,7 @@ Make the newsroom-grade workflow complete.
 - [x] Word-level diffs and rendered-markdown preview in the review screen
 - [x] Editor upgrades: image embedding from the media library, autosave for drafts
 - [x] Comment threads on content (reviewer ↔ author), in the editor and the review screen
+- [x] Block editor: visual, reorderable blocks (text, headings, images, lists, quotes, code, embeds, buttons, forms) as a sixth body format
 - [ ] Slash commands in the editor (deferred)
 
 ## Phase 3 — World-scale content ✅ (shipped)
@@ -66,6 +67,9 @@ The moat is other people's work running on Nova.
 
 - [ ] Plugin API (server hooks + admin panel extension points)
 - [x] Theme gallery: 11 presets × heading typefaces (sans/serif/mono) × home layouts (cards/list) × accent + custom CSS
+- [x] Contact forms: form blocks on any page, honeypot + rate limiting, admin Inbox, `form.submission` webhooks
+- [x] Image processing: automatic WebP variants on upload (1200px/400px), used by the editor and admin
+- [x] Navigation menu manager: custom `Label | /url` menus overriding the automatic nav
 - [x] Site search on every hosted site (`/search`, linked in the nav) and the headless API (`?q=`)
 - [x] Content trash: soft delete with restore, admin-only permanent purge; one-click duplicate-as-draft
 - [x] New-company onboarding: pick a business template, run the AI builder, or start blank — right at creation

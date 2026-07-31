@@ -70,7 +70,10 @@ Managers have full CRUD on content, but nothing they touch goes live on its own:
 
 ## Content features
 
-- **Five body formats**, chosen per item in the editor: **Markdown** (toolbar + live preview), **Plain text** (paragraphs preserved, HTML escaped), **HTML** (rendered as-is on your site — full control), **Image** (body is the image URL, excerpt becomes the caption, rendered as a figure), and **Embed** (YouTube/Vimeo URLs become privacy-friendly players). The editor adapts to each format; the headless API exposes `format` and format-correct `body_html`; version history preserves the format.
+- **Six body formats**, chosen per item in the editor: **Blocks** (a visual block editor — paragraphs, headings, images, lists, quotes, code, video embeds, call-to-action buttons, dividers, and contact forms, reorderable with live preview, stored as clean JSON), **Markdown** (toolbar + live preview), **Plain text**, **HTML** (rendered as-is), **Image** (figure + caption), and **Embed** (YouTube/Vimeo privacy-friendly players). The editor adapts to each format; the headless API exposes `format` and format-correct `body_html`; version history preserves the format.
+- **Contact forms**: drop a Form block on any page — visitors' messages are honeypot-filtered, rate-limited, stored in the admin **Inbox** (admins only), and forwarded to webhooks as `form.submission`. Browser posts get a themed thank-you page; JSON clients get JSON.
+- **Image processing**: image uploads automatically get web-optimized WebP variants (`@md` 1200px for bodies and covers, `@sm` 400px for thumbnails) — the editor inserts the optimized version, originals are kept, and everything still works if `sharp` is unavailable on the host.
+- **Navigation menu manager**: by default the nav builds itself from pages and custom-type archives; set your own menu (one `Label | /url` per line, external links allowed) from the Company page and it takes over.
 - **Markdown everywhere** it fits beyond bodies: excerpts and site descriptions (inline — rendered on cards, heroes, footers, and as `excerpt_html` in the headless API; stripped to plain text for meta tags), and discussion comments.
 - **Posts and pages** with drafts and publishing, excerpts, and **cover images** (shown on site cards, post heroes, and in the headless API).
 - **Custom content types** (company admins): define your own types — Jobs, Recipes, Properties — with typed field schemas (`text`, `longtext`, `number`, `date`, `url`, `select`). Fields are validated on write, edited with generated inputs in the editor, rendered as a definition list on the hosted site, exposed as `fields` in the headless API, preserved in version history, and covered by the approval snapshot. Custom items are served at `/t/<company>/<slug>` and appear in sitemaps.
@@ -174,6 +177,8 @@ All `/api` routes accept and return JSON. Authentication uses an httpOnly cookie
 | GET | `/api/teams/:id/content/:cid/versions` | member | Version history (newest first) |
 | POST | `/api/teams/:id/content/:cid/versions/:vid/restore` | member | Restore a version (workflow rules apply) |
 | GET/POST | `/api/teams/:id/content/:cid/comments` | member | Discussion thread on an item |
+| GET/DELETE | `/api/teams/:id/forms[/:fid]` | company admin | Contact-form inbox / delete a message |
+| POST | `/api/public/:company/forms` | — | Submit a contact form (rate-limited, honeypot-filtered) |
 | GET | `/api/teams/:id/audit` | company admin | Audit log (last 100 entries) |
 | GET/POST/DELETE | `/api/teams/:id/webhooks[/:whid]` | company admin | Manage signed event webhooks |
 | GET/POST/DELETE | `/api/teams/:id/api-keys[/:kid]` | company admin | Manage scoped Bearer tokens |
@@ -195,7 +200,7 @@ All `/api` routes accept and return JSON. Authentication uses an httpOnly cookie
 npm test
 ```
 
-60 end-to-end tests (`node --test`, in-memory database): registration, company creation, the three-tier role model, cross-company isolation, content CRUD with cover images, per-company slug scoping, draft/pending/publish visibility, the approval workflow, custom content types with field validation, the WordPress/Markdown/Nova importers, feeds/sitemaps/SEO, rate limiting, theming, starter kits and the AI site builder (mock mode), custom-domain routing, the headless API, dashboards, and platform stats.
+63 end-to-end tests (`node --test`, in-memory database): registration, company creation, the three-tier role model, cross-company isolation, content CRUD with cover images, per-company slug scoping, draft/pending/publish visibility, the approval workflow, custom content types with field validation, the WordPress/Markdown/Nova importers, feeds/sitemaps/SEO, rate limiting, theming, starter kits and the AI site builder (mock mode), custom-domain routing, the headless API, dashboards, and platform stats.
 
 ## Project layout
 

@@ -435,6 +435,27 @@ td .path { color: var(--faint); font-size: 0.76rem; }
 .ai-build textarea { width: 100%; }
 .setup-cols { display: flex; gap: 1.2rem; align-items: flex-start; flex-wrap: wrap; }
 
+/* Block editor */
+#block-editor { display: flex; flex-direction: column; gap: 0.5rem; }
+.block-card { border: 1px solid var(--border-2); border-radius: 9px; padding: 0.5rem 0.6rem 0.6rem; }
+.block-head {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--muted); margin-bottom: 0.35rem;
+}
+.block-tools button {
+  background: none; border: 1px solid var(--border-2); border-radius: 6px; color: var(--muted);
+  font-size: 0.7rem; padding: 0.05rem 0.4rem; cursor: pointer; margin-left: 0.25rem;
+}
+.block-tools button:hover { color: var(--fg); border-color: var(--a1); }
+.block-card textarea, .block-card input:not([type=checkbox]), .block-card select { margin: 0; }
+.block-add { display: flex; flex-wrap: wrap; gap: 0.3rem; padding: 0.2rem 0; }
+.block-add button {
+  background: none; border: 1px dashed var(--border-2); border-radius: 999px; color: var(--muted);
+  font-size: 0.72rem; padding: 0.2rem 0.65rem; cursor: pointer;
+}
+.block-add button:hover { color: var(--a1); border-color: var(--a1); }
+
 /* Nova AI pre-review */
 .ai-line { font-size: 0.76rem; color: var(--a1); }
 .ai-line.warn { color: #e5a50a; }

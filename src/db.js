@@ -61,7 +61,7 @@ function init(options = {}) {
       title TEXT NOT NULL,
       slug TEXT NOT NULL,
       body TEXT NOT NULL DEFAULT '',
-      format TEXT NOT NULL DEFAULT 'markdown' CHECK (format IN ('markdown', 'text', 'html', 'image', 'embed')),
+      format TEXT NOT NULL DEFAULT 'markdown' CHECK (format IN ('markdown', 'text', 'html', 'image', 'embed', 'blocks')),
       excerpt TEXT NOT NULL DEFAULT '',
       cover_image TEXT NOT NULL DEFAULT '',
       status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'pending', 'published')),
@@ -181,6 +181,16 @@ function init(options = {}) {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS form_submissions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      email TEXT NOT NULL,
+      message TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_forms_team ON form_submissions(team_id, id);
+
     CREATE TABLE IF NOT EXISTS team_settings (
       team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
       key TEXT NOT NULL,
@@ -271,7 +281,11 @@ function migrate() {
   // Old CHECK constraints pin type to post/page (and, on the oldest
   // databases, status to draft/published) — rebuild with the full modern
   // column set. Runs after the ALTERs above so every column exists.
-  if (tableSql('content').includes("CHECK (type IN")) {
+  const contentSql = tableSql('content');
+  if (
+    contentSql.includes("CHECK (type IN") ||
+    (contentSql.includes('CHECK (format IN') && !contentSql.includes("'blocks'"))
+  ) {
     db.pragma('foreign_keys = OFF');
     db.exec(`
       CREATE TABLE content_migrated (
@@ -281,7 +295,7 @@ function migrate() {
         title TEXT NOT NULL,
         slug TEXT NOT NULL,
         body TEXT NOT NULL DEFAULT '',
-        format TEXT NOT NULL DEFAULT 'markdown' CHECK (format IN ('markdown', 'text', 'html', 'image', 'embed')),
+        format TEXT NOT NULL DEFAULT 'markdown' CHECK (format IN ('markdown', 'text', 'html', 'image', 'embed', 'blocks')),
         excerpt TEXT NOT NULL DEFAULT '',
         cover_image TEXT NOT NULL DEFAULT '',
         status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'pending', 'published')),

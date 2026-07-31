@@ -1482,6 +1482,127 @@ test('metrics, backup, TLS check, and error webhook (production ops)', async () 
   }
 });
 
+test('blocks format renders and contact forms deliver to the inbox', async () => {
+  const owner = await registerAs('blockowner', 'block-password-1');
+  const team = await (await owner('/api/teams', { method: 'POST', body: { name: 'Blocks Co' } })).json();
+  const blocks = [
+    { t: 'h', level: 2, md: 'Say **hello**' },
+    { t: 'p', md: 'We would love to hear from you.' },
+    { t: 'list', ordered: false, items: ['Fast replies', 'Real humans'] },
+    { t: 'button', label: 'Book a call', href: '/book' },
+    { t: 'hr' },
+    { t: 'form' },
+  ];
+  const item = await (
+    await owner(`/api/teams/${team.id}/content`, {
+      method: 'POST',
+      body: { type: 'page', title: 'Contact', body: JSON.stringify(blocks), format: 'blocks', status: 'published' },
+    })
+  ).json();
+
+  const html = await (await fetch(`${base}/t/${team.slug}/${item.slug}`)).text();
+  assert.ok(html.includes('<h2>Say <strong>hello</strong></h2>'));
+  assert.ok(html.includes('<li>Fast replies</li>'));
+  assert.ok(html.includes('class="btn-block"') && html.includes('Book a call'));
+  assert.ok(html.includes('class="contact-form"') && html.includes(`/api/public/${team.slug}/forms`));
+
+  // Browser-style form post → stored, thank-you page returned.
+  const submit = await fetch(`${base}/api/public/${team.slug}/forms`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'name=Ada&email=ada%40example.com&message=Do+you+ship+worldwide%3F&website=',
+  });
+  assert.strictEqual(submit.status, 201);
+  assert.ok((await submit.text()).includes('Thank you'));
+
+  // Honeypot and validation.
+  const bot = await fetch(`${base}/api/public/${team.slug}/forms`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'name=Bot&email=bot%40spam.com&message=buy+now&website=http%3A%2F%2Fspam',
+  });
+  assert.strictEqual(bot.status, 200); // pretend success, store nothing
+  assert.strictEqual(
+    (await fetch(`${base}/api/public/${team.slug}/forms`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ name: 'X', email: 'not-an-email', message: 'hi' }),
+    })).status,
+    400
+  );
+
+  // The inbox: admin-only, one real message, deletable, counted in stats.
+  const mgr = await registerAs('blockmgr', 'block-password-2');
+  await owner(`/api/teams/${team.id}/members`, { method: 'POST', body: { username: 'blockmgr', role: 'manager' } });
+  assert.strictEqual((await mgr(`/api/teams/${team.id}/forms`)).status, 403);
+  const inbox = await (await owner(`/api/teams/${team.id}/forms`)).json();
+  assert.strictEqual(inbox.length, 1);
+  assert.strictEqual(inbox[0].name, 'Ada');
+  assert.strictEqual(inbox[0].message, 'Do you ship worldwide?');
+  assert.strictEqual((await (await owner(`/api/teams/${team.id}/stats`)).json()).inbox, 1);
+  await owner(`/api/teams/${team.id}/forms/${inbox[0].id}`, { method: 'DELETE' });
+  assert.strictEqual((await (await owner(`/api/teams/${team.id}/forms`)).json()).length, 0);
+});
+
+test('image uploads generate webp variants', async () => {
+  const sharp = require('sharp');
+  const png = await sharp({
+    create: { width: 1600, height: 900, channels: 3, background: { r: 30, g: 120, b: 200 } },
+  })
+    .png()
+    .toBuffer();
+
+  const owner = await loginAs('blockowner', 'block-password-1');
+  const team = (await (await owner('/api/teams')).json()).find((t) => t.name === 'Blocks Co');
+  const login = await fetch(`${base}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: 'blockowner', password: 'block-password-1' }),
+  });
+  const cookie = login.headers.get('set-cookie').split(';')[0];
+  const fd = new FormData();
+  fd.append('file', new Blob([png], { type: 'image/png' }), 'hero.png');
+  const uploaded = await fetch(`${base}/api/teams/${team.id}/media`, {
+    method: 'POST',
+    headers: { Cookie: cookie },
+    body: fd,
+  });
+  assert.strictEqual(uploaded.status, 201);
+  const media = await uploaded.json();
+  assert.ok(media.variants.md && media.variants.md.endsWith('@md.webp'));
+  assert.ok(media.variants.sm && media.variants.sm.endsWith('@sm.webp'));
+
+  // The variants are real, servable webp files — and smaller than the original.
+  const md = await fetch(`${base}${media.variants.md}`);
+  assert.strictEqual(md.status, 200);
+  const mdBytes = Buffer.from(await md.arrayBuffer());
+  assert.strictEqual(mdBytes.subarray(0, 4).toString(), 'RIFF');
+  assert.ok(mdBytes.length < png.length);
+  const listed = await (await owner(`/api/teams/${team.id}/media`)).json();
+  assert.ok(listed.find((m) => m.id === media.id).variants.sm);
+});
+
+test('custom nav menu overrides the automatic navigation', async () => {
+  const owner = await loginAs('blockowner', 'block-password-1');
+  const team = (await (await owner('/api/teams')).json()).find((t) => t.name === 'Blocks Co');
+  await owner(`/api/teams/${team.id}/content`, {
+    method: 'POST',
+    body: { type: 'page', title: 'Zebra Page', body: 'Auto-nav bait.', status: 'published' },
+  });
+  await owner(`/api/teams/${team.id}/settings`, {
+    method: 'PUT',
+    body: { nav_links: 'Menu | /menu\nBook a table | https://book.example.com' },
+  });
+  const custom = await (await fetch(`${base}/t/${team.slug}`)).text();
+  assert.ok(custom.includes(`href="/t/${team.slug}/menu"`) && custom.includes('Book a table'));
+  assert.ok(custom.includes('https://book.example.com'));
+  assert.ok(!custom.includes('Zebra Page')); // custom menu replaces auto pages
+
+  await owner(`/api/teams/${team.id}/settings`, { method: 'PUT', body: { nav_links: '' } });
+  const auto = await (await fetch(`${base}/t/${team.slug}`)).text();
+  assert.ok(auto.includes('Zebra Page')); // automatic nav returns
+});
+
 test('health endpoint responds for load balancers', async () => {
   const res = await fetch(`${base}/api/health`);
   assert.strictEqual(res.status, 200);

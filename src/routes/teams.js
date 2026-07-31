@@ -25,6 +25,7 @@ const TEAM_SETTING_KEYS = new Set([
   'default_locale',
   'heading_font',
   'layout',
+  'nav_links',
 ]);
 
 const DOMAIN_RE = /^(?=.{4,253}$)[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
@@ -177,6 +178,7 @@ router.get('/:teamId/stats', requireTeamRole('manager'), (req, res) => {
     drafts: one("SELECT COUNT(*) AS n FROM content WHERE team_id = ? AND status = 'draft' AND deleted_at IS NULL"),
     pending: one("SELECT COUNT(*) AS n FROM content WHERE team_id = ? AND status = 'pending' AND deleted_at IS NULL"),
     trash: one('SELECT COUNT(*) AS n FROM content WHERE team_id = ? AND deleted_at IS NOT NULL'),
+    inbox: one('SELECT COUNT(*) AS n FROM form_submissions WHERE team_id = ?'),
     media: one('SELECT COUNT(*) AS n FROM media WHERE team_id = ?'),
     members: one('SELECT COUNT(*) AS n FROM team_members WHERE team_id = ?'),
     tags: one('SELECT COUNT(*) AS n FROM tags WHERE team_id = ?'),
@@ -307,7 +309,7 @@ router.put('/:teamId/settings', requireTeamRole('admin'), (req, res) => {
 
 // ---------- webhooks (company admins) ----------
 
-const EVENT_NAMES = ['content.published', 'content.updated', 'content.unpublished', 'content.deleted'];
+const EVENT_NAMES = ['content.published', 'content.updated', 'content.unpublished', 'content.deleted', 'form.submission'];
 
 router.get('/:teamId/webhooks', requireTeamRole('admin'), (req, res) => {
   const rows = getDb()
@@ -511,6 +513,23 @@ router.get('/:teamId/export', requireTeamRole('admin'), (req, res) => {
     content_types: contentTypes,
     content,
   });
+});
+
+// ---------- contact-form inbox ----------
+
+router.get('/:teamId/forms', requireTeamRole('admin'), (req, res) => {
+  const rows = getDb()
+    .prepare('SELECT * FROM form_submissions WHERE team_id = ? ORDER BY id DESC LIMIT 200')
+    .all(req.team.id);
+  res.json(rows);
+});
+
+router.delete('/:teamId/forms/:formId', requireTeamRole('admin'), (req, res) => {
+  const result = getDb()
+    .prepare('DELETE FROM form_submissions WHERE id = ? AND team_id = ?')
+    .run(req.params.formId, req.team.id);
+  if (result.changes === 0) return res.status(404).json({ error: 'Not found' });
+  res.json({ ok: true });
 });
 
 // ---------- importers (no lock-in, both directions) ----------
