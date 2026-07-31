@@ -80,7 +80,7 @@ Managers have full CRUD on content, but nothing they touch goes live on its own:
 - **Navigation menu manager**: by default the nav builds itself from pages and custom-type archives; set your own menu (one `Label | /url` per line, external links allowed) from the Company page and it takes over.
 - **Markdown everywhere** it fits beyond bodies: excerpts and site descriptions (inline — rendered on cards, heroes, footers, and as `excerpt_html` in the headless API; stripped to plain text for meta tags), and discussion comments.
 - **Posts and pages** with drafts and publishing, excerpts, and **cover images** (shown on site cards, post heroes, and in the headless API).
-- **Custom content types** (company admins): define your own types — Jobs, Recipes, Properties — with typed field schemas (`text`, `longtext`, `number`, `date`, `url`, `select`). Fields are validated on write, edited with generated inputs in the editor, rendered as a definition list on the hosted site, exposed as `fields` in the headless API, preserved in version history, and covered by the approval snapshot. Custom items are served at `/t/<company>/<slug>` and appear in sitemaps.
+- **Custom content types** (company admins): define your own types — Jobs, Recipes, Properties — with typed field schemas (`text`, `longtext`, `number`, `date`, `url`, `select`, and `reference` — **relations between content items**, optionally pinned to one type, e.g. a Property's *Listing agent* must be an Agent). References are validated per company, picked from a dropdown in the editor, expanded as `references` in the admin and headless APIs, and rendered as links on hosted sites — but only while the referenced item is itself live, so drafts never leak through a relation. Fields are validated on write, edited with generated inputs in the editor, rendered as a definition list on the hosted site, exposed as `fields` in the headless API, preserved in version history, and covered by the approval snapshot. Custom items are served at `/t/<company>/<slug>` and appear in sitemaps.
 - **Importers** (company admins): upload WordPress WXR exports (`.xml` — posts, pages, tags, statuses, publish dates; classic-editor paragraphs handled), Markdown files with front matter (`.md` — title, date, tags, status, slug, type), or a Nova JSON export (`.json` — full round trip including custom types and settings). Published items go live immediately; everything else lands as drafts.
 - **Slugs** auto-generated from titles and de-duplicated *within each company*.
 - **Tags** per company, with filtering on the public site and in the admin.
@@ -125,6 +125,7 @@ PLATFORM_DOMAIN=cms.example.com ACME_EMAIL=you@example.com JWT_SECRET=<random> \
 
 ## Production notes
 
+- **Two-factor authentication**: any user can enable TOTP (Google Authenticator, Authy, 1Password…) from the Account page — dependency-free RFC 6238, verified before it turns on, required at sign-in, and a current code is needed to disable it (a stolen session can't turn it off).
 - **Rate limiting**: login and registration are limited per IP (tune with `RATE_LIMIT_LOGIN` / `RATE_LIMIT_REGISTER`).
 - **Security headers** are set on every response; auth cookies are httpOnly + SameSite=Lax (+ Secure when `COOKIE_SECURE=1`).
 - **SEO built in**: every hosted site gets `feed.xml` (RSS), `sitemap.xml`, meta descriptions, and Open Graph tags; `/robots.txt` and the platform sitemap are domain-aware, so a custom-domain site gets its own at the root.
@@ -161,6 +162,7 @@ All `/api` routes accept and return JSON. Authentication uses an httpOnly cookie
 | POST | `/api/auth/login` / `/logout` | — / ✓ | Session management |
 | GET | `/api/auth/me` | ✓ | Current user |
 | POST | `/api/auth/password` | ✓ | Change own password |
+| POST | `/api/auth/2fa/setup` / `verify` / `disable` | ✓ | TOTP two-factor: mint secret / enable with a code / disable with a code |
 | GET/POST | `/api/teams` | ✓ | My companies (superadmin: all) / create one — creator becomes its admin |
 | GET/PUT/DELETE | `/api/teams/:id` | member / admin / admin | Read / update (name, slug, custom_domain) / delete |
 | GET | `/api/teams/:id/stats` | member | Dashboard KPIs + recent content |
@@ -207,7 +209,7 @@ All `/api` routes accept and return JSON. Authentication uses an httpOnly cookie
 npm test
 ```
 
-66 end-to-end tests (`node --test`, in-memory database): registration, company creation, the three-tier role model, cross-company isolation, content CRUD with cover images, per-company slug scoping, draft/pending/publish visibility, the approval workflow, custom content types with field validation, the WordPress/Markdown/Nova importers, feeds/sitemaps/SEO, rate limiting, theming, starter kits and the AI site builder (mock mode), custom-domain routing, the headless API, dashboards, and platform stats.
+68 end-to-end tests (`node --test`, in-memory database): registration, company creation, the three-tier role model, cross-company isolation, content CRUD with cover images, per-company slug scoping, draft/pending/publish visibility, the approval workflow, custom content types with field validation, the WordPress/Markdown/Nova importers, feeds/sitemaps/SEO, rate limiting, theming, starter kits and the AI site builder (mock mode), custom-domain routing, the headless API, dashboards, and platform stats.
 
 ## Project layout
 

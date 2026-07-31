@@ -358,6 +358,12 @@ function migrate() {
     db.pragma('foreign_keys = ON');
   }
 
+  // Two-factor auth (pre-2FA databases)
+  if (!db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'totp_secret')) {
+    db.exec('ALTER TABLE users ADD COLUMN totp_secret TEXT');
+    db.exec('ALTER TABLE users ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0');
+  }
+
   // Role vocabulary: owner -> admin, editor -> manager.
   if (tableSql('team_members').includes("'owner'")) {
     db.pragma('foreign_keys = OFF');

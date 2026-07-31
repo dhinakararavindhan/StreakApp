@@ -5,7 +5,7 @@ const { getDb, slugify, uniqueSlug } = require('../db');
 const { audit } = require('../audit');
 const { deliver, contentPayload } = require('../webhooks');
 const { FORMATS, renderBody } = require('../render');
-const { isValidType, validateFields, parseFieldValues } = require('../content-types');
+const { isValidType, validateFields, parseFieldValues, expandReferences } = require('../content-types');
 const { aiAvailable, reviewContent, translateContent } = require('../ai');
 const { rateLimit } = require('../security');
 const { notifySubmission, notifyDecision, notifyComment } = require('../notify');
@@ -89,6 +89,7 @@ function serialize(row, { withHtml = false } = {}) {
     tags: loadTags(row.id),
   };
   if (withHtml) {
+    out.references = expandReferences(row.team_id, row.type, out.fields);
     out.body_html = renderBody(row.format, row.body, row.excerpt);
     out.translations = groupMembers(row.team_id, groupRoot(row)).filter((t) => t.id !== row.id);
     const lastEditor = getDb()

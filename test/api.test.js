@@ -1719,6 +1719,131 @@ test('shareable preview links work for outsiders, expire, and resist tampering',
   assert.strictEqual((await fetch(`${base}/t/${team.slug}/posts/${draft.slug}`)).status, 404);
 });
 
+test('reference fields link content items, validated and draft-safe', async () => {
+  const owner = await registerAs('refowner', 'ref-password-123');
+  const team = await (await owner('/api/teams', { method: 'POST', body: { name: 'Relations Co' } })).json();
+
+  // Agents, and Properties that reference an Agent.
+  await owner(`/api/teams/${team.id}/content-types`, {
+    method: 'POST',
+    body: { name: 'Agent', name_plural: 'Agents', schema: [{ label: 'Phone', kind: 'text' }] },
+  });
+  const created = await (
+    await owner(`/api/teams/${team.id}/content-types`, {
+      method: 'POST',
+      body: {
+        name: 'Property',
+        name_plural: 'Properties',
+        schema: [
+          { label: 'Price (USD)', kind: 'number' },
+          { label: 'Listing agent', kind: 'reference', ref_type: 'agent' },
+        ],
+      },
+    })
+  ).json();
+  assert.deepStrictEqual(created.schema[1], { key: 'listing_agent', label: 'Listing agent', kind: 'reference', ref_type: 'agent' });
+
+  const agent = await (
+    await owner(`/api/teams/${team.id}/content`, {
+      method: 'POST',
+      body: { type: 'agent', title: 'Rosa Marchetti', body: 'Twenty years on this high street.', status: 'published', fields: { phone: '555-0100' } },
+    })
+  ).json();
+  const post = await (
+    await owner(`/api/teams/${team.id}/content`, {
+      method: 'POST',
+      body: { type: 'post', title: 'Not an agent', body: 'x', status: 'published' },
+    })
+  ).json();
+
+  // Wrong-type and cross-company references are rejected.
+  const wrongType = await owner(`/api/teams/${team.id}/content`, {
+    method: 'POST',
+    body: { type: 'property', title: 'Bad ref', fields: { listing_agent: post.id } },
+  });
+  assert.strictEqual(wrongType.status, 400);
+  assert.ok((await wrongType.json()).error.includes('"agent"'));
+
+  const property = await (
+    await owner(`/api/teams/${team.id}/content`, {
+      method: 'POST',
+      body: {
+        type: 'property',
+        title: 'The Glasshouse',
+        body: 'Light everywhere.',
+        status: 'published',
+        fields: { price_usd: 425000, listing_agent: agent.id },
+      },
+    })
+  ).json();
+  assert.strictEqual(property.fields.listing_agent, agent.id);
+
+  // Admin single GET expands the reference; public article links it.
+  const single = await (await owner(`/api/teams/${team.id}/content/${property.id}`)).json();
+  assert.strictEqual(single.references.listing_agent.title, 'Rosa Marchetti');
+  const html = await (await fetch(`${base}/t/${team.slug}/${property.slug}`)).text();
+  assert.ok(html.includes('Rosa Marchetti') && html.includes(`/t/${team.slug}/${agent.slug}`));
+  const headless = await (await fetch(`${base}/api/public/${team.slug}/content/${property.slug}`)).json();
+  assert.strictEqual(headless.references.listing_agent.slug, agent.slug);
+
+  // Unpublish the agent → the public reference disappears everywhere.
+  await owner(`/api/teams/${team.id}/content/${agent.id}`, { method: 'PUT', body: { status: 'draft' } });
+  const hidden = await (await fetch(`${base}/t/${team.slug}/${property.slug}`)).text();
+  assert.ok(!hidden.includes('Rosa Marchetti'));
+  const headless2 = await (await fetch(`${base}/api/public/${team.slug}/content/${property.slug}`)).json();
+  assert.strictEqual(headless2.references, undefined);
+});
+
+test('two-factor authentication: setup, login challenge, disable', async () => {
+  const { currentCode } = require('../src/totp');
+  await registerAs('twofa-user', 'twofa-password-1');
+  const client2 = await loginAs('twofa-user', 'twofa-password-1');
+
+  // Setup + verify with a real code turns 2FA on.
+  const setup = await (await client2('/api/auth/2fa/setup', { method: 'POST' })).json();
+  assert.ok(setup.secret && setup.otpauth.startsWith('otpauth://totp/'));
+  assert.strictEqual(
+    (await client2('/api/auth/2fa/verify', { method: 'POST', body: { code: '000000' } })).status,
+    400
+  );
+  assert.strictEqual(
+    (await client2('/api/auth/2fa/verify', { method: 'POST', body: { code: currentCode(setup.secret) } })).status,
+    200
+  );
+  assert.strictEqual((await (await client2('/api/auth/me')).json()).totp_enabled, true);
+
+  // Password alone no longer signs in; password + current code does.
+  const half = await fetch(`${base}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: 'twofa-user', password: 'twofa-password-1' }),
+  });
+  assert.strictEqual(half.status, 200);
+  assert.strictEqual((await half.json()).twofa_required, true);
+  assert.strictEqual(half.headers.get('set-cookie'), null); // no session yet
+  const badCode = await fetch(`${base}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: 'twofa-user', password: 'twofa-password-1', code: '123456' }),
+  });
+  assert.strictEqual(badCode.status, 401);
+  const full = await fetch(`${base}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: 'twofa-user', password: 'twofa-password-1', code: currentCode(setup.secret) }),
+  });
+  assert.strictEqual(full.status, 200);
+  assert.ok(full.headers.get('set-cookie'));
+
+  // Disabling needs a current code too.
+  assert.strictEqual(
+    (await client2('/api/auth/2fa/disable', { method: 'POST', body: { code: '999999' } })).status,
+    400
+  );
+  await client2('/api/auth/2fa/disable', { method: 'POST', body: { code: currentCode(setup.secret) } });
+  assert.strictEqual((await (await client2('/api/auth/me')).json()).totp_enabled, false);
+});
+
 test('health endpoint responds for load balancers', async () => {
   const res = await fetch(`${base}/api/health`);
   assert.strictEqual(res.status, 200);

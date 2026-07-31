@@ -20,6 +20,7 @@ Anyone can run Nova in production, safely, today.
 - [x] **Docker**: production image + compose file, persistent volume, container healthcheck
 - [x] **CI**: GitHub Actions running the test suite on every push and PR
 - [x] **Security hardening**: rate-limited auth endpoints, security headers, opt-in secure cookies, proxy trust setting
+- [x] **Two-factor authentication**: TOTP (RFC 6238, dependency-free) with verified enable, login challenge, and code-gated disable
 - [x] **Health endpoint** (`/api/health`) for load balancers and uptime monitors
 - [x] **Open-web citizenship** (every hosted site): RSS feeds, XML sitemaps, robots.txt, meta descriptions and Open Graph tags
 - [x] **License + contribution guide** (MIT) — open source is the adoption engine
@@ -47,6 +48,7 @@ Content for every audience, in every language, of every shape.
 - [x] Full-company **JSON export** (content, settings, members, media metadata) — no lock-in
 - [x] **Body formats**: Markdown, plain text, raw HTML, image, and embed (YouTube/Vimeo) — per item, format-aware editor and rendering everywhere
 - [x] **Custom content types**: per-company user-defined types (Jobs, Recipes, Properties…) with typed field schemas (text, longtext, number, date, url, select) — validated on write, editable in the admin, rendered on sites, exposed in the headless API, versioned, and covered by the approval snapshot
+- [x] **Relations**: `reference` fields link content items (optionally pinned to a type), validated per company, expanded in both APIs, linked on sites only while the target is live
 - [x] **Importers**: WordPress WXR exports, Markdown files with front matter, and Nova's own JSON export (full round trip incl. custom types and settings) — export *and* import, so no lock-in in either direction
 
 ## Phase 4 — Scale-out

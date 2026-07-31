@@ -237,6 +237,18 @@
           method: 'POST',
           body: { username: f.get('username'), password: f.get('password') },
         });
+        // Two-factor challenge: correct password, code still required.
+        if (me && me.twofa_required) {
+          const code = prompt('Enter the 6-digit code from your authenticator app:');
+          if (!code) {
+            me = null;
+            return;
+          }
+          me = await api('/auth/login', {
+            method: 'POST',
+            body: { username: f.get('username'), password: f.get('password'), code },
+          });
+        }
         // Verify the account actually holds the portal's role.
         if (isLogin && !(await portalAllows(portal))) {
           await api('/auth/logout', { method: 'POST' });
@@ -745,6 +757,9 @@
       ? { type: 'post', title: '', slug: '', body: '', format: 'markdown', excerpt: '', cover_image: '', status: 'draft', tags: [], fields: {}, publish_at: null, expire_at: null, locale: 'en' }
       : await capi(`/content/${id}`);
     const cTypes = await capi('/content-types').catch(() => []);
+    // Reference fields need something to pick from.
+    const hasRefs = cTypes.some((t) => t.schema.some((f) => f.kind === 'reference'));
+    const refPool = hasRefs ? (await capi('/content').catch(() => [])).filter((r) => String(r.id) !== String(id)) : [];
 
     const canPublish = isCompanyAdmin();
     // Managers never hold a live 'published' selection — their edits to
@@ -1201,6 +1216,13 @@
                 return `<label>${esc(f.label)}</label><select data-cf="${esc(f.key)}"><option value="">—</option>${f.options
                   .map((o) => `<option value="${esc(o)}" ${o === v ? 'selected' : ''}>${esc(o)}</option>`)
                   .join('')}</select>`;
+              }
+              if (f.kind === 'reference') {
+                const pool = f.ref_type ? refPool.filter((r) => r.type === f.ref_type) : refPool;
+                return `<label>${esc(f.label)}${f.ref_type ? ` <span class="path">(${esc(f.ref_type)})</span>` : ''}</label>
+                  <select data-cf="${esc(f.key)}"><option value="">—</option>${pool
+                    .map((r) => `<option value="${r.id}" ${String(r.id) === v ? 'selected' : ''}>${esc(r.title)} (${esc(r.type)})</option>`)
+                    .join('')}</select>`;
               }
               const inputType = f.kind === 'number' ? 'number' : f.kind === 'date' ? 'date' : 'text';
               return `<label>${esc(f.label)}${f.kind === 'url' ? ' (URL)' : ''}</label>
@@ -2100,7 +2122,7 @@
       loadKeys();
 
       // Content types: list, delete, and a small field-schema builder.
-      const KIND_OPTIONS = ['text', 'longtext', 'number', 'date', 'url', 'select'];
+      const KIND_OPTIONS = ['text', 'longtext', 'number', 'date', 'url', 'select', 'reference'];
       async function loadCTypes() {
         const rows = await api(`/teams/${company.id}/content-types`);
         page.querySelector('#ctype-list').innerHTML = rows.length
@@ -2136,7 +2158,10 @@
           <input placeholder="Options, comma-separated" class="cf-options" style="display:none;max-width:170px">
           <button type="button" class="btn danger sm cf-rm">×</button>`;
         row.querySelector('.cf-kind').addEventListener('change', (e) => {
-          row.querySelector('.cf-options').style.display = e.target.value === 'select' ? '' : 'none';
+          const optInput = row.querySelector('.cf-options');
+          optInput.style.display = ['select', 'reference'].includes(e.target.value) ? '' : 'none';
+          optInput.placeholder =
+            e.target.value === 'reference' ? 'Limit to type key (blank: any)' : 'Options, comma-separated';
         });
         row.querySelector('.cf-rm').addEventListener('click', () => row.remove());
         fieldsHost.appendChild(row);
@@ -2147,11 +2172,15 @@
         e.preventDefault();
         const f = new FormData(e.target);
         const schema = [...fieldsHost.querySelectorAll('.cf-row')]
-          .map((row) => ({
-            label: row.querySelector('.cf-label').value.trim(),
-            kind: row.querySelector('.cf-kind').value,
-            options: row.querySelector('.cf-options').value,
-          }))
+          .map((row) => {
+            const kind = row.querySelector('.cf-kind').value;
+            const extra = row.querySelector('.cf-options').value;
+            return {
+              label: row.querySelector('.cf-label').value.trim(),
+              kind,
+              ...(kind === 'reference' ? { ref_type: extra } : { options: extra }),
+            };
+          })
           .filter((field) => field.label);
         try {
           await api(`/teams/${company.id}/content-types`, {
@@ -2323,6 +2352,7 @@
   // ---------- account ----------
 
   async function renderAccount() {
+    const fresh = await api('/auth/me');
     const page = shell('#/account', `
       <h1>Account <span class="sub">${esc(me.username)}</span></h1>
       <form class="card" id="password-form" style="max-width:480px">
@@ -2330,7 +2360,65 @@
         <label>Current password</label><input name="currentPassword" type="password" required autocomplete="current-password">
         <label>New password (min 8 chars)</label><input name="newPassword" type="password" required autocomplete="new-password">
         <p><button class="btn">Update password</button></p>
-      </form>`);
+      </form>
+      <div class="card" style="max-width:480px;margin-top:1.4rem" id="twofa-card">
+        <b>Two-factor authentication ${fresh.totp_enabled ? '<span class="pill published">on</span>' : '<span class="pill draft">off</span>'}</b>
+        <p style="color:var(--muted);font-size:0.82rem;margin:0.3rem 0 0.6rem">
+          A 6-digit code from your authenticator app (Google Authenticator, Authy, 1Password…)
+          is required at sign-in, on top of your password.
+        </p>
+        <div id="twofa-body">
+          ${fresh.totp_enabled
+            ? `<form class="toolbar" id="twofa-disable" style="margin:0">
+                <input name="code" placeholder="Current code" inputmode="numeric" maxlength="6" required style="max-width:130px">
+                <button class="btn danger sm">Turn off 2FA</button>
+              </form>`
+            : `<button class="btn sm" id="twofa-start">Set up 2FA</button>`}
+        </div>
+      </div>`);
+
+    const twofaBody = page.querySelector('#twofa-body');
+    const startBtn = page.querySelector('#twofa-start');
+    if (startBtn) {
+      startBtn.addEventListener('click', async () => {
+        try {
+          const setup = await api('/auth/2fa/setup', { method: 'POST' });
+          twofaBody.innerHTML = `
+            <p style="font-size:0.82rem;margin:0 0 0.4rem">1. Add this secret to your authenticator app:</p>
+            <p><code style="font-size:0.9rem;user-select:all">${esc(setup.secret)}</code></p>
+            <p style="font-size:0.78rem;color:var(--muted);word-break:break-all;margin:0.3rem 0 0.6rem">or open: <code>${esc(setup.otpauth)}</code></p>
+            <form class="toolbar" id="twofa-confirm" style="margin:0">
+              <input name="code" placeholder="Code from the app" inputmode="numeric" maxlength="6" required style="max-width:150px" autofocus>
+              <button class="btn sm">2. Verify &amp; enable</button>
+            </form>`;
+          twofaBody.querySelector('#twofa-confirm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            try {
+              await api('/auth/2fa/verify', { method: 'POST', body: { code: new FormData(e.target).get('code') } });
+              toast('Two-factor authentication is on.');
+              renderAccount();
+            } catch (err) {
+              toast(err.message, 'error');
+            }
+          });
+        } catch (err) {
+          toast(err.message, 'error');
+        }
+      });
+    }
+    const disableForm = page.querySelector('#twofa-disable');
+    if (disableForm) {
+      disableForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        try {
+          await api('/auth/2fa/disable', { method: 'POST', body: { code: new FormData(e.target).get('code') } });
+          toast('Two-factor authentication is off.');
+          renderAccount();
+        } catch (err) {
+          toast(err.message, 'error');
+        }
+      });
+    }
     page.querySelector('#password-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const f = new FormData(e.target);

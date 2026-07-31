@@ -6,7 +6,7 @@
 
 const { getDb, slugify } = require('./db');
 
-const FIELD_KINDS = ['text', 'longtext', 'number', 'date', 'url', 'select'];
+const FIELD_KINDS = ['text', 'longtext', 'number', 'date', 'url', 'select', 'reference'];
 const BUILTIN_TYPES = ['post', 'page'];
 const MAX_FIELDS = 20;
 
@@ -48,6 +48,12 @@ function normalizeSchema(input) {
     seen.add(key);
     const kind = FIELD_KINDS.includes(raw.kind) ? raw.kind : 'text';
     const field = { key, label, kind };
+    if (kind === 'reference') {
+      // Optionally pin references to one content type (e.g. an Agent
+      // field on a Property). Blank = any item in the company.
+      const refRaw = String(raw.ref_type || raw.options || '').trim();
+      field.ref_type = refRaw ? slugify(refRaw) : '';
+    }
     if (kind === 'select') {
       field.options = (Array.isArray(raw.options) ? raw.options : String(raw.options || '').split(','))
         .map((o) => String(o).trim())
@@ -90,6 +96,21 @@ function validateFields(teamId, type, input) {
         return { error: `Field "${field.label}" must be one of: ${field.options.join(', ')}` };
       }
       values[field.key] = s;
+    } else if (field.kind === 'reference') {
+      const refId = Number(raw);
+      if (!Number.isInteger(refId) || refId <= 0) {
+        return { error: `Field "${field.label}" must reference a content item` };
+      }
+      const target = getDb()
+        .prepare('SELECT type, deleted_at FROM content WHERE id = ? AND team_id = ?')
+        .get(refId, teamId);
+      if (!target || target.deleted_at) {
+        return { error: `Field "${field.label}" references an item that doesn't exist in this company` };
+      }
+      if (field.ref_type && target.type !== field.ref_type) {
+        return { error: `Field "${field.label}" must reference a "${field.ref_type}" item` };
+      }
+      values[field.key] = refId;
     } else {
       values[field.key] = String(raw).slice(0, field.kind === 'longtext' ? 10000 : 500);
     }
@@ -107,6 +128,24 @@ function parseFieldValues(json) {
   }
 }
 
+/** Expand reference-field ids into {key: {id, title, slug, type, status}}.
+    Internal view — callers serving the public must filter to live refs. */
+function expandReferences(teamId, type, values) {
+  const ct = BUILTIN_TYPES.includes(type) ? null : getType(teamId, type);
+  if (!ct) return undefined;
+  const out = {};
+  for (const field of ct.schema) {
+    if (field.kind !== 'reference') continue;
+    const id = values[field.key];
+    if (!id) continue;
+    const row = getDb()
+      .prepare('SELECT id, title, slug, type, status FROM content WHERE id = ? AND team_id = ? AND deleted_at IS NULL')
+      .get(id, teamId);
+    if (row) out[field.key] = row;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
 module.exports = {
   FIELD_KINDS,
   BUILTIN_TYPES,
@@ -116,4 +155,5 @@ module.exports = {
   normalizeSchema,
   validateFields,
   parseFieldValues,
+  expandReferences,
 };

@@ -18,8 +18,10 @@ const registerLimiter = rateLimit({
   name: 'registrations',
 });
 
+const { generateSecret, verifyCode, otpauthUrl } = require('../totp');
+
 router.post('/login', loginLimiter, (req, res) => {
-  const { username, password } = req.body || {};
+  const { username, password, code } = req.body || {};
   if (!username || !password) {
     return res.status(400).json({ error: 'username and password are required' });
   }
@@ -27,8 +29,52 @@ router.post('/login', loginLimiter, (req, res) => {
   if (!user || !bcrypt.compareSync(password, user.password_hash)) {
     return res.status(401).json({ error: 'Invalid credentials' });
   }
+  // Two-factor: correct password alone doesn't sign you in.
+  if (user.totp_enabled) {
+    if (!code) return res.json({ twofa_required: true });
+    if (!verifyCode(user.totp_secret, code)) {
+      return res.status(401).json({ error: 'Invalid authentication code' });
+    }
+  }
   setAuthCookie(res, issueToken(user));
   res.json({ id: user.id, username: user.username, role: user.role });
+});
+
+// ---------- two-factor auth (TOTP) ----------
+
+// Step 1: mint a secret (pending until verified). Shown once, with an
+// otpauth:// URL for authenticator apps.
+router.post('/2fa/setup', requireAuth, (req, res) => {
+  const db = getDb();
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+  if (user.totp_enabled) return res.status(400).json({ error: '2FA is already enabled' });
+  const secret = generateSecret();
+  db.prepare('UPDATE users SET totp_secret = ?, totp_enabled = 0 WHERE id = ?').run(secret, user.id);
+  res.json({ secret, otpauth: otpauthUrl(user.username, secret) });
+});
+
+// Step 2: prove the authenticator works; only then does 2FA turn on.
+router.post('/2fa/verify', requireAuth, (req, res) => {
+  const db = getDb();
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+  if (!user.totp_secret) return res.status(400).json({ error: 'Run setup first' });
+  if (!verifyCode(user.totp_secret, (req.body || {}).code)) {
+    return res.status(400).json({ error: 'That code is not valid — check the app and try again' });
+  }
+  db.prepare('UPDATE users SET totp_enabled = 1 WHERE id = ?').run(user.id);
+  res.json({ ok: true, enabled: true });
+});
+
+// Disabling requires a current code — a stolen session can't turn it off.
+router.post('/2fa/disable', requireAuth, (req, res) => {
+  const db = getDb();
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+  if (!user.totp_enabled) return res.status(400).json({ error: '2FA is not enabled' });
+  if (!verifyCode(user.totp_secret, (req.body || {}).code)) {
+    return res.status(400).json({ error: 'A current authentication code is required to disable 2FA' });
+  }
+  db.prepare('UPDATE users SET totp_secret = NULL, totp_enabled = 0 WHERE id = ?').run(user.id);
+  res.json({ ok: true, enabled: false });
 });
 
 // Self-serve signup, so any team can onboard itself. Can be disabled via
@@ -89,7 +135,13 @@ router.post('/notifications/read', requireAuth, (req, res) => {
 });
 
 router.get('/me', requireAuth, (req, res) => {
-  res.json({ id: req.user.id, username: req.user.username, role: req.user.role });
+  const row = getDb().prepare('SELECT totp_enabled FROM users WHERE id = ?').get(req.user.id);
+  res.json({
+    id: req.user.id,
+    username: req.user.username,
+    role: req.user.role,
+    totp_enabled: Boolean(row && row.totp_enabled),
+  });
 });
 
 router.post('/password', requireAuth, (req, res) => {

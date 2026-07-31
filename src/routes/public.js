@@ -317,23 +317,55 @@ function fullArticle(team, row, base) {
   const date = (row.published_at || row.created_at || '').slice(0, 10);
   const cover = row.cover_image ? `<img class="cover-hero" src="${esc(row.cover_image)}" alt="">` : '';
   const meta = row.type === 'post' ? `<div class="meta">${esc(date)} ${tagLinks(row, base)}</div>` : '';
-  return `<article class="full">${cover}<h1>${esc(row.title)}</h1>${meta}${customFieldsHtml(team, row)}${renderBody(row.format, row.body, row.excerpt, { formAction: `/api/public/${team.slug}/forms` })}</article>`;
+  return `<article class="full">${cover}<h1>${esc(row.title)}</h1>${meta}${customFieldsHtml(team, row, base)}${renderBody(row.format, row.body, row.excerpt, { formAction: `/api/public/${team.slug}/forms` })}</article>`;
 }
 
-/** Custom-type field values as a definition list above the body. */
-function customFieldsHtml(team, row) {
+/** Custom-type field values as a definition list above the body.
+    Reference fields render as links to the referenced item — but only
+    when that item is itself live. */
+function customFieldsHtml(team, row, base = '') {
   if (BUILTIN_TYPES.includes(row.type)) return '';
   const ct = getType(team.id, row.type);
   if (!ct || !ct.schema.length) return '';
   const values = parseFieldValues(row.fields);
-  const items = ct.schema
-    .filter((f) => values[f.key] !== undefined && values[f.key] !== '')
-    .map((f) => {
-      const v = String(values[f.key]);
-      const rendered = f.kind === 'url' ? `<a href="${esc(v)}">${esc(v)}</a>` : esc(v);
-      return `<dt>${esc(f.label)}</dt><dd>${rendered}</dd>`;
-    });
+  const items = [];
+  for (const f of ct.schema) {
+    const v = values[f.key];
+    if (v === undefined || v === '') continue;
+    let rendered;
+    if (f.kind === 'reference') {
+      const ref = getDb()
+        .prepare(`SELECT id, title, slug, type FROM content WHERE id = ? AND team_id = ? AND ${LIVE()}`)
+        .get(v, team.id);
+      if (!ref) continue; // unpublished references never leak
+      const href = ref.type === 'post' ? `${base}/posts/${ref.slug}` : `${base}/${ref.slug}`;
+      rendered = `<a href="${esc(href)}">${esc(ref.title)}</a>`;
+    } else if (f.kind === 'url') {
+      rendered = `<a href="${esc(String(v))}">${esc(String(v))}</a>`;
+    } else {
+      rendered = esc(String(v));
+    }
+    items.push(`<dt>${esc(f.label)}</dt><dd>${rendered}</dd>`);
+  }
   return items.length ? `<dl class="fields">${items.join('')}</dl>` : '';
+}
+
+/** Live-only reference expansion for the headless API. */
+function publicReferences(team, row) {
+  const ct = getType(team.id, row.type);
+  if (!ct) return undefined;
+  const values = parseFieldValues(row.fields);
+  const out = {};
+  for (const f of ct.schema) {
+    if (f.kind !== 'reference') continue;
+    const id = values[f.key];
+    if (!id) continue;
+    const ref = getDb()
+      .prepare(`SELECT id, title, slug, type FROM content WHERE id = ? AND team_id = ? AND ${LIVE()}`)
+      .get(id, team.id);
+    if (ref) out[f.key] = ref;
+  }
+  return Object.keys(out).length ? out : undefined;
 }
 
 function teamLayout(team, onDomain, { title, content, meta = {}, locale }) {
@@ -558,7 +590,7 @@ function renderTypeArchive(team, onDomain, typeKey, req, res) {
   const fieldLine = (row) => {
     const values = parseFieldValues(row.fields);
     const shown = ct.schema
-      .filter((f) => f.kind !== 'url' && values[f.key] !== undefined && values[f.key] !== '')
+      .filter((f) => f.kind !== 'url' && f.kind !== 'reference' && values[f.key] !== undefined && values[f.key] !== '')
       .slice(0, 3)
       .map((f) => `${esc(f.label)}: <b>${esc(String(values[f.key]))}</b>`);
     return shown.length ? `<div class="meta">${shown.join(' · ')}</div>` : '';
@@ -715,6 +747,7 @@ router.get('/api/public/:team/content/:slug', cors, (req, res) => {
   );
   if (!row) return res.status(404).json({ error: 'Not found' });
   const out = publicContentRow(row, { withBody: true, formAction: `/api/public/${team.slug}/forms` });
+  out.references = publicReferences(team, row);
   out.locale = row.locale;
   out.translations = liveAlternates(team.id, row)
     .filter((a) => a.id !== row.id)
