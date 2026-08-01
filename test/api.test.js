@@ -2149,6 +2149,172 @@ test('the SMTP transport speaks to a real (fake) SMTP server', async () => {
   assert.ok(message.includes('..a line starting with a dot')); // RFC 5321 dot-stuffing
 });
 
+test('messaging gateway: WhatsApp + SMS to fake providers, API-key driven', async () => {
+  // Fake Meta WhatsApp Cloud API.
+  const waCalls = [];
+  const waServer = http.createServer((req, res) => {
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', () => {
+      waCalls.push({ url: req.url, auth: req.headers.authorization, body: JSON.parse(body) });
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ messages: [{ id: 'wamid.TEST123' }] }));
+    });
+  });
+  // Fake Twilio Messages API.
+  const smsCalls = [];
+  const smsServer = http.createServer((req, res) => {
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', () => {
+      smsCalls.push({ url: req.url, auth: req.headers.authorization, body });
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ sid: 'SM_TEST_1' }));
+    });
+  });
+  await new Promise((r) => waServer.listen(0, '127.0.0.1', r));
+  await new Promise((r) => smsServer.listen(0, '127.0.0.1', r));
+
+  const saved = {};
+  for (const k of ['WHATSAPP_TOKEN', 'WHATSAPP_PHONE_ID', 'WHATSAPP_API_BASE', 'TWILIO_SID', 'TWILIO_TOKEN', 'TWILIO_FROM', 'TWILIO_API_BASE', 'NOVA_MESSAGE_WEBHOOK']) {
+    saved[k] = process.env[k];
+    delete process.env[k];
+  }
+  try {
+    const owner = await registerAs('msgowner', 'msg-password-12');
+    const team = await (await owner('/api/teams', { method: 'POST', body: { name: 'Valam Shop' } })).json();
+
+    // Unconfigured channel → 503, and nothing is "sent".
+    let res = await owner(`/api/teams/${team.id}/messages`, {
+      method: 'POST',
+      body: { channel: 'whatsapp', to: '+919876543210', text: 'OTP 424242' },
+    });
+    assert.strictEqual(res.status, 503);
+
+    // Validation: bad channel, bad number, missing text.
+    process.env.WHATSAPP_TOKEN = 'wa-test-token';
+    process.env.WHATSAPP_PHONE_ID = '555000111';
+    process.env.WHATSAPP_API_BASE = `http://127.0.0.1:${waServer.address().port}`;
+    for (const bad of [
+      { channel: 'pigeon', to: '+919876543210', text: 'hi' },
+      { channel: 'whatsapp', to: 'not-a-number', text: 'hi' },
+      { channel: 'whatsapp', to: '+919876543210', text: '' },
+    ]) {
+      assert.strictEqual((await owner(`/api/teams/${team.id}/messages`, { method: 'POST', body: bad })).status, 400);
+    }
+
+    // WhatsApp via a write API key — the exact path a VALAM tenant uses.
+    const key = await (
+      await owner(`/api/teams/${team.id}/api-keys`, { method: 'POST', body: { name: 'valam', scope: 'write' } })
+    ).json();
+    const viaKey = (path, options = {}) =>
+      fetch(`${base}${path}`, {
+        ...options,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key.token}` },
+        body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+      });
+    res = await viaKey(`/api/teams/${team.id}/messages`, {
+      method: 'POST',
+      body: { channel: 'whatsapp', to: '+91 98765-43210', text: 'Your table is ready' },
+    });
+    assert.strictEqual(res.status, 202);
+    let sent = await res.json();
+    assert.strictEqual(sent.status, 'sent');
+    assert.strictEqual(sent.provider, 'whatsapp-cloud');
+    assert.strictEqual(sent.provider_id, 'wamid.TEST123');
+    assert.strictEqual(sent.to, '+919876543210'); // separators normalized
+    assert.strictEqual(waCalls.length, 1);
+    assert.strictEqual(waCalls[0].auth, 'Bearer wa-test-token');
+    assert.ok(waCalls[0].url.includes('/555000111/messages'));
+    assert.strictEqual(waCalls[0].body.text.body, 'Your table is ready');
+
+    // SMS through the Twilio-compatible transport.
+    process.env.TWILIO_SID = 'AC_TEST';
+    process.env.TWILIO_TOKEN = 'tw-secret';
+    process.env.TWILIO_FROM = '+15550001111';
+    process.env.TWILIO_API_BASE = `http://127.0.0.1:${smsServer.address().port}`;
+    res = await viaKey(`/api/teams/${team.id}/messages`, {
+      method: 'POST',
+      body: { channel: 'sms', to: '9876543210', text: 'Invoice #42 is due tomorrow' },
+    });
+    assert.strictEqual(res.status, 202);
+    sent = await res.json();
+    assert.strictEqual(sent.provider, 'twilio');
+    assert.strictEqual(sent.provider_id, 'SM_TEST_1');
+    assert.strictEqual(smsCalls.length, 1);
+    assert.ok(smsCalls[0].url.includes('/Accounts/AC_TEST/Messages.json'));
+    assert.ok(smsCalls[0].body.includes('Body=Invoice'));
+
+    // The delivery log records everything, tenant-scoped.
+    const log = await (await viaKey(`/api/teams/${team.id}/messages`)).json();
+    assert.strictEqual(log.length, 2);
+    assert.ok(log.every((m) => m.status === 'sent'));
+    const outsider = await registerAs('msgoutsider', 'msg-password-34');
+    assert.strictEqual((await outsider(`/api/teams/${team.id}/messages`)).status, 403);
+  } finally {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    waServer.close();
+    smsServer.close();
+  }
+});
+
+test('messaging gateway: generic webhook relay + provider failure logging', async () => {
+  const relayed = [];
+  let failNext = false;
+  const relay = http.createServer((req, res) => {
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', () => {
+      if (failNext) {
+        res.statusCode = 500;
+        return res.end(JSON.stringify({ message: 'DLT template missing' }));
+      }
+      relayed.push(JSON.parse(body));
+      res.end('{}');
+    });
+  });
+  await new Promise((r) => relay.listen(0, '127.0.0.1', r));
+  const savedHook = process.env.NOVA_MESSAGE_WEBHOOK;
+  process.env.NOVA_MESSAGE_WEBHOOK = `http://127.0.0.1:${relay.address().port}/send`;
+  try {
+    const owner = await loginAs('msgowner', 'msg-password-12');
+    const team = (await (await owner('/api/teams')).json()).find((t) => t.name === 'Valam Shop');
+
+    // Any channel rides the relay when no direct provider is configured.
+    let res = await owner(`/api/teams/${team.id}/messages`, {
+      method: 'POST',
+      body: { channel: 'sms', to: '+919876543210', text: 'Daily digest ready', template: 'digest_v1' },
+    });
+    assert.strictEqual(res.status, 202);
+    assert.strictEqual((await res.json()).provider, 'webhook');
+    assert.strictEqual(relayed.length, 1);
+    assert.deepStrictEqual(relayed[0], {
+      channel: 'sms',
+      to: '+919876543210',
+      text: 'Daily digest ready',
+      template: 'digest_v1',
+    });
+
+    // Provider failure → 502, and the log keeps the error.
+    failNext = true;
+    res = await owner(`/api/teams/${team.id}/messages`, {
+      method: 'POST',
+      body: { channel: 'sms', to: '+919876543210', text: 'This one bounces' },
+    });
+    assert.strictEqual(res.status, 502);
+    const log = await (await owner(`/api/teams/${team.id}/messages`)).json();
+    assert.strictEqual(log[0].status, 'failed');
+    assert.ok(log[0].error.includes('DLT template missing'));
+  } finally {
+    if (savedHook === undefined) delete process.env.NOVA_MESSAGE_WEBHOOK;
+    else process.env.NOVA_MESSAGE_WEBHOOK = savedHook;
+    relay.close();
+  }
+});
+
 test('health endpoint responds for load balancers', async () => {
   const res = await fetch(`${base}/api/health`);
   assert.strictEqual(res.status, 200);

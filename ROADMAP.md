@@ -92,6 +92,7 @@ The moat is other people's work running on Nova.
 - [ ] TypeScript types + npm publishing for the SDK (next)
 - [ ] Docs site built on Nova itself (dogfooding), template gallery, showcase
 - [x] Plans & entitlements: free/starter/pro with enforced limits (content, members, media, AI, custom domains), live usage meters, operator plan management, 402 upgrade prompts — self-hosted defaults to unlimited
+- [x] Messaging gateway: per-company transactional WhatsApp (Meta Cloud API) + SMS (Twilio-compatible) + generic webhook relay, write-key friendly, rate-limited, with a delivery log — plus a ready-made NestJS `MessageProvider` adapter (`integrations/valam/`) so external multi-tenant apps (VALAM) can route OTPs, digests, and reminders through Nova
 - [ ] Stripe billing integration on top of the plan system (checkout, webhooks → plan changes, invoices) — the open-source core stays complete
 
 ## Operating principles

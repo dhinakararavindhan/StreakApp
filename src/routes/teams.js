@@ -11,6 +11,7 @@ const { aiAvailable, generateSite } = require('../ai');
 const { insertItem, parseWxr, parseMarkdown, importNovaExport } = require('../importers');
 const { PLANS, DEFAULT_PLAN, planOf, limitsOf, usageOf, overLimit } = require('../plans');
 const { rateLimit } = require('../security');
+const { CHANNELS, channelEnabled, sendMessage, normalizePhone } = require('../messaging');
 const contentRoutes = require('./content');
 const tagRoutes = require('./tags');
 const mediaRoutes = require('./media');
@@ -443,6 +444,71 @@ router.delete('/:teamId/api-keys/:keyId', requireTeamRole('admin'), (req, res) =
   if (result.changes === 0) return res.status(404).json({ error: 'Not found' });
   audit(req.team.id, req.user, 'apikey.revoke', `#${req.params.keyId}`);
   res.json({ ok: true });
+});
+
+// ---------- outbound messaging (WhatsApp / SMS gateway) ----------
+
+const messageLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: Number(process.env.RATE_LIMIT_MESSAGES || 60),
+  name: 'outbound messages',
+});
+
+// Send one message. Managers and write API keys — external systems (like a
+// VALAM tenant) hold a write key and treat this as their message provider.
+router.post('/:teamId/messages', requireTeamRole('manager'), messageLimiter, async (req, res) => {
+  const { channel = 'sms', to, text, template } = req.body || {};
+  if (!CHANNELS.includes(channel)) {
+    return res.status(400).json({ error: `channel must be one of: ${CHANNELS.join(', ')}` });
+  }
+  const phone = normalizePhone(to);
+  if (!phone) return res.status(400).json({ error: 'to must be a phone number (8-15 digits, optional +)' });
+  const body = String(text || '').trim();
+  if (!body || body.length > 2000) {
+    return res.status(400).json({ error: 'text is required (max 2000 characters)' });
+  }
+  if (!channelEnabled(channel)) {
+    return res.status(503).json({
+      error: `The ${channel} channel is not configured — set the provider credentials or NOVA_MESSAGE_WEBHOOK`,
+    });
+  }
+  const db = getDb();
+  const row = db
+    .prepare('INSERT INTO messages (team_id, channel, to_addr, text, created_by) VALUES (?, ?, ?, ?, ?)')
+    .run(req.team.id, channel, phone, body, req.user ? req.user.id : null);
+  try {
+    const result = await sendMessage({ channel, to: phone, text: body, template });
+    db.prepare("UPDATE messages SET status = 'sent', provider = ?, provider_id = ? WHERE id = ?").run(
+      result.provider,
+      result.providerId,
+      row.lastInsertRowid
+    );
+    res.status(202).json({
+      id: row.lastInsertRowid,
+      channel,
+      to: phone,
+      status: 'sent',
+      provider: result.provider,
+      provider_id: result.providerId,
+    });
+  } catch (err) {
+    db.prepare("UPDATE messages SET status = 'failed', error = ? WHERE id = ?").run(
+      String(err.message).slice(0, 300),
+      row.lastInsertRowid
+    );
+    res.status(502).json({ error: `Delivery failed: ${err.message}` });
+  }
+});
+
+// Delivery log, newest first.
+router.get('/:teamId/messages', requireTeamRole('manager'), (req, res) => {
+  const rows = getDb()
+    .prepare(
+      `SELECT id, channel, to_addr, text, status, provider, provider_id, error, created_at
+       FROM messages WHERE team_id = ? ORDER BY id DESC LIMIT 50`
+    )
+    .all(req.team.id);
+  res.json(rows);
 });
 
 // ---------- custom content types ----------

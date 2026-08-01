@@ -195,6 +195,7 @@ function buildSpec(baseUrl = '') {
       '/api/teams/{teamId}/forms': { ...teamPath, ...op('get', 'Forms', 'Contact-form inbox (admin)') },
       '/api/teams/{teamId}/webhooks': { ...teamPath, ...op('get', 'Integrations', 'List webhooks (admin)'), ...op('post', 'Integrations', 'Add a signed webhook (admin) — secret shown once') },
       '/api/teams/{teamId}/api-keys': { ...teamPath, ...op('get', 'Integrations', 'List API keys (admin)'), ...op('post', 'Integrations', 'Create a read/write key (admin) — token shown once') },
+      '/api/teams/{teamId}/messages': { ...teamPath, ...op('get', 'Integrations', 'Outbound message log (latest 50)'), ...op('post', 'Integrations', 'Send WhatsApp/SMS ({channel, to, text}) via the configured provider — 202 sent, 503 channel unconfigured, 502 provider error') },
       '/api/teams/{teamId}/import': { ...teamPath, ...op('post', 'Integrations', 'Import WordPress WXR (.xml), Markdown (.md), or a Nova export (.json) — multipart "files" (admin)') },
       '/api/teams/{teamId}/export': { ...teamPath, ...op('get', 'Integrations', 'Full company JSON export (admin)') },
       '/api/teams/{teamId}/apply-template': { ...teamPath, ...op('post', 'Integrations', 'Apply a starter kit ({template}) (admin)') },

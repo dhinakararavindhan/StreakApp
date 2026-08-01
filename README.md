@@ -140,6 +140,12 @@ Every company has a **plan** — `free` (25 content items, 3 members, 100 MB med
 - **Observability**: `/api/metrics` serves Prometheus metrics (requests by route/status class, latency, uptime) to superadmins or a `METRICS_TOKEN` bearer; set `NOVA_ERROR_WEBHOOK` to receive a JSON report on every unhandled server error; `NOVA_LOG=json` emits one structured log line per request.
 - **Backups**: superadmins download a consistent point-in-time snapshot of the whole platform from `/api/platform/backup` (a plain SQLite file — restore by dropping it into `DATA_DIR`).
 
+## Messaging gateway (WhatsApp / SMS)
+
+Every company can send transactional WhatsApp/SMS through `POST /api/teams/:id/messages` (`{channel, to, text}`) — session or **write API key** auth, per-minute rate limit, and a per-company delivery log (`GET` on the same path). Transports are configured server-side: WhatsApp via the Meta Cloud API (`WHATSAPP_TOKEN` + `WHATSAPP_PHONE_ID`), SMS via any Twilio-compatible API (`TWILIO_SID`/`TWILIO_TOKEN`/`TWILIO_FROM`), or `NOVA_MESSAGE_WEBHOOK` as a catch-all JSON relay for other gateways (MSG91, Gupshup, DLT routes). Unconfigured channels answer `503`; provider rejections come back as `502` and land in the log with the error.
+
+This makes Nova a drop-in message provider for external systems: give each tenant of your app a Nova company + write key and point its outbound messages here. A ready-made NestJS adapter for [VALAM](integrations/valam/README.md)'s `MessageProvider` seam ships in `integrations/valam/`.
+
 ## Configuration
 
 | Env var | Default | Purpose |
@@ -163,6 +169,10 @@ Every company has a **plan** — `free` (25 content items, 3 members, 100 MB med
 | `SMTP_URL` | unset | Outbound email via SMTP, e.g. `smtp://user:pass@smtp.example.com:587` (STARTTLS) or `smtps://…:465` |
 | `NOVA_EMAIL_WEBHOOK` | unset | Alternative email transport: `{from, to, subject, text}` is POSTed as JSON to this URL |
 | `EMAIL_FROM` | `nova@<PLATFORM_DOMAIN>` | Sender address on outbound email |
+| `WHATSAPP_TOKEN` / `WHATSAPP_PHONE_ID` | unset | WhatsApp channel via the Meta Cloud API |
+| `TWILIO_SID` / `TWILIO_TOKEN` / `TWILIO_FROM` | unset | SMS channel via any Twilio-compatible Messages API |
+| `NOVA_MESSAGE_WEBHOOK` | unset | Fallback message transport: `{channel, to, text, template}` POSTed as JSON (MSG91/Gupshup/DLT relays) |
+| `RATE_LIMIT_MESSAGES` | `60` | Outbound messages allowed per company per minute |
 
 ## API overview
 
@@ -233,7 +243,7 @@ All `/api` routes accept and return JSON. Authentication uses an httpOnly cookie
 npm test
 ```
 
-74 end-to-end tests (`node --test`, in-memory database): registration, company creation, the three-tier role model, cross-company isolation, content CRUD with cover images, per-company slug scoping, draft/pending/publish visibility, the approval workflow, custom content types with field validation, the WordPress/Markdown/Nova importers, feeds/sitemaps/SEO, rate limiting, theming, starter kits and the AI site builder (mock mode), custom-domain routing, the headless API, dashboards, platform stats, and password reset over both email transports (webhook receiver + fake SMTP server).
+76 end-to-end tests (`node --test`, in-memory database): registration, company creation, the three-tier role model, cross-company isolation, content CRUD with cover images, per-company slug scoping, draft/pending/publish visibility, the approval workflow, custom content types with field validation, the WordPress/Markdown/Nova importers, feeds/sitemaps/SEO, rate limiting, theming, starter kits and the AI site builder (mock mode), custom-domain routing, the headless API, dashboards, platform stats, password reset over both email transports (webhook receiver + fake SMTP server), and the messaging gateway against fake WhatsApp/Twilio provider servers.
 
 ## Project layout
 

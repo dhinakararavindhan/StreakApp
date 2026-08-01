@@ -84,6 +84,10 @@ class NovaClient {
         list: () => req('GET', `${base}/forms`),
         remove: (id) => req('DELETE', `${base}/forms/${id}`),
       },
+      messages: {
+        send: (data) => req('POST', `${base}/messages`, { body: data }),
+        list: () => req('GET', `${base}/messages`),
+      },
       stats: () => req('GET', `${base}/stats`),
       settings: {
         get: () => req('GET', `${base}/settings`),

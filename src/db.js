@@ -205,6 +205,21 @@ function init(options = {}) {
     );
     CREATE INDEX IF NOT EXISTS idx_forms_team ON form_submissions(team_id, id);
 
+    CREATE TABLE IF NOT EXISTS messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+      channel TEXT NOT NULL CHECK (channel IN ('sms', 'whatsapp')),
+      to_addr TEXT NOT NULL,
+      text TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'sent', 'failed')),
+      provider TEXT NOT NULL DEFAULT '',
+      provider_id TEXT NOT NULL DEFAULT '',
+      error TEXT NOT NULL DEFAULT '',
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_messages_team ON messages(team_id, id);
+
     CREATE TABLE IF NOT EXISTS team_settings (
       team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
       key TEXT NOT NULL,
