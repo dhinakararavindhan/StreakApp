@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "Rebuild",
-    "slug": "rebuild",
-    "scheme": "rebuild",
+    "name": "Vowfit",
+    "slug": "vowfit",
+    "scheme": "vowfit",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -15,14 +15,14 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.rebuildapp.rebuild",
+      "bundleIdentifier": "com.vowfit.app",
       "buildNumber": "1",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
-      "package": "com.rebuildapp.rebuild",
+      "package": "com.vowfit.app",
       "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
