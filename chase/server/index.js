@@ -6,7 +6,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 const webpush = createRequire(import.meta.url)('web-push')
-import { SQUADS, TARGET, bowlTarget, BOWL_MIN } from '../src/data.js'
+import { SQUADS, batTarget, bowlTarget, BOWL_MIN } from '../src/data.js'
 import { simulate, simulateBowl, opponentFor } from '../src/sim.js'
 import { rng, hashStr, todayKey } from '../src/rng.js'
 
@@ -75,7 +75,7 @@ function verify(kind, ids, day, level) {
   const xi = ids.map((id) => byId.get(id))
   if (xi.some((p, i) => !p || i + 1 < p.lo || i + 1 > p.hi)) return null
   if (new Set(xi.map((p) => p.name)).size !== 11) return null // a real player only once
-  return simulate(xi, rng(hashStr(day + xi.map((p) => p.id).join('|'))), TARGET)
+  return simulate(xi, rng(hashStr(day + xi.map((p) => p.id).join('|'))), batTarget(level))
 }
 const cleanName = (n) => String(n || 'Anon').replace(/[^\p{L}\p{N} _.-]/gu, '').trim().slice(0, 16) || 'Anon'
 const validDay = (d) => {
@@ -86,7 +86,8 @@ const validDay = (d) => {
 
 function board(kind, scope, device, day) {
   const mine = db.scores.filter((s) => (s.kind || 'bat') === kind)
-  const better = kind === 'bowl' ? (a, b) => a.score - b.score || b.wickets - a.wickets || a.balls - b.balls : (a, b) => b.score - a.score || a.balls - b.balls
+  // bowling: fewest runs wins. batting: chases end at their target, so rank by level first, then runs, then speed.
+  const better = kind === 'bowl' ? (a, b) => a.score - b.score || b.wickets - a.wickets || a.balls - b.balls : (a, b) => (b.level || 10) - (a.level || 10) || b.score - a.score || a.balls - b.balls
   let rows
   if (scope === 'all') {
     const best = new Map()
@@ -94,7 +95,7 @@ function board(kind, scope, device, day) {
     rows = [...best.values()]
   } else rows = mine.filter((s) => s.day === day)
   rows.sort(better)
-  const ranked = rows.map((s, i) => ({ rank: i + 1, name: s.name, score: s.score, wickets: s.wickets, won: s.won, balls: s.balls, you: s.device === device }))
+  const ranked = rows.map((s, i) => ({ rank: i + 1, name: s.name, score: s.score, wickets: s.wickets, won: s.won, balls: s.balls, level: s.level || (s.kind === 'bowl' ? 1 : 10), you: s.device === device }))
   return { top: ranked.slice(0, 50), me: ranked.find((r) => r.you) || null, total: ranked.length }
 }
 
@@ -130,7 +131,7 @@ const server = http.createServer(async (req, res) => {
         const r = verify(kind, xi, day, level)
         if (!r) return send(res, 400, { error: 'invalid XI' })
         if (db.scores.some((s) => s.device === device && s.day === day && (s.kind || 'bat') === kind)) return send(res, 409, { error: 'already submitted' })
-        db.scores.push({ device, kind, name: cleanName(name), day, score: r.score, wickets: r.wickets, won: r.won, balls: r.ballsUsed })
+        db.scores.push({ device, kind, level, name: cleanName(name), day, score: r.score, wickets: r.wickets, won: r.won, balls: r.ballsUsed })
         save()
         return send(res, 200, { score: r.score, ...board(kind, 'today', device, day) })
       }

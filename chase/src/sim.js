@@ -74,20 +74,21 @@ export function simulate(xi, rand, target = 300) {
     events, card, score, wickets,
     ballsUsed: last ? last.ball : 0,
     won: score >= target,
+    target,
     tp,
   }
 }
 
-export function verdict(res, target = 300) {
+export function verdict(res, target = res.target) {
   if (res.won) {
     const o = res.ballsUsed
-    return o < 105 ? 'IMMORTAL — the impossible, done early.' : 'LEGENDARY — 300 chased down!'
+    return o < 105 ? 'IMMORTAL — the impossible, done early.' : `LEGENDARY — ${target} chased down!`
   }
   const d = target - res.score
   if (d <= 5) return `Heartbreak — ${d} short!`
   if (d <= 30) return 'So close. A real shot at history.'
-  if (d <= 70) return 'Respectable, but 300 is still a mountain.'
-  if (d <= 110) return 'A strong T20 total. Nowhere near 300.'
+  if (d <= 70) return `Respectable, but ${target} is still a mountain.`
+  if (d <= 110) return `A strong T20 total, but ${target} was too many.`
   return 'Collapse. Back to the drawing board.'
 }
 

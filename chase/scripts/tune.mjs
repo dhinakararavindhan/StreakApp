@@ -1,4 +1,4 @@
-import { SQUADS } from '../src/data.js'
+import { SQUADS, batTarget } from '../src/data.js'
 import { simulate } from '../src/sim.js'
 import { rng } from '../src/rng.js'
 
@@ -22,10 +22,10 @@ function randomXI(skill) {
   }
   return xi
 }
-for (const skill of [1, 2, 3, 6]) {
+for (const skill of [1, 3, 6]) {
   const sc = []
-  for (let i = 0; i < 3000; i++) sc.push(simulate(randomXI(skill), r).score)
+  for (let i = 0; i < 4000; i++) sc.push(simulate(randomXI(skill), r, 9999).score) // uncapped: how many could they make?
   sc.sort((a, b) => a - b)
-  const q = (p) => sc[Math.floor(p * (sc.length - 1))]
-  console.log(`skill ${skill}: p10 ${q(.1)} med ${q(.5)} p90 ${q(.9)} max ${q(1)} wins ${(sc.filter((x) => x >= 300).length / sc.length * 100).toFixed(2)}%`)
+  const wins = (target) => (sc.filter((x) => x >= target).length / sc.length * 100).toFixed(1)
+  console.log(`skill ${skill}: med ${sc[Math.floor(sc.length / 2)]} | win% by level:`, Array.from({ length: 10 }, (_, i) => `L${i + 1}(${batTarget(i + 1)}) ${wins(batTarget(i + 1))}`).join('  '))
 }

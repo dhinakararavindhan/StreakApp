@@ -1,6 +1,6 @@
 import { todayKey } from './rng'
 const KEY = 'chase300.v1'
-const empty = { streak: 0, best: 0, bestBowl: null, bowlLevel: 1, bowlCleared: 0, lastPlayed: null, history: {}, played: 0, wins: 0 }
+const empty = { streak: 0, best: 0, bestBowl: null, bowlLevel: 1, bowlCleared: 0, batLevel: 1, batCleared: 0, lastPlayed: null, history: {}, played: 0, wins: 0 }
 
 export function load() {
   try { return { ...empty, ...JSON.parse(localStorage.getItem(KEY) || '{}') } } catch { return { ...empty } }
@@ -25,7 +25,13 @@ function bump(s, kind, score, won, level) {
       s.bowlLevel = Math.min(10, Math.max(s.bowlLevel || 1, level + 1))
     }
   }
-  if (kind !== 'bowl') s.best = Math.max(s.best, score)
+  if (kind !== 'bowl') {
+    s.best = Math.max(s.best, score)
+    if (won) {
+      s.batCleared = Math.max(s.batCleared || 0, level)
+      s.batLevel = Math.min(10, Math.max(s.batLevel || 1, level + 1))
+    }
+  }
   s.played += 1
   if (won) s.wins += 1
 }
