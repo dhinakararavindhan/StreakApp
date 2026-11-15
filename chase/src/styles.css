@@ -513,3 +513,17 @@ button.ghost:active:not(:disabled), .player:active:not(:disabled) { transform: s
   .prog { padding: 6px 10px; }
   .pills span { padding: 5px 8px; }
 }
+
+/* ---------- how to play: two cards per row, pinned CTA ---------- */
+.howto { gap: 10px; padding-bottom: 84px; }
+.howto h1 { margin: 2px 0 0; text-align: center; font-size: 1.55rem; }
+.hgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.hcard { background: var(--sheen), var(--glass); border: 1px solid var(--glass-edge); border-radius: 18px; box-shadow: var(--glass-hi), var(--depth-sm); padding: 11px 12px; display: flex; flex-direction: column; gap: 5px; -webkit-backdrop-filter: var(--blur-sm); backdrop-filter: var(--blur-sm); }
+.hcard .hh { display: flex; align-items: center; gap: 8px; }
+.hcard .ic { width: 32px; height: 32px; border-radius: 11px; display: grid; place-items: center; font-size: 1.05rem; flex: none; background: var(--accent-soft); }
+.hcard b { font-size: 0.86rem; line-height: 1.2; letter-spacing: -0.01em; }
+.hcard p { margin: 0; color: var(--mut); font-size: 0.74rem; line-height: 1.4; font-weight: 500; }
+.howto .fine { text-align: center; margin: 0; }
+.hcta { position: fixed; left: 0; right: 0; bottom: 0; z-index: 25; display: flex; justify-content: center; padding: 10px 16px calc(12px + env(safe-area-inset-bottom)); pointer-events: none; }
+.hcta button { pointer-events: auto; width: 100%; max-width: 488px; }
+@media (max-height: 760px) { .hcard { padding: 9px 10px; gap: 3px; } .hcard p { font-size: 0.7rem; } .hgrid { gap: 8px; } }

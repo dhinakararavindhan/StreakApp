@@ -753,27 +753,30 @@ function VsPanel({ kind, seedStr, vs, result, cap, picks }) {
 
 function HowTo({ onClose }) {
   const steps = [
-    ['🎡', 'Spin the wheel', 'Every spin shows a famous franchise T20 squad from leagues around the world.'],
-    ['🧢', 'Draft your side', 'Pick one player per spin, no undos. In batting, each player must bat where he actually batted. You get one re-roll.'],
-    ['🏏', 'Batting challenge', 'Draft an XI and chase the target in 20 overs. Level 1 is 200. Level 13 is 320: almost impossible.'],
-    ['🎯', 'Bowling challenge', 'Draft 5 bowlers and hold the opposition under the target. Level 1 is under 60, level 10 is under 15.'],
-    ['⬆️', 'Climb the levels', 'Win a level to unlock the next. A new wheel every day, and playing daily builds your streak 🔥.'],
-    ['🌦️', 'Read the conditions', 'Every day has a pitch (spinning, green, flat, dew, slow) and a draft twist. Pick players who suit them.'],
-    ['⭐', 'Tactics', 'Choose a captain for a rating boost. Swap batting order a little, and put bowlers in the phase they suit.'],
-    ['⚡', 'Super Over', 'Draft 3 hitters and a bowler, bat one over, then defend it. Quick, and every pick matters.'],
-    ['🧊', 'Streak freeze', 'Win a daily game to earn a freeze that saves your streak if you miss a day.'],
-    ['⚔️', 'Challenge a friend', 'Play, then send your link. They get the same wheel. Higher score wins.'],
+    ['🎡', 'Spin the wheel', 'Each spin shows a famous franchise T20 squad.'],
+    ['🧢', 'Draft your side', 'One player per spin. No undos, one re-roll. Batters keep their usual spots.'],
+    ['🏏', 'Batting', 'Chase the target in 20 overs. Level 1 is 200, level 13 is 320.'],
+    ['🎯', 'Bowling', 'Draft 5 bowlers and hold them under the target: 60 down to 15.'],
+    ['⬆️', 'Levels', 'Win a level to unlock the next. Daily games build a 🔥 streak and weekly points.'],
+    ['🌦️', 'Conditions', 'Every day has a pitch and a draft twist. Pick players who suit them.'],
+    ['⭐', 'Tactics', 'Pick a captain, tweak the batting order, and fit bowlers to the right phase.'],
+    ['⚡', 'Super Over', '3 hitters and 1 bowler: bat one over, then defend it.'],
+    ['🧊', 'Streak freeze', 'Win a daily game to earn one. It saves a missed day.'],
+    ['⚔️', 'Challenge a friend', 'You set a score. They get the same wheel and must beat it.'],
   ]
   return (
     <main className="howto">
       <h1>How to play</h1>
-      <ol>
+      <div className="hgrid">
         {steps.map(([icon, title, text]) => (
-          <li key={title}><span className="ic">{icon}</span><div><b>{title}</b><p>{text}</p></div></li>
+          <div className="hcard" key={title}>
+            <div className="hh"><span className="ic">{icon}</span><b>{title}</b></div>
+            <p>{text}</p>
+          </div>
         ))}
-      </ol>
+      </div>
       <p className="fine">Ratings are fan estimates, and some line-ups may not be exact.</p>
-      <button className="primary" onClick={onClose}>Let's play</button>
+      <div className="hcta"><button className="primary" onClick={onClose}>Let's play</button></div>
     </main>
   )
 }
