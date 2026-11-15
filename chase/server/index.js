@@ -49,9 +49,9 @@ async function sendReminders() {
     if (localHour(rec.tz) < REMINDER_HOUR || rec.lastReminded === today) continue
     if (db.scores.some((s) => s.device === device && s.day === today)) continue
     const streak = streakOf(device, today)
-    const body = streak > 0 ? `Your ${streak}-day streak ends tonight. Today's wheel is waiting! 🔥` : "Today's wheel is ready. Can you chase 500?"
+    const body = streak > 0 ? `Your ${streak}-day streak ends tonight. Today's wheel is waiting! 🔥` : "Today's wheel is ready. Can you chase 300?"
     try {
-      await webpush.sendNotification(rec.sub, JSON.stringify({ title: 'Chase 500', body, url: '/' }))
+      await webpush.sendNotification(rec.sub, JSON.stringify({ title: 'Chase 300', body, url: '/' }))
       rec.lastReminded = today; save()
     } catch (e) {
       if (e.statusCode === 404 || e.statusCode === 410) { delete db.subs[device]; save() }
