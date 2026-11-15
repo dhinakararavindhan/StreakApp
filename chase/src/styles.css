@@ -278,3 +278,140 @@ input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-so
 .nav button { flex: 1; background: transparent; padding: 8px 4px; border-radius: 18px; display: flex; flex-direction: column; align-items: center; gap: 2px; color: var(--mut); font-weight: 700; font-size: 0.68rem; }
 .nav button span { font-size: 1.2rem; line-height: 1; }
 .nav button.on { background: var(--accent-soft); color: var(--accent); }
+
+/* =====================================================================
+   LIQUID GLASS LAYER: translucent frosted surfaces, bright edges,
+   specular sheen, layered shadows and a soft colour backdrop.
+   ===================================================================== */
+:root {
+  --glass: rgba(255, 255, 255, 0.55);
+  --glass-soft: rgba(255, 255, 255, 0.4);
+  --glass-edge: rgba(255, 255, 255, 0.8);
+  --sheen: linear-gradient(135deg, rgba(255, 255, 255, 0.7) 0%, rgba(255, 255, 255, 0.22) 55%, rgba(255, 255, 255, 0.5) 100%);
+  --glass-hi: inset 0 1px 0 rgba(255, 255, 255, 0.95), inset 0 -1px 0 rgba(255, 255, 255, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.3);
+  --depth: 0 1px 1px rgba(20, 28, 80, 0.05), 0 4px 10px rgba(20, 28, 80, 0.06), 0 14px 30px rgba(45, 52, 160, 0.10), 0 34px 60px rgba(91, 91, 240, 0.10);
+  --depth-sm: 0 1px 1px rgba(20, 28, 80, 0.05), 0 4px 12px rgba(45, 52, 160, 0.09), 0 12px 24px rgba(91, 91, 240, 0.07);
+  --blur: blur(22px) saturate(180%);
+  --blur-sm: blur(14px) saturate(160%);
+}
+:root[data-theme='dark'] {
+  --glass: rgba(28, 34, 74, 0.5);
+  --glass-soft: rgba(28, 34, 74, 0.34);
+  --glass-edge: rgba(255, 255, 255, 0.16);
+  --sheen: linear-gradient(135deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.03) 55%, rgba(255, 255, 255, 0.09) 100%);
+  --glass-hi: inset 0 1px 0 rgba(255, 255, 255, 0.22), inset 0 -1px 0 rgba(255, 255, 255, 0.04), inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  --depth: 0 1px 1px rgba(0, 0, 0, 0.3), 0 6px 14px rgba(0, 0, 0, 0.3), 0 18px 36px rgba(0, 0, 0, 0.35), 0 40px 70px rgba(70, 70, 220, 0.16);
+  --depth-sm: 0 1px 1px rgba(0, 0, 0, 0.3), 0 6px 16px rgba(0, 0, 0, 0.3), 0 14px 28px rgba(70, 70, 220, 0.12);
+}
+
+/* colourful backdrop that the glass refracts */
+body { background: #eaeefb; }
+:root[data-theme='dark'] body { background: #080c1e; }
+body::before {
+  content: ''; position: fixed; inset: -25%; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(38% 32% at 18% 14%, rgba(139, 92, 246, 0.50), transparent 70%),
+    radial-gradient(34% 30% at 86% 18%, rgba(56, 189, 248, 0.45), transparent 70%),
+    radial-gradient(40% 34% at 78% 86%, rgba(244, 114, 182, 0.40), transparent 70%),
+    radial-gradient(36% 32% at 12% 78%, rgba(91, 91, 240, 0.38), transparent 70%);
+  animation: drift 24s ease-in-out infinite alternate;
+}
+:root[data-theme='dark'] body::before {
+  background:
+    radial-gradient(38% 32% at 18% 14%, rgba(124, 77, 255, 0.40), transparent 70%),
+    radial-gradient(34% 30% at 86% 18%, rgba(14, 165, 233, 0.30), transparent 70%),
+    radial-gradient(40% 34% at 78% 86%, rgba(217, 70, 239, 0.28), transparent 70%),
+    radial-gradient(36% 32% at 12% 78%, rgba(67, 56, 202, 0.40), transparent 70%);
+}
+@keyframes drift { from { transform: translate3d(-3%, -2%, 0) scale(1); } to { transform: translate3d(3%, 3%, 0) scale(1.08); } }
+
+/* frosted surfaces (real blur) */
+.card, .mode, .stats > div, .brief > div, .meter, .tabs, .so-board > div, .theme, .ghost, .nav nav {
+  background: var(--sheen), var(--glass);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--glass-hi), var(--depth);
+  -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
+}
+.ghost, .theme { box-shadow: var(--glass-hi), var(--depth-sm); -webkit-backdrop-filter: var(--blur-sm); backdrop-filter: var(--blur-sm); }
+.brief > div, .meter { box-shadow: var(--glass-hi), var(--depth-sm); }
+
+/* list items: glass look without blur (kept light for smooth scrolling) */
+.player, .slots li.filled, .log, .card-table, .rows li, .recent li, .badge, .recap, .howto li, .levels button, .cal span, .cap, .tabs .on {
+  background: var(--sheen), var(--glass);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--glass-hi), var(--depth-sm);
+}
+.slots li { background: var(--glass-soft); border: 1.5px dashed var(--glass-edge); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4); }
+.slots li.filled { border-style: solid; }
+.card-table th { background: rgba(255, 255, 255, 0.35); }
+:root[data-theme='dark'] .card-table th { background: rgba(255, 255, 255, 0.05); }
+.rows li.you, .player.sel, .levels .on, .slots li.can, .so-board .on, .badge.got {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.22), rgba(91, 91, 240, 0.12)), var(--glass);
+  border-color: rgba(91, 91, 240, 0.55);
+  box-shadow: var(--glass-hi), 0 0 0 3px rgba(91, 91, 240, 0.14), var(--depth-sm);
+}
+.badge.got { background: linear-gradient(135deg, rgba(251, 191, 36, 0.28), rgba(245, 158, 11, 0.10)), var(--glass); border-color: rgba(245, 158, 11, 0.6); box-shadow: var(--glass-hi), 0 0 0 3px rgba(245, 158, 11, 0.12), var(--depth-sm); }
+.levels .cleared { background: linear-gradient(135deg, rgba(18, 166, 106, 0.2), rgba(18, 166, 106, 0.06)), var(--glass); border-color: rgba(18, 166, 106, 0.35); }
+.cal .on { background: var(--grad); border-color: transparent; box-shadow: var(--glass-hi), 0 4px 10px rgba(91, 91, 240, 0.35); }
+.cal .won { background: linear-gradient(135deg, #fbbf24, #f59e0b); border-color: transparent; box-shadow: var(--glass-hi), 0 4px 10px rgba(245, 158, 11, 0.4); }
+.tabs { padding: 5px; box-shadow: inset 0 1px 3px rgba(20, 28, 80, 0.08), var(--glass-hi); }
+.tabs .on { box-shadow: var(--glass-hi), 0 4px 12px rgba(91, 91, 240, 0.18); }
+.log { -webkit-backdrop-filter: var(--blur-sm); backdrop-filter: var(--blur-sm); }
+
+/* glossy primary buttons + glowing hero elements */
+.primary {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0) 52%), var(--grad);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55), inset 0 -2px 6px rgba(40, 30, 160, 0.25), 0 2px 4px rgba(91, 91, 240, 0.3), 0 12px 28px rgba(91, 91, 240, 0.42), 0 24px 44px rgba(139, 92, 246, 0.22);
+  text-shadow: 0 1px 2px rgba(40, 30, 160, 0.35);
+}
+.primary:active:not(:disabled) { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), inset 0 2px 8px rgba(40, 30, 160, 0.3), 0 6px 14px rgba(91, 91, 240, 0.35); }
+.wheel {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0) 55%), var(--grad);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), inset 0 -3px 10px rgba(40, 30, 160, 0.25), 0 14px 34px rgba(91, 91, 240, 0.4), 0 30px 60px rgba(139, 92, 246, 0.25);
+  text-shadow: 0 2px 6px rgba(40, 30, 160, 0.35);
+}
+.wheel.spinning { background: var(--sheen), var(--glass); border: 1px dashed var(--glass-edge); box-shadow: var(--glass-hi), var(--depth-sm); text-shadow: none; -webkit-backdrop-filter: var(--blur-sm); backdrop-filter: var(--blur-sm); }
+.logo {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.45), rgba(255, 255, 255, 0) 55%), var(--grad);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.6), inset 0 -4px 12px rgba(40, 30, 160, 0.3), 0 16px 36px rgba(91, 91, 240, 0.5), 0 32px 64px rgba(139, 92, 246, 0.3);
+  text-shadow: 0 2px 6px rgba(40, 30, 160, 0.4);
+}
+
+/* chips, avatars, bars: glassy details */
+.chip { background: rgba(91, 91, 240, 0.12); border: 1px solid rgba(91, 91, 240, 0.18); backdrop-filter: blur(6px); }
+.chip.pw { background: rgba(229, 72, 77, 0.12); border-color: rgba(229, 72, 77, 0.2); }
+.chip.an { background: rgba(29, 111, 214, 0.12); border-color: rgba(29, 111, 214, 0.2); }
+.chip.tg, .chip.up { background: rgba(18, 166, 106, 0.13); border-color: rgba(18, 166, 106, 0.22); }
+.chip.dn { background: rgba(229, 72, 77, 0.12); border-color: rgba(229, 72, 77, 0.2); }
+.av { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), inset 0 -3px 6px rgba(0, 0, 0, 0.12), 0 6px 14px rgba(20, 28, 80, 0.22); border: 1px solid rgba(255, 255, 255, 0.35); }
+.bar { background: rgba(120, 130, 190, 0.18); box-shadow: inset 0 1px 3px rgba(20, 28, 80, 0.12); }
+.bar div { box-shadow: 0 0 10px rgba(139, 92, 246, 0.55); }
+.rk { background: linear-gradient(135deg, rgba(139, 92, 246, 0.25), rgba(91, 91, 240, 0.12)); box-shadow: var(--glass-hi); }
+.unlock { background: rgba(18, 166, 106, 0.14); border: 1px solid rgba(18, 166, 106, 0.25); -webkit-backdrop-filter: var(--blur-sm); backdrop-filter: var(--blur-sm); }
+.mode .done { background: rgba(91, 91, 240, 0.12); border: 1px solid rgba(91, 91, 240, 0.2); }
+input { background: rgba(255, 255, 255, 0.55); border: 1px solid var(--glass-edge); box-shadow: inset 0 2px 5px rgba(20, 28, 80, 0.08), var(--glass-hi); -webkit-backdrop-filter: var(--blur-sm); backdrop-filter: var(--blur-sm); }
+:root[data-theme='dark'] input { background: rgba(255, 255, 255, 0.06); }
+
+/* floating glass tab bar */
+.nav nav { box-shadow: var(--glass-hi), 0 2px 4px rgba(20, 28, 80, 0.06), 0 16px 36px rgba(45, 52, 160, 0.22), 0 30px 60px rgba(91, 91, 240, 0.16); border-radius: 28px; -webkit-backdrop-filter: blur(26px) saturate(190%); backdrop-filter: blur(26px) saturate(190%); }
+.nav button.on { background: linear-gradient(135deg, rgba(139, 92, 246, 0.22), rgba(91, 91, 240, 0.14)); box-shadow: var(--glass-hi), 0 4px 12px rgba(91, 91, 240, 0.2); }
+
+/* tactile lift */
+.mode, .card { transition: transform 0.15s, box-shadow 0.2s; }
+button.ghost:active:not(:disabled), .player:active:not(:disabled) { transform: scale(0.98); }
+
+/* fallbacks: no blur support, user prefers less transparency, or reduced motion */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .card, .mode, .stats > div, .brief > div, .meter, .tabs, .so-board > div, .theme, .ghost, .nav nav, .player, .slots li.filled, .log, .card-table, .rows li, .recent li, .badge, .recap, .howto li, input {
+    background: var(--card); -webkit-backdrop-filter: none; backdrop-filter: none;
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .card, .mode, .stats > div, .brief > div, .meter, .tabs, .so-board > div, .theme, .ghost, .nav nav, .player, .slots li.filled, .log, .card-table, .rows li, .recent li, .badge, .recap, .howto li, input {
+    background: var(--card); -webkit-backdrop-filter: none; backdrop-filter: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) { body::before { animation: none; } .slots li.can { animation: none; } }
