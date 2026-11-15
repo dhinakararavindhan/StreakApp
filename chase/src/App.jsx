@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { SQUADS, SLOT_LABELS, TARGET, BALLS, BOWL_SLOTS, BOWL_LEVELS, bowlTarget, BOWL_MIN, BAT_LEVELS, batTarget } from './data.js'
+import { SQUADS, SLOT_LABELS, TARGET, BALLS, BOWL_SLOTS, BOWL_LEVELS, bowlTarget, BOWL_MIN, BAT_LEVELS, batTarget, OPEN_TARGET } from './data.js'
 import { hashStr, rng, todayKey } from './rng.js'
 import { simulate, teamRatings, verdict, simulateBowl, simulateSuper, superOpponent, opponentFor, bowlRatings, bowlVerdict } from './sim.js'
 import { load, liveStreak, recordDaily, recordPractice, recordVs, histKey, seenIntro, markIntroSeen, BADGES } from './storage.js'
@@ -22,6 +22,7 @@ export default function App() {
   const [result, setResult] = useState(null)
   const [stats, setStats] = useState(load())
   const [vsInfo, setVsInfo] = useState(null)
+  const [vs, setVs] = useState(null) // head-to-head: { role: 'first'|'follower', target, firstScore, creator }
 
   // open a friend's challenge link (?vs=CODE)
   useEffect(() => {
@@ -32,8 +33,9 @@ export default function App() {
   const leaveVs = () => { try { window.history.replaceState(null, '', '/') } catch {}; setScreen('home') }
   const newCode = () => Array.from({ length: 6 }, () => 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 31)]).join('')
 
-  const start = (m, k = 'bat', lv = 1, code) => {
+  const start = (m, k = 'bat', lv = 1, code, info) => {
     const key = m === 'daily' ? todayKey() : m === 'vs' ? 'vs-' + (code || newCode()) : String(Date.now())
+    setVs(m === 'vs' ? (code ? { role: 'follower', target: info.target, firstScore: info.firstScore, creator: info.creator } : { role: 'first', target: OPEN_TARGET }) : null)
     setLevel(lv); setKind(k); setMode(m); setSeedStr(key); setCap(-1)
     setXi(Array(11).fill(null)); setAttack(Array(5).fill(null)); setSoPicks(Array(4).fill(null)); setResult(null); setScreen('draft')
   }
@@ -48,10 +50,10 @@ export default function App() {
     setCap(capIdx)
     if (kind === 'bat') {
       const rand = rng(hashStr(seedStr + order.map((p) => p.id).join('|')))
-      setXi(order); setResult(simulate(order, rand, batTarget(level), { cap: capIdx, cond }))
+      setXi(order); setResult(simulate(order, rand, vs ? vs.target : batTarget(level), { cap: capIdx, cond }))
     } else if (kind === 'bowl') {
       const rand = rng(hashStr(seedStr + 'bowl' + order.map((p) => p.id).join('|')))
-      setAttack(order); setResult(simulateBowl(order, opponentFor(seedStr).players, rand, bowlTarget(level), { cap: capIdx, cond }))
+      setAttack(order); setResult(simulateBowl(order, opponentFor(seedStr).players, rand, vs ? vs.target : bowlTarget(level), { cap: capIdx, cond }))
     } else {
       const rand = rng(hashStr(seedStr + 'super' + order.map((p) => p.id).join('|')))
       setSoPicks(order); setResult(simulateSuper(order, superOpponent(seedStr), rand, { cap: capIdx, cond }))
@@ -74,17 +76,17 @@ export default function App() {
       {screen === 'howto' && <HowTo onClose={() => { markIntroSeen(); setScreen('home') }} />}
       {screen === 'stats' && <Stats stats={stats} onBack={home} />}
       {screen === 'recap' && <Recap onBack={home} />}
-      {screen === 'vs' && <VsIntro info={vsInfo} onPlay={() => start('vs', vsInfo.kind, vsInfo.level, vsInfo.code)} onHome={leaveVs} />}
+      {screen === 'vs' && <VsIntro info={vsInfo} onPlay={() => start('vs', vsInfo.kind, 1, vsInfo.code, vsInfo)} onHome={leaveVs} />}
       {screen === 'board' && <Board onBack={home} initialKind={kind === 'super' ? 'bat' : kind} />}
-      {screen === 'draft' && kind === 'bat' && <Draft key={seedStr} level={level} seedStr={seedStr} mode={mode} xi={xi} setXi={setXi} onDone={toTactics} onExit={home} />}
-      {screen === 'draft' && kind === 'bowl' && <BowlDraft key={seedStr} level={level} seedStr={seedStr} mode={mode} attack={attack} setAttack={setAttack} onDone={toTactics} onExit={home} />}
+      {screen === 'draft' && kind === 'bat' && <Draft key={seedStr} vs={vs} level={level} seedStr={seedStr} mode={mode} xi={xi} setXi={setXi} onDone={toTactics} onExit={home} />}
+      {screen === 'draft' && kind === 'bowl' && <BowlDraft key={seedStr} vs={vs} level={level} seedStr={seedStr} mode={mode} attack={attack} setAttack={setAttack} onDone={toTactics} onExit={home} />}
       {screen === 'draft' && kind === 'super' && <SuperDraft key={seedStr} seedStr={seedStr} mode={mode} picks={soPicks} setPicks={setSoPicks} onDone={toTactics} onExit={home} />}
       {screen === 'tactics' && <Tactics key={seedStr + kind} kind={kind} picks={picks} seedStr={seedStr} onConfirm={confirmTactics} />}
       {screen === 'chase' && kind === 'bat' && <Chase xi={xi} result={result} onDone={done} />}
       {screen === 'chase' && kind === 'bowl' && <BowlInnings result={result} onDone={done} />}
       {screen === 'chase' && kind === 'super' && <SuperInnings result={result} onDone={done} />}
-      {screen === 'result' && kind === 'bat' && <Result level={level} cap={cap} xi={xi} result={result} mode={mode} stats={stats} seedStr={seedStr} onHome={home} onPractice={() => start('practice', 'bat', level)} onBoard={() => setScreen('board')} />}
-      {screen === 'result' && kind === 'bowl' && <BowlResult level={level} cap={cap} attack={attack} result={result} mode={mode} stats={stats} seedStr={seedStr} onHome={home} onPractice={() => start('practice', 'bowl', level)} onBoard={() => setScreen('board')} />}
+      {screen === 'result' && kind === 'bat' && <Result vs={vs} level={level} cap={cap} xi={xi} result={result} mode={mode} stats={stats} seedStr={seedStr} onHome={home} onPractice={() => start('practice', 'bat', level)} onBoard={() => setScreen('board')} />}
+      {screen === 'result' && kind === 'bowl' && <BowlResult vs={vs} level={level} cap={cap} attack={attack} result={result} mode={mode} stats={stats} seedStr={seedStr} onHome={home} onPractice={() => start('practice', 'bowl', level)} onBoard={() => setScreen('board')} />}
       {navOn && (
         <div className="nav"><nav>
           {[['home', '🏠', 'Home'], ['board', '🏆', 'Boards'], ['stats', '📊', 'Stats'], ['recap', '📰', 'Recap']].map(([s, i, l]) => (
@@ -147,10 +149,10 @@ function Home({ stats, onStart, onBoard, onStats, onHelp, onRecap }) {
 
       <section className="mode">
         <h2>⚔️ Challenge a friend</h2>
-        <p>Same wheel, same opponent. Play, then send your link. Whoever scores better wins.</p>
+        <p>You play first and set a score. Your friend gets the same wheel and must beat it: score 159 and they chase 160.</p>
         <div className="row">
-          <button className="ghost" onClick={() => onStart('vs', 'bat', bl)}>🏏 Batting (L{bl})</button>
-          <button className="ghost" onClick={() => onStart('vs', 'bowl', lv)}>🎯 Bowling (L{lv})</button>
+          <button className="ghost" onClick={() => onStart('vs', 'bat')}>🏏 Batting</button>
+          <button className="ghost" onClick={() => onStart('vs', 'bowl')}>🎯 Bowling</button>
         </div>
       </section>
 
@@ -184,7 +186,7 @@ function LevelPicker({ levels, unlocked, cleared, value, onChange, text }) {
   )
 }
 
-function Draft({ level, seedStr, mode, xi, setXi, onDone, onExit }) {
+function Draft({ vs, level, seedStr, mode, xi, setXi, onDone, onExit }) {
   const mod = useMemo(() => modifierFor(seedStr), [seedStr])
   const spins = useMemo(() => makeSpins(hashStr('spin' + seedStr), squadsFor(mod)), [seedStr, mod])
   const [spinIdx, setSpinIdx] = useState(0)
@@ -229,11 +231,11 @@ function Draft({ level, seedStr, mode, xi, setXi, onDone, onExit }) {
     <main className={'draft' + (sel ? ' has-sheet' : '')}>
       <header>
         <button className="link" onClick={onExit}>✕</button>
-        <b>{mode === 'daily' ? 'Daily draft' : mode === 'vs' ? 'Challenge' : 'Practice'} · L{level}</b>
+        <b>{mode === 'daily' ? `Daily draft · L${level}` : mode === 'vs' ? 'Challenge' : `Practice · L${level}`}</b>
         <span>{picked}/11</span>
       </header>
 
-      <p className="hint">Level {level}: chase <b>{batTarget(level)}</b> in 20 overs</p>
+      <p className="hint">{vs ? (vs.role === 'first' ? <>Set a score: your friend must beat it</> : <>Chase <b>{vs.target}</b> in 20 overs</>) : <>Level {level}: chase <b>{batTarget(level)}</b> in 20 overs</>}</p>
       <Brief seedStr={seedStr} compact />
       <div className="ratings">
         <Meter label="BAT" v={r.bat} /><Meter label="POW" v={r.pow} /><Meter label="BWL" v={r.bwl} />
@@ -319,13 +321,14 @@ function Chase({ xi, result, onDone }) {
   const balls = cur ? cur.ball : 0
   const rrr = balls < BALLS ? ((result.target - score) / ((BALLS - balls) / 6)).toFixed(1) : '–'
   const notable = shown.filter((e) => e.wicket || e.runs >= 4).slice(-30)
+  const open = result.target >= OPEN_TARGET
 
   return (
     <main className="chase">
-      <div className="target">Target {result.target}</div>
+      <div className="target">{open ? 'Setting the score for your friend' : `Target ${result.target}`}</div>
       <div className="big">{score}<small>/{wk}</small></div>
-      <div className="line">{oversStr(balls)} ov · Req {rrr}/ov · {Math.max(0, result.target - score)} to win</div>
-      <div className="bar big"><div style={{ width: `${Math.min(100, (score / result.target) * 100)}%` }} /></div>
+      <div className="line">{oversStr(balls)} ov · {open ? `Run rate ${balls ? (score / (balls / 6)).toFixed(1) : '0.0'}` : `Req ${rrr}/ov · ${Math.max(0, result.target - score)} to win`}</div>
+      <div className="bar big"><div style={{ width: `${open ? (balls / BALLS) * 100 : Math.min(100, (score / result.target) * 100)}%` }} /></div>
       <ul className="log" ref={logRef}>
         {notable.map((e) => (
           <li key={e.ball} className={e.wicket ? 'w' : e.runs === 6 ? 's' : 'f'}>
@@ -344,7 +347,7 @@ function Chase({ xi, result, onDone }) {
   )
 }
 
-function Result({ level, cap, xi, result, mode, stats, seedStr, onHome, onPractice, onBoard }) {
+function Result({ vs, level, cap, xi, result, mode, stats, seedStr, onHome, onPractice, onBoard }) {
   const [copied, setCopied] = useState(false)
   const [name, setNameState] = useState(getName())
   const [sub, setSub] = useState(mode === 'daily' ? 'ask' : 'none') // ask | sending | done | error
@@ -372,9 +375,9 @@ function Result({ level, cap, xi, result, mode, stats, seedStr, onHome, onPracti
   return (
     <main className="result">
       <div className={'big' + (result.won ? ' win' : '')}>{result.score}<small>/{result.wickets}</small></div>
-      <p className="verdict">{verdict(result)}</p>
-      {result.won && <p className="unlock">{level >= BAT_LEVELS ? `🏆 All ${BAT_LEVELS} levels cleared!` : `🔓 Level ${level} cleared — level ${level + 1} unlocked (chase ${batTarget(level + 1)})`}</p>}
-      <p className="line">Level {level} · {oversStr(result.ballsUsed)} overs{mode === 'daily' ? ` · 🔥 ${streak}-day streak` : ''}</p>
+      {mode === 'vs' && vs ? <VsSummary vs={vs} result={result} kind="bat" /> : <p className="verdict">{verdict(result)}</p>}
+      {mode !== 'vs' && result.won && <p className="unlock">{level >= BAT_LEVELS ? `🏆 All ${BAT_LEVELS} levels cleared!` : `🔓 Level ${level} cleared — level ${level + 1} unlocked (chase ${batTarget(level + 1)})`}</p>}
+      <p className="line">{mode === 'vs' ? '' : `Level ${level} · `}{oversStr(result.ballsUsed)} overs{mode === 'daily' ? ` · 🔥 ${streak}-day streak` : ''}</p>
       <table className="card-table">
         <thead><tr><th>Batter</th><th>R</th><th>B</th><th>4s</th><th>6s</th></tr></thead>
         <tbody>
@@ -385,7 +388,7 @@ function Result({ level, cap, xi, result, mode, stats, seedStr, onHome, onPracti
           ))}
         </tbody>
       </table>
-      {mode === 'vs' && <VsPanel kind="bat" seedStr={seedStr} level={level} cap={cap} picks={xi} />}
+      {mode === 'vs' && <VsPanel kind="bat" seedStr={seedStr} vs={vs} result={result} cap={cap} picks={xi} />}
       {sub === 'ask' && (
         <div className="card submit">
           <input value={name} maxLength={16} placeholder="Your name" onChange={(e) => setNameState(e.target.value)} />
@@ -398,7 +401,7 @@ function Result({ level, cap, xi, result, mode, stats, seedStr, onHome, onPracti
         <button className="ghost" onClick={onBoard}>{rank ? `🏆 You're #${rank.rank} today — view leaderboard` : '🏆 View leaderboard'}</button>
       )}
       <button className="primary" onClick={share}>{copied ? 'Copied!' : 'Share result'}</button>
-      <button className="ghost" onClick={() => shareCard({ mode: 'Batting', level, score: result.score, wickets: result.wickets, won: result.won, line: verdict(result), names: xi.map((p) => p.name), footer: window.location.host })}>🖼️ Share as image</button>
+      <button className="ghost" onClick={() => shareCard({ mode: mode === 'vs' ? 'Challenge · Batting' : 'Batting', level: mode === 'vs' ? null : level, score: result.score, wickets: result.wickets, won: result.won, line: verdict(result), names: xi.map((p) => p.name), footer: window.location.host })}>🖼️ Share as image</button>
       <button className="ghost" onClick={onPractice}>Practice again</button>
       <button className="link" onClick={onHome}>Home</button>
     </main>
@@ -464,7 +467,7 @@ function Reminders() {
   )
 }
 
-function BowlDraft({ level, seedStr, mode, attack, setAttack, onDone, onExit }) {
+function BowlDraft({ vs, level, seedStr, mode, attack, setAttack, onDone, onExit }) {
   const mod = useMemo(() => modifierFor(seedStr), [seedStr])
   const spins = useMemo(() => makeSpins(hashStr('bspin' + seedStr), squadsFor(mod)), [seedStr, mod])
   const opp = useMemo(() => opponentFor(seedStr), [seedStr])
@@ -504,13 +507,13 @@ function BowlDraft({ level, seedStr, mode, attack, setAttack, onDone, onExit }) 
     <main className={'draft' + (sel ? ' has-sheet' : '')}>
       <header>
         <button className="link" onClick={onExit}>✕</button>
-        <b>{mode === 'daily' ? 'Daily bowling' : mode === 'vs' ? 'Challenge · bowling' : 'Practice bowling'} · L{level}</b>
+        <b>{mode === 'daily' ? `Daily bowling · L${level}` : mode === 'vs' ? 'Challenge · bowling' : `Practice bowling · L${level}`}</b>
         <span>{picked}/5</span>
       </header>
       <div className="card opp">
         <small>Opponent</small>
         <b>{opp.name} {opp.year}</b>
-        <span>Batting power {oppPow} · Level {level}: hold them under {bowlTarget(level)}</span>
+        <span>Batting power {oppPow} · {vs ? (vs.role === 'first' ? 'set the score to beat' : `hold them under ${vs.target}`) : `Level ${level}: hold them under ${bowlTarget(level)}`}</span>
       </div>
       <Brief seedStr={seedStr} compact />
       <div className="ratings"><Meter label="ATTACK" v={r.bwl} /></div>
@@ -578,12 +581,13 @@ function BowlInnings({ result, onDone }) {
   const score = cur ? cur.score : 0
   const balls = cur ? cur.ball : 0
   const log = shown.filter((e) => e.wicket || e.runs >= 4).slice(-30)
+  const open = result.target >= OPEN_TARGET
   return (
     <main className="chase">
-      <div className="target">{result.opp.name} {result.opp.year} batting · hold under {result.target}</div>
-      <div className={'big' + (score >= result.target ? ' over' : '')}>{score}<small>/{cur ? cur.wickets : 0}</small></div>
+      <div className="target">{result.opp.name} {result.opp.year} batting · {open ? 'setting the score' : `hold under ${result.target}`}</div>
+      <div className={'big' + (!open && score >= result.target ? ' over' : '')}>{score}<small>/{cur ? cur.wickets : 0}</small></div>
       <div className="line">{oversStr(balls)} ov{cur ? ` · ${cur.bowler} bowling` : ''}</div>
-      <div className="bar big"><div style={{ width: `${Math.min(100, (score / result.target) * 100)}%`, background: score >= result.target ? 'var(--red)' : undefined }} /></div>
+      <div className="bar big"><div style={{ width: `${open ? Math.min(100, (balls / 120) * 100) : Math.min(100, (score / result.target) * 100)}%`, background: !open && score >= result.target ? 'var(--red)' : undefined }} /></div>
       <ul className="log" ref={logRef}>
         {log.map((e) => (
           <li key={e.ball} className={e.wicket ? 'wk' : e.runs === 6 ? 'w' : 'w'}>
@@ -602,7 +606,7 @@ function BowlInnings({ result, onDone }) {
   )
 }
 
-function BowlResult({ level, cap, attack, result, mode, stats, seedStr, onHome, onPractice, onBoard }) {
+function BowlResult({ vs, level, cap, attack, result, mode, stats, seedStr, onHome, onPractice, onBoard }) {
   const [copied, setCopied] = useState(false)
   const [name, setNameState] = useState(getName())
   const [sub, setSub] = useState(mode === 'daily' ? 'ask' : 'none')
@@ -625,9 +629,9 @@ function BowlResult({ level, cap, attack, result, mode, stats, seedStr, onHome, 
   return (
     <main className="result">
       <div className={'big' + (result.won ? ' win' : '')}>{result.score}<small>/{result.wickets}</small></div>
-      <p className="verdict">{bowlVerdict(result)}</p>
-      {result.won && <p className="unlock">{level >= BOWL_LEVELS ? '🏆 All 10 levels cleared!' : `🔓 Level ${level} cleared — level ${level + 1} unlocked (under ${bowlTarget(level + 1)})`}</p>}
-      <p className="line">Level {level} · {result.opp.name} {result.opp.year} · {oversStr(result.ballsUsed)} overs{mode === 'daily' ? ` · 🔥 ${streak}-day streak` : ''}</p>
+      {mode === 'vs' && vs ? <VsSummary vs={vs} result={result} kind="bowl" /> : <p className="verdict">{bowlVerdict(result)}</p>}
+      {mode !== 'vs' && result.won && <p className="unlock">{level >= BOWL_LEVELS ? '🏆 All 10 levels cleared!' : `🔓 Level ${level} cleared — level ${level + 1} unlocked (under ${bowlTarget(level + 1)})`}</p>}
+      <p className="line">{mode === 'vs' ? '' : `Level ${level} · `}{result.opp.name} {result.opp.year} · {oversStr(result.ballsUsed)} overs{mode === 'daily' ? ` · 🔥 ${streak}-day streak` : ''}</p>
       <table className="card-table">
         <thead><tr><th>Bowler</th><th>O</th><th>R</th><th>W</th></tr></thead>
         <tbody>
@@ -636,7 +640,7 @@ function BowlResult({ level, cap, attack, result, mode, stats, seedStr, onHome, 
           ))}
         </tbody>
       </table>
-      {mode === 'vs' && <VsPanel kind="bowl" seedStr={seedStr} level={level} cap={cap} picks={attack} />}
+      {mode === 'vs' && <VsPanel kind="bowl" seedStr={seedStr} vs={vs} result={result} cap={cap} picks={attack} />}
       {sub === 'ask' && (
         <div className="card submit">
           <input value={name} maxLength={16} placeholder="Your name" onChange={(e) => setNameState(e.target.value)} />
@@ -647,7 +651,7 @@ function BowlResult({ level, cap, attack, result, mode, stats, seedStr, onHome, 
       {sub === 'error' && <p className="warn">Couldn't reach the leaderboard. <button className="link" onClick={submit}>Retry</button></p>}
       {sub === 'done' && <button className="ghost" onClick={onBoard}>{rank ? `🏆 You're #${rank.rank} today — view leaderboard` : '🏆 View leaderboard'}</button>}
       <button className="primary" onClick={share}>{copied ? 'Copied!' : 'Share result'}</button>
-      <button className="ghost" onClick={() => shareCard({ mode: 'Bowling', level, score: result.score, wickets: result.wickets, won: result.won, line: bowlVerdict(result), names: attack.map((p) => p.name), footer: window.location.host })}>🖼️ Share as image</button>
+      <button className="ghost" onClick={() => shareCard({ mode: mode === 'vs' ? 'Challenge · Bowling' : 'Bowling', level: mode === 'vs' ? null : level, score: result.score, wickets: result.wickets, won: result.won, line: bowlVerdict(result), names: attack.map((p) => p.name), footer: window.location.host })}>🖼️ Share as image</button>
       <button className="ghost" onClick={onPractice}>Practice again</button>
       <button className="link" onClick={onHome}>Home</button>
     </main>
@@ -667,36 +671,75 @@ function VsIntro({ info, onPlay, onHome }) {
   }
   const bowl = info.kind === 'bowl'
   const me = info.entries.find((e) => e.you)
+  const opp = opponentFor('vs-' + info.code)
   return (
     <main className="home">
       <div className="logo">⚔️</div>
-      <h1>You've been challenged</h1>
-      <p className="sub">{bowl
-        ? <>Draft 5 bowlers and hold <b>{opponentFor('vs-' + info.code).name} {opponentFor('vs-' + info.code).year}</b> under <b>{info.target}</b>.</>
-        : <>Draft an XI and chase <b>{info.target}</b> in 20 overs.</>} Same wheel as your friend.</p>
+      <h1>{info.creator} challenged you</h1>
+      <div className="vs-target card">
+        {bowl ? (
+          <>
+            <small>{info.creator} conceded</small>
+            <b>{info.firstScore}</b>
+            <span>against {opp.name} {opp.year}. Concede fewer to win.</span>
+          </>
+        ) : (
+          <>
+            <small>{info.creator} scored {info.firstScore}. Your target:</small>
+            <b>{info.target}</b>
+            <span>in 20 overs. Same wheel as {info.creator}.</span>
+          </>
+        )}
+      </div>
       <Brief seedStr={'vs-' + info.code} />
-      <VsTable entries={info.entries} bowl={bowl} />
+      <VsTable entries={info.entries} />
       {me ? <p className="line">You've already played this challenge.</p> : <button className="primary" onClick={onPlay}>Accept the challenge</button>}
       <button className="link" onClick={onHome}>Home</button>
     </main>
   )
 }
 
-function VsTable({ entries, bowl }) {
+const OUTCOME = { set: ['🎯', 'Set the score'], beat: ['✅', 'Beat it'], tie: ['🤝', 'Tied'], lost: ['❌', 'Fell short'] }
+function VsTable({ entries }) {
   return (
     <ol className="rows" style={{ width: '100%' }}>
-      {entries.map((r) => (
-        <li key={r.rank} className={r.you ? 'you' : ''}>
-          <span className="rk">{r.rank}</span><span className="nm">{r.name}{r.won ? ' 🏆' : ''}</span>
-          <span className="sc">{r.score}/{r.wickets}</span>
-        </li>
-      ))}
+      {entries.map((r) => {
+        const [icon, label] = OUTCOME[r.outcome] || ['', '']
+        return (
+          <li key={r.rank} className={r.you ? 'you' : ''}>
+            <span className="rk">{icon || r.rank}</span>
+            <span className="nm">{r.name}<small className="lv" style={{ display: 'block' }}>{label}</small></span>
+            <span className="sc">{r.score}/{r.wickets}</span>
+          </li>
+        )
+      })}
     </ol>
   )
 }
 
-function VsPanel({ kind, seedStr, level, cap, picks }) {
+// the result message: you set a score (player 1) or you chased one (player 2+)
+function VsSummary({ vs, result, kind }) {
+  const bowl = kind === 'bowl'
+  if (vs.role === 'first') {
+    return (
+      <div className="vs-banner set">
+        <b>You set the score: {result.score}</b>
+        <span>{bowl ? `Your friend must concede fewer than ${result.score} runs.` : `Your friend must chase ${result.score + 1}.`}</span>
+      </div>
+    )
+  }
+  const beat = bowl ? result.score < vs.firstScore : result.score >= vs.target
+  const tie = result.score === vs.firstScore
+  const who = vs.creator || 'player 1'
+  if (beat) return <div className="vs-banner win"><b>🏆 You win!</b><span>{bowl ? `You conceded ${result.score} to ${who}'s ${vs.firstScore}.` : `${result.score} beats ${who}'s ${vs.firstScore}.`}</span></div>
+  if (tie) return <div className="vs-banner tie"><b>🤝 Tied</b><span>You matched {who}'s {vs.firstScore}.</span></div>
+  const gap = bowl ? result.score - vs.firstScore : vs.firstScore - result.score
+  return <div className="vs-banner lose"><b>{bowl ? '💔 Too many runs' : '💔 Fell short'}</b><span>{bowl ? `You conceded ${result.score}, ${gap} more than ${who}.` : `${result.score} is ${gap} short of ${who}'s ${vs.firstScore}.`}</span></div>
+}
+
+function VsPanel({ kind, seedStr, vs, result, cap, picks }) {
   const code = seedStr.slice(3)
+  const first = vs && vs.role === 'first'
   const [name, setNameState] = useState(getName())
   const [phase, setPhase] = useState('ask') // ask | sending | done | error
   const [data, setData] = useState(null)
@@ -704,26 +747,28 @@ function VsPanel({ kind, seedStr, level, cap, picks }) {
   const link = `${window.location.origin}/?vs=${code}`
   const submit = async () => {
     setName(name.trim()); setPhase('sending')
-    try { setData(await submitVs(code, kind, name.trim() || 'Anon', picks, level, cap)); setPhase('done') }
+    try { setData(await submitVs(code, kind, name.trim() || 'Anon', picks, 1, cap)); setPhase('done') }
     catch (e) { setPhase(e.status === 409 ? 'done' : 'error'); if (e.status === 409) getVs(code).then(setData).catch(() => {}) }
   }
   const share = async () => {
-    const text = `⚔️ I challenge you on Chase 300 (${kind === 'bowl' ? 'bowling' : 'batting'}, level ${level}). Beat my score:`
+    const text = kind === 'bowl'
+      ? `⚔️ I conceded ${result.score} in Chase 300 bowling. Can you concede fewer?`
+      : `⚔️ I scored ${result.score} in Chase 300. Can you chase ${result.score + 1}?`
     try { if (navigator.share) await navigator.share({ text, url: link }); else { await navigator.clipboard.writeText(`${text} ${link}`); setCopied(true) } } catch {}
   }
   return (
     <div className="card submit">
-      <b>⚔️ Friend challenge</b>
+      <b>⚔️ {first ? 'Send your challenge' : 'Friend challenge'}</b>
       {phase === 'ask' && <>
         <input value={name} maxLength={16} placeholder="Your name" onChange={(e) => setNameState(e.target.value)} />
-        <button className="primary" onClick={submit}>Submit to challenge</button>
+        <button className="primary" onClick={submit}>{first ? 'Lock in my score' : 'Submit my result'}</button>
       </>}
       {phase === 'sending' && <p className="line">Submitting…</p>}
       {phase === 'error' && <p className="warn">Couldn't reach the server. <button className="link" onClick={submit}>Retry</button></p>}
       {phase === 'done' && data && <>
-        <VsTable entries={data.entries} bowl={kind === 'bowl'} />
-        <button className="primary" onClick={share}>{copied ? 'Link copied!' : 'Send challenge link'}</button>
-        <small className="lvl">Anyone with the link plays the same wheel{kind === 'bowl' ? ' and opponent' : ''}.</small>
+        <VsTable entries={data.entries} />
+        <button className="primary" onClick={share}>{copied ? 'Link copied!' : first ? 'Send challenge link' : 'Challenge another friend'}</button>
+        <small className="lvl">{first ? `Anyone with the link plays the same wheel and chases ${kind === 'bowl' ? 'your score' : result.score + 1}.` : 'The link works for more friends too.'}</small>
       </>}
     </div>
   )

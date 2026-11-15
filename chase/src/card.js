@@ -11,7 +11,7 @@ export async function makeCard({ mode, level, score, wickets, won, line, names, 
   g.fillStyle = 'rgba(255,255,255,.06)'; g.beginPath(); g.arc(120, H - 160, 260, 0, Math.PI * 2); g.fill()
   g.textAlign = 'center'
   g.fillStyle = '#fff'; g.font = `800 54px ${F}`; g.fillText('CHASE 300', W / 2, 118)
-  g.fillStyle = 'rgba(255,255,255,.8)'; g.font = `600 38px ${F}`; g.fillText(`${mode} · Level ${level}`, W / 2, 178)
+  g.fillStyle = 'rgba(255,255,255,.8)'; g.font = `600 38px ${F}`; g.fillText(level == null ? mode : `${mode} · Level ${level}`, W / 2, 178)
   // score card
   g.fillStyle = 'rgba(255,255,255,.96)'; g.beginPath(); g.roundRect(80, 230, W - 160, 420, 48); g.fill()
   g.fillStyle = '#121936'; g.font = `800 230px ${F}`

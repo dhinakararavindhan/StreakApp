@@ -6,7 +6,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 const webpush = createRequire(import.meta.url)('web-push')
-import { SQUADS, batTarget, bowlTarget, BOWL_MIN, BAT_LEVELS, BOWL_LEVELS } from '../src/data.js'
+import { SQUADS, batTarget, bowlTarget, BOWL_MIN, BAT_LEVELS, BOWL_LEVELS, OPEN_TARGET } from '../src/data.js'
 import { simulate, simulateBowl, simulateSuper, superOpponent, opponentFor } from '../src/sim.js'
 import { conditionFor, modifierFor, pickAllowed, orderOK, dailyPoints, mondayOf } from '../src/rules.js'
 import { rng, hashStr, todayKey } from '../src/rng.js'
@@ -66,9 +66,12 @@ async function sendReminders() {
 }
 setInterval(sendReminders, 10 * 60 * 1000).unref()
 
+// every pick must satisfy the day's twist given the OTHER picks (a player must not be compared with himself)
+const twistOK = (mod, list) => list.every((p) => pickAllowed(mod, p, list.filter((q) => q !== p)))
+
 // ---------- score verification ----------
 const byId = new Map(SQUADS.flatMap((s) => s.players.map((p) => [p.id, p])))
-function verify(kind, ids, seed, level, cap = -1) {
+function verify(kind, ids, seed, level, cap = -1, target) {
   const cond = conditionFor(seed), mod = modifierFor(seed)
   const capOK = (n) => Number.isInteger(cap) && cap >= -1 && cap < n
   if (kind === 'super') {
@@ -76,7 +79,7 @@ function verify(kind, ids, seed, level, cap = -1) {
     const picks = ids.map((id) => byId.get(id))
     if (picks.some((p) => !p) || picks[3].bwl < BOWL_MIN) return null
     if (new Set(picks.map((p) => p.name)).size !== 4) return null
-    if (picks.some((p) => !pickAllowed(mod, p, picks))) return null
+    if (!twistOK(mod, picks)) return null
     const res = simulateSuper(picks, superOpponent(seed), rng(hashStr(seed + 'super' + picks.map((p) => p.id).join('|'))), { cap, cond })
     return { ...res, target: 0 }
   }
@@ -85,16 +88,16 @@ function verify(kind, ids, seed, level, cap = -1) {
     const attack = ids.map((id) => byId.get(id))
     if (attack.some((p) => !p || p.bwl < BOWL_MIN)) return null
     if (new Set(attack.map((p) => p.name)).size !== 5) return null
-    if (attack.some((p) => !pickAllowed(mod, p, attack))) return null
+    if (!twistOK(mod, attack)) return null
     const rand = rng(hashStr(seed + 'bowl' + attack.map((p) => p.id).join('|')))
-    return simulateBowl(attack, opponentFor(seed).players, rand, bowlTarget(level), { cap, cond })
+    return simulateBowl(attack, opponentFor(seed).players, rand, target ?? bowlTarget(level), { cap, cond })
   }
   if (!Array.isArray(ids) || ids.length !== 11 || !capOK(11)) return null
   const xi = ids.map((id) => byId.get(id))
   if (xi.some((p) => !p) || !orderOK(xi)) return null
   if (new Set(xi.map((p) => p.name)).size !== 11) return null // a real player only once
-  if (xi.some((p) => !pickAllowed(mod, p, xi))) return null
-  return simulate(xi, rng(hashStr(seed + xi.map((p) => p.id).join('|'))), batTarget(level), { cap, cond })
+  if (!twistOK(mod, xi)) return null
+  return simulate(xi, rng(hashStr(seed + xi.map((p) => p.id).join('|'))), target ?? batTarget(level), { cap, cond })
 }
 const cleanName = (n) => String(n || 'Anon').replace(/[^\p{L}\p{N} _.-]/gu, '').trim().slice(0, 16) || 'Anon'
 const validDay = (d) => {
@@ -151,12 +154,21 @@ function recap(day) {
 const VS_TTL = 14 * 86400000
 const VS_MAX = 20
 const validCode = (c) => typeof c === 'string' && /^[A-Z0-9]{6}$/.test(c)
+// Head-to-head: the first entry sets the score; later entries chase it.
+//  batting: target = first score + 1 (reach it to win, equal the first score to tie)
+//  bowling: concede fewer runs than the first player to win, equal to tie
+function vsOutcome(ch, r) {
+  if (ch.kind === 'bowl') return r.score < ch.firstScore ? 'beat' : r.score === ch.firstScore ? 'tie' : 'lost'
+  return r.score >= ch.target ? 'beat' : r.score === ch.firstScore ? 'tie' : 'lost'
+}
 function vsView(code, device) {
   const ch = db.vs[code]
   if (!ch) return null
-  const better = ch.kind === 'bowl' ? (a, b) => a.score - b.score || b.wickets - a.wickets || a.balls - b.balls : (a, b) => (b.won - a.won) || b.score - a.score || a.balls - b.balls
-  const entries = [...ch.entries].sort(better).map((e, i) => ({ rank: i + 1, name: e.name, score: e.score, wickets: e.wickets, won: e.won, balls: e.balls, you: e.device === device }))
-  return { code, kind: ch.kind, level: ch.level, target: ch.kind === 'bowl' ? bowlTarget(ch.level) : batTarget(ch.level), entries }
+  const order = { set: 0, beat: 1, tie: 2, lost: 3 }
+  const [first, ...rest] = ch.entries
+  rest.sort((a, b) => (order[a.outcome] ?? 3) - (order[b.outcome] ?? 3) || (ch.kind === 'bowl' ? a.score - b.score : b.score - a.score))
+  const entries = [first, ...rest].filter(Boolean).map((e, i) => ({ rank: i + 1, name: e.name, score: e.score, wickets: e.wickets, won: e.won, balls: e.balls, outcome: e.outcome || (i === 0 ? 'set' : ''), you: e.device === device }))
+  return { code, kind: ch.kind, target: ch.target, firstScore: ch.firstScore, creator: first ? first.name : '', entries }
 }
 setInterval(() => { for (const [c, ch] of Object.entries(db.vs)) if (Date.now() - ch.created > VS_TTL) { delete db.vs[c]; save() } }, 3600000).unref()
 
@@ -197,14 +209,13 @@ const server = http.createServer(async (req, res) => {
           if (typeof device !== 'string' || device.length < 8 || device.length > 64) return send(res, 400, { error: 'bad device' })
           let ch = db.vs[code]
           const kind = ch ? ch.kind : body.kind === 'bowl' ? 'bowl' : 'bat'
-          const max = kind === 'bowl' ? BOWL_LEVELS : BAT_LEVELS
-          const level = ch ? ch.level : Math.min(max, Math.max(1, Number(body.level) | 0 || 1))
-          const r = verify(kind, xi, 'vs-' + code, level, body.cap === undefined ? -1 : Number(body.cap))
+          const isFirst = !ch
+          const r = verify(kind, xi, 'vs-' + code, 1, body.cap === undefined ? -1 : Number(body.cap), isFirst ? OPEN_TARGET : ch.target)
           if (!r) return send(res, 400, { error: 'invalid picks' })
-          if (!ch) { ch = db.vs[code] = { kind, level, created: Date.now(), entries: [] } }
+          if (isFirst) ch = db.vs[code] = { kind, created: Date.now(), firstScore: r.score, target: kind === 'bowl' ? r.score : r.score + 1, entries: [] }
           if (ch.entries.some((e) => e.device === device)) return send(res, 409, { error: 'already played' })
           if (ch.entries.length >= VS_MAX) return send(res, 409, { error: 'challenge full' })
-          ch.entries.push({ device, name: cleanName(name), score: r.score, wickets: r.wickets, won: r.won, balls: r.ballsUsed })
+          ch.entries.push({ device, name: cleanName(name), score: r.score, wickets: r.wickets, won: isFirst ? false : r.won, balls: r.ballsUsed, outcome: isFirst ? 'set' : vsOutcome(ch, r) })
           save()
           return send(res, 200, vsView(code, device))
         }

@@ -306,3 +306,6 @@ export const bowlTarget = (level) => 65 - 5 * Math.min(BOWL_LEVELS, Math.max(1, 
 export const BOWL_MIN = 50 // minimum bowling rating to be draftable as a bowler
 // over -> bowler slot index (each bowler gets exactly 4 overs)
 export const BOWL_SCHEDULE = [0, 1, 0, 1, 0, 1, 2, 3, 2, 3, 2, 3, 2, 3, 4, 0, 4, 1, 4, 4]
+
+// Friend challenges: the first player plays an open innings (no target); others chase their score.
+export const OPEN_TARGET = 9999

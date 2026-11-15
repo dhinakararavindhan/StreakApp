@@ -438,3 +438,16 @@ button.ghost:active:not(:disabled), .player:active:not(:disabled) { transform: s
 .opt small { font-size: 0.7rem; font-weight: 700; opacity: 0.95; }
 .opt small.up { color: #c8ffe3; } .opt small.dn { color: #ffd0d3; }
 .opt.only { flex: 1 1 100%; padding: 14px; }
+
+/* ---------- head-to-head ---------- */
+.vs-target { text-align: center; display: flex; flex-direction: column; gap: 2px; align-items: center; }
+.vs-target small { color: var(--mut); font-weight: 600; }
+.vs-target b { font-size: 3.6rem; line-height: 1.05; letter-spacing: -0.04em; background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.vs-target span { color: var(--mut); font-size: 0.86rem; }
+.vs-banner { width: 100%; text-align: center; padding: 14px; border-radius: var(--radius); display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--glass-edge); box-shadow: var(--glass-hi), var(--depth-sm); }
+.vs-banner b { font-size: 1.3rem; letter-spacing: -0.02em; }
+.vs-banner span { color: var(--mut); font-size: 0.88rem; font-weight: 600; }
+.vs-banner.win { background: linear-gradient(135deg, rgba(18, 166, 106, 0.22), rgba(18, 166, 106, 0.06)), var(--glass); border-color: rgba(18, 166, 106, 0.45); }
+.vs-banner.lose { background: linear-gradient(135deg, rgba(229, 72, 77, 0.18), rgba(229, 72, 77, 0.05)), var(--glass); border-color: rgba(229, 72, 77, 0.4); }
+.vs-banner.tie { background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(245, 158, 11, 0.05)), var(--glass); border-color: rgba(245, 158, 11, 0.45); }
+.vs-banner.set { background: linear-gradient(135deg, rgba(139, 92, 246, 0.22), rgba(91, 91, 240, 0.08)), var(--glass); border-color: rgba(91, 91, 240, 0.45); }
