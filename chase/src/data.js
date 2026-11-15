@@ -14,10 +14,10 @@ const RAW = [
     P('Jadeja', 6, 7, 44, 76, 84), P('Harbhajan', 8, 9, 14, 50, 82), P('D. Chahar', 8, 9, 14, 40, 86),
     P('S. Thakur', 9, 10, 10, 40, 84), P('Tahir', 10, 11, 6, 20, 90)] },
   { id: 'mum13', name: 'Mumbai', short: 'MUM', year: 2013, players: [
-    P('D. Smith', 1, 2, 60, 86, 0), P('Tendulkar', 1, 2, 74, 74, 0), P('Karthik', 3, 5, 64, 80, 0, true),
+    P('D. Smith', 1, 2, 60, 86, 0), P('Tendulkar', 1, 2, 74, 74, 0), P('D. Karthik', 3, 5, 64, 80, 0, true),
     P('Rohit', 3, 5, 66, 82, 20), P('Pollard', 4, 6, 62, 96, 60), P('Rayudu', 4, 5, 62, 78, 0),
     P('Harbhajan', 7, 8, 22, 56, 82), P('M. Johnson', 8, 9, 14, 50, 92), P('Malinga', 9, 10, 8, 30, 95),
-    P('Ojha', 10, 11, 6, 16, 80), P('Munaf', 10, 11, 6, 16, 78)] },
+    P('P. Ojha', 10, 11, 6, 16, 80), P('Munaf', 10, 11, 6, 16, 78)] },
   { id: 'mum20', name: 'Mumbai', short: 'MUM', year: 2020, players: [
     P('de Kock', 1, 2, 78, 90, 0, true), P('Rohit', 1, 2, 74, 90, 20), P('SKY', 3, 4, 76, 96, 0),
     P('I. Kishan', 3, 5, 62, 92, 0), P('Pollard', 4, 6, 66, 98, 55), P('Hardik', 5, 6, 58, 98, 60),
@@ -35,22 +35,22 @@ const RAW = [
     P('Mills', 9, 10, 6, 20, 84), P('Milne', 10, 11, 6, 20, 84)] },
   { id: 'hyd16', name: 'Hyderabad', short: 'HYD', year: 2016, players: [
     P('Warner', 1, 2, 88, 90, 0), P('Dhawan', 1, 2, 80, 78, 0), P('Yuvraj', 3, 5, 60, 86, 40),
-    P('Henriques', 3, 5, 56, 76, 56), P('Hooda', 5, 6, 42, 80, 30), P('N. Ojha', 5, 6, 52, 76, 0, true),
+    P('Henriques', 3, 5, 56, 76, 56), P('D. Hooda', 5, 6, 42, 80, 30), P('N. Ojha', 5, 6, 52, 76, 0, true),
     P('Cutting', 6, 7, 38, 98, 80), P('Bipul Sharma', 6, 8, 30, 66, 60), P('Bhuvneshwar', 8, 9, 24, 50, 94),
     P('Mustafizur', 9, 10, 6, 16, 90), P('B. Sran', 10, 11, 6, 16, 80)] },
   { id: 'jai08', name: 'Jaipur', short: 'JAI', year: 2008, players: [
-    P('G. Smith', 1, 2, 64, 70, 0), P('Watson', 1, 3, 78, 92, 86), P('K. Akmal', 1, 3, 56, 84, 0, true),
+    P('G. Smith', 1, 2, 64, 70, 0), P('Watson', 1, 3, 78, 92, 80), P('K. Akmal', 1, 3, 56, 84, 0, true),
     P('Y. Pathan', 3, 5, 64, 96, 50), P('Kaif', 3, 4, 62, 66, 0), P('Jadeja', 5, 6, 36, 70, 70),
     P('Mascarenhas', 6, 8, 30, 70, 78), P('Warne', 8, 9, 14, 40, 88), P('S. Tanvir', 8, 9, 12, 40, 90),
     P('Munaf', 10, 11, 6, 16, 82), P('Trivedi', 10, 11, 6, 16, 78)] },
   { id: 'amd22', name: 'Ahmedabad', short: 'AMD', year: 2022, players: [
     P('Saha', 1, 2, 66, 84, 0, true), P('Gill', 1, 2, 76, 82, 0), P('Sudharsan', 3, 4, 64, 80, 0),
-    P('Hardik', 3, 5, 64, 86, 76), P('Miller', 4, 5, 66, 94, 0), P('Tewatia', 5, 6, 40, 92, 40),
-    P('Rashid', 7, 8, 30, 84, 95), P('Shami', 9, 10, 8, 24, 92), P('Ferguson', 9, 10, 6, 20, 92),
+    P('Hardik', 3, 5, 64, 86, 76), P('D. Miller', 4, 5, 66, 94, 0), P('Tewatia', 5, 6, 40, 92, 40),
+    P('Rashid Khan', 7, 8, 30, 84, 95), P('Shami', 9, 10, 8, 24, 92), P('Ferguson', 9, 10, 6, 20, 92),
     P('Y. Dayal', 10, 11, 6, 14, 80), P('A. Joseph', 10, 11, 6, 20, 86)] },
   { id: 'pun14', name: 'Punjab', short: 'PUN', year: 2014, players: [
     P('Sehwag', 1, 2, 62, 92, 10), P('Vohra', 1, 2, 60, 86, 0), P('Saha', 2, 3, 60, 84, 0, true),
-    P('Maxwell', 3, 5, 66, 100, 60), P('Miller', 4, 5, 62, 96, 0), P('Bailey', 3, 4, 62, 80, 0),
+    P('Maxwell', 3, 5, 66, 100, 60), P('D. Miller', 4, 5, 62, 96, 0), P('Bailey', 3, 4, 62, 80, 0),
     P('Axar', 6, 8, 30, 70, 84), P('Chawla', 8, 9, 18, 50, 80), P('M. Johnson', 9, 10, 14, 50, 90),
     P('Sandeep Sharma', 10, 11, 6, 16, 84), P('K. Singh', 10, 11, 6, 16, 72)] },
   { id: 'del20', name: 'Delhi', short: 'DEL', year: 2020, players: [
@@ -72,7 +72,7 @@ const RAW = [
     P('Rohit', 1, 2, 72, 86, 20), P('Simmons', 1, 2, 66, 82, 0), P('Parthiv Patel', 1, 3, 56, 78, 0, true),
     P('Buttler', 3, 5, 64, 92, 0), P('Rayudu', 3, 4, 64, 80, 0), P('Pollard', 4, 6, 62, 96, 60),
     P('Hardik', 5, 6, 50, 92, 60), P('Harbhajan', 7, 8, 22, 56, 82), P('McClenaghan', 8, 9, 8, 20, 88),
-    P('Malinga', 9, 10, 8, 30, 95), P('Ojha', 10, 11, 6, 16, 80)] },
+    P('Malinga', 9, 10, 8, 30, 95), P('P. Ojha', 10, 11, 6, 16, 80)] },
   { id: 'kol14', name: 'Kolkata', short: 'KOL', year: 2014, players: [
     P('Gambhir', 1, 2, 80, 78, 0), P('Uthappa', 1, 3, 64, 86, 0, true), P('M. Pandey', 3, 4, 62, 82, 0),
     P('Kallis', 3, 4, 82, 76, 78), P('Y. Pathan', 4, 5, 54, 96, 50), P('Russell', 5, 6, 54, 98, 86),
@@ -106,12 +106,12 @@ const RAW = [
   { id: 'per13', name: 'Perth', short: 'PER', year: 2013, players: [
     P('Klinger', 1, 2, 76, 76, 0), P('Ronchi', 1, 3, 56, 92, 0, true), P('S. Marsh', 3, 4, 80, 80, 0),
     P('North', 3, 5, 60, 66, 40), P('Voges', 4, 5, 60, 70, 0), P('M. Marsh', 5, 6, 50, 84, 70),
-    P('Agar', 7, 8, 22, 58, 82), P('Coulter-Nile', 8, 9, 14, 60, 88), P('M. Johnson', 9, 10, 14, 50, 90),
+    P('A. Agar', 7, 8, 22, 58, 82), P('Coulter-Nile', 8, 9, 14, 60, 88), P('M. Johnson', 9, 10, 14, 50, 90),
     P('Hogg', 9, 10, 10, 30, 82), P('Beer', 10, 11, 6, 16, 70)] },
   { id: 'lah22', name: 'Lahore', short: 'LAH', year: 2022, players: [
     P('Fakhar Zaman', 1, 2, 68, 92, 0), P('A. Shafique', 1, 2, 56, 76, 0), P('Hafeez', 3, 4, 62, 80, 56),
     P('Billings', 3, 5, 56, 84, 0, true), P('Brook', 3, 5, 62, 92, 0), P('Wiese', 5, 7, 38, 92, 72),
-    P('S. Patel', 5, 6, 46, 76, 70), P('Rashid', 7, 8, 30, 84, 96), P('Shaheen', 9, 10, 8, 30, 96),
+    P('S. Patel', 5, 6, 46, 76, 70), P('Rashid Khan', 7, 8, 30, 84, 96), P('Shaheen', 9, 10, 8, 30, 96),
     P('Rauf', 9, 10, 6, 16, 90), P('D. Hussain', 10, 11, 6, 16, 76)] },
   { id: 'tri18', name: 'Trinidad', short: 'TRI', year: 2018, players: [
     P('Simmons', 1, 2, 62, 80, 0), P('Munro', 1, 2, 68, 96, 0), P('McCullum', 1, 3, 58, 94, 0),
@@ -135,13 +135,13 @@ const RAW = [
     P('Varun C.', 10, 11, 6, 14, 88), P('V. Arora', 10, 11, 6, 14, 82)] },
   { id: 'amd23', name: 'Ahmedabad', short: 'AMD', year: 2023, players: [
     P('Saha', 1, 2, 66, 84, 0, true), P('Gill', 1, 2, 82, 92, 0), P('Sudharsan', 3, 4, 64, 82, 0),
-    P('Hardik', 3, 5, 64, 88, 78), P('Miller', 4, 5, 66, 94, 0), P('V. Shankar', 4, 6, 46, 82, 40),
-    P('Tewatia', 5, 6, 40, 92, 40), P('Rashid', 7, 8, 30, 86, 96), P('Shami', 9, 10, 8, 24, 94),
+    P('Hardik', 3, 5, 64, 88, 78), P('D. Miller', 4, 5, 66, 94, 0), P('V. Shankar', 4, 6, 46, 82, 40),
+    P('Tewatia', 5, 6, 40, 92, 40), P('Rashid Khan', 7, 8, 30, 86, 96), P('Shami', 9, 10, 8, 24, 94),
     P('Mohit Sharma', 9, 10, 6, 14, 88), P('Noor Ahmad', 10, 11, 6, 14, 84)] },
   { id: 'del12', name: 'Delhi', short: 'DEL', year: 2012, players: [
     P('Warner', 1, 2, 80, 92, 0), P('Sehwag', 1, 2, 60, 90, 10), P('Jayawardene', 3, 4, 78, 76, 0),
     P('N. Ojha', 3, 5, 52, 78, 0, true), P('Venugopal Rao', 4, 5, 56, 80, 0), P('I. Pathan', 6, 7, 40, 72, 82),
-    P('Russell', 6, 7, 50, 96, 82), P('M. Morkel', 8, 9, 8, 26, 90), P('Umesh Yadav', 9, 10, 8, 24, 88),
+    P('Russell', 6, 7, 50, 96, 82), P('M. Morkel', 8, 9, 8, 26, 90), P('U. Yadav', 9, 10, 8, 24, 88),
     P('Nehra', 10, 11, 6, 14, 84), P('V. Aaron', 10, 11, 6, 14, 80)] },
   { id: 'jai24', name: 'Jaipur', short: 'JAI', year: 2024, players: [
     P('Jaiswal', 1, 2, 74, 94, 0), P('Buttler', 1, 2, 82, 94, 0), P('Samson', 3, 4, 72, 94, 0, true),
@@ -156,7 +156,7 @@ const RAW = [
   { id: 'hyd18', name: 'Hyderabad', short: 'HYD', year: 2018, players: [
     P('Dhawan', 1, 2, 80, 80, 0), P('Saha', 1, 2, 64, 82, 0, true), P('Williamson', 3, 3, 86, 84, 10),
     P('M. Pandey', 4, 5, 62, 82, 0), P('Shakib', 5, 6, 46, 76, 82), P('Y. Pathan', 5, 6, 50, 90, 40),
-    P('Rashid', 7, 8, 26, 80, 95), P('Bhuvneshwar', 8, 9, 24, 50, 94), P('S. Kaul', 9, 10, 6, 14, 84),
+    P('Rashid Khan', 7, 8, 26, 80, 95), P('Bhuvneshwar', 8, 9, 24, 50, 94), P('S. Kaul', 9, 10, 6, 14, 84),
     P('Sandeep Sharma', 9, 11, 6, 16, 86), P('B. Thampi', 10, 11, 6, 14, 80)] },
   { id: 'lko22', name: 'Lucknow', short: 'LKO', year: 2022, players: [
     P('KL Rahul', 1, 2, 82, 86, 0), P('de Kock', 1, 2, 76, 90, 0, true), P('D. Hooda', 3, 4, 52, 86, 30),
@@ -170,7 +170,7 @@ const RAW = [
     P('Arshdeep', 9, 10, 6, 14, 88), P('Bishnoi', 10, 11, 8, 20, 86)] },
   { id: 'ade18', name: 'Adelaide', short: 'ADE', year: 2018, players: [
     P('Weatherald', 1, 2, 62, 86, 0), P('Carey', 1, 3, 70, 86, 0, true), P('C. Ingram', 3, 4, 70, 84, 0),
-    P('J. Wells', 3, 5, 54, 78, 0), P('Short', 4, 6, 60, 88, 50), P('Rashid', 7, 8, 30, 86, 96),
+    P('J. Wells', 3, 5, 54, 78, 0), P('Short', 4, 6, 60, 88, 50), P('Rashid Khan', 7, 8, 30, 86, 96),
     P('Neser', 7, 8, 24, 70, 78), P('Laughlin', 8, 9, 8, 24, 82), P('Stanlake', 10, 11, 6, 14, 88),
     P('Zampa', 9, 10, 6, 16, 90), P('Gurinder Sandhu', 10, 11, 6, 14, 76)] },
   { id: 'bri18', name: 'Brisbane', short: 'BRI', year: 2018, players: [
@@ -207,7 +207,7 @@ const RAW = [
     P('K. Pierre', 9, 10, 6, 14, 80), P('A. Phillip', 10, 11, 6, 14, 78)] },
   { id: 'jam16', name: 'Jamaica', short: 'JAM', year: 2016, players: [
     P('Walton', 1, 2, 60, 92, 0, true), P('Gayle', 1, 3, 80, 98, 20), P('Sangakkara', 3, 4, 84, 84, 0),
-    P('R. Powell', 3, 4, 56, 86, 0), P('D. Smith', 4, 6, 58, 90, 50), P('Russell', 5, 6, 54, 98, 86),
+    P('R. Powell', 3, 4, 56, 86, 0), P('D. Smith', 4, 6, 58, 90, 40), P('Russell', 5, 6, 54, 98, 86),
     P('J. Mohammed', 6, 7, 54, 76, 0), P('Permaul', 8, 9, 10, 20, 84), P('N. Miller', 8, 10, 8, 20, 82),
     P('J. Taylor', 9, 10, 6, 16, 84), P('Cottrell', 10, 11, 6, 16, 90)] },
   // ---- BBL ----
@@ -219,7 +219,7 @@ const RAW = [
   { id: 'per23', name: 'Perth', short: 'PER', year: 2023, players: [
     P('Eskinazi', 1, 2, 58, 86, 0), P('Bancroft', 1, 2, 56, 76, 0), P('Inglis', 3, 5, 62, 92, 0, true),
     P('Laurie Evans', 3, 4, 62, 88, 0), P('A. Turner', 4, 5, 54, 92, 0), P('A. Hardie', 5, 6, 46, 88, 66),
-    P('Agar', 7, 8, 22, 58, 82), P('J. Richardson', 8, 9, 8, 20, 90), P('Behrendorff', 9, 10, 6, 16, 90),
+    P('A. Agar', 7, 8, 22, 58, 82), P('J. Richardson', 8, 9, 8, 20, 90), P('Behrendorff', 9, 10, 6, 16, 90),
     P('A. Tye', 9, 10, 8, 20, 86), P('L. Morris', 10, 11, 6, 14, 90)] },
   { id: 'mel19', name: 'Melbourne', short: 'MEL', year: 2019, players: [
     P('Finch', 1, 2, 70, 90, 0), P('M. Harris', 1, 2, 60, 76, 0), P('T. Cooper', 3, 4, 56, 76, 0),
@@ -234,7 +234,7 @@ const RAW = [
     P('S. Harmer', 9, 10, 10, 20, 86), P('Baartman', 10, 11, 6, 14, 86)] },
   { id: 'paa23', name: 'Paarl', short: 'PAA', year: 2023, players: [
     P('Buttler', 1, 2, 80, 94, 0, true), P('J. Roy', 1, 2, 68, 90, 0), P('van der Dussen', 3, 4, 74, 78, 0),
-    P('Vilas', 3, 5, 58, 84, 0, true), P('Miller', 4, 6, 66, 94, 0), P('M. van Buuren', 6, 7, 38, 80, 60),
+    P('Vilas', 3, 5, 58, 84, 0, true), P('D. Miller', 4, 6, 66, 94, 0), P('M. van Buuren', 6, 7, 38, 80, 60),
     P('F. Adams', 7, 8, 30, 76, 40), P('McCoy', 8, 9, 6, 16, 84), P('Ngidi', 9, 10, 6, 14, 90),
     P('Shamsi', 9, 10, 6, 14, 86), P('D. Olivier', 10, 11, 6, 14, 86)] },
   { id: 'joh23', name: 'Johannesburg', short: 'JOH', year: 2023, players: [
@@ -282,7 +282,7 @@ const RAW = [
   { id: 'not22', name: 'Nottingham', short: 'NOT', year: 2022, players: [
     P('Hales', 1, 2, 74, 94, 0), P('T. Moores', 1, 3, 50, 84, 0, true), P('Root', 3, 4, 86, 84, 20),
     P('S. Mullaney', 4, 6, 50, 82, 40), P('S. Patel', 5, 6, 46, 76, 70), P('Imad', 6, 7, 30, 70, 84),
-    P('L. Gregory', 7, 8, 22, 70, 82), P('D. Sams', 8, 9, 14, 70, 86), P('Rashid', 8, 9, 20, 84, 96),
+    P('L. Gregory', 7, 8, 22, 70, 82), P('D. Sams', 8, 9, 14, 70, 86), P('Rashid Khan', 8, 9, 20, 84, 96),
     P('M. de Lange', 9, 10, 6, 14, 86), P('M. Carter', 10, 11, 6, 14, 78)] },
 ]
 // Unique id per player-in-squad (same real player can appear in several seasons).

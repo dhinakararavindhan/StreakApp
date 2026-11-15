@@ -4,9 +4,9 @@ import { SQUADS, BOWL_MIN } from './data.js'
 import { hashStr } from './rng.js'
 
 // ---------- bowler tags ----------
-const SPIN = new Set(['Narine', 'Rashid', 'Zampa', 'Chahal', 'Ashwin', 'Jadeja', 'Axar', 'Kuldeep', 'Tahir', 'Harbhajan', 'Warne', 'Muralitharan',
+const SPIN = new Set(['Narine', 'Rashid Khan', 'Zampa', 'Chahal', 'Ashwin', 'Jadeja', 'Axar', 'Kuldeep', 'Tahir', 'Harbhajan', 'Warne', 'Muralitharan',
   'Shadab', 'Imad', 'Ajmal', 'Bishnoi', 'Varun C.', 'Mujeeb', 'Shamsi', 'S. Harmer', 'A. Rashid', 'Vettori', 'Santner', 'Sodhi', 'Noor Ahmad',
-  'Chawla', 'R. Chahar', 'Markande', 'A. Hosein', 'Boyce', 'Agar', "O'Keefe", 'L. Pope', 'Z. Gohar', 'Ojha', 'Permaul', 'N. Miller', 'Karn Sharma',
+  'Chawla', 'R. Chahar', 'Markande', 'A. Hosein', 'Boyce', 'A. Agar', "O'Keefe", 'L. Pope', 'Z. Gohar', 'P. Ojha', 'Permaul', 'N. Miller', 'Karn Sharma',
   'H. Brar', 'Krunal', 'W. Sundar', 'F. Ahmed', 'Beer', 'Hogg', 'Z. Khan', 'K. Pierre', 'B. Fortuin', 'L. Dawson', 'Moeen Ali', 'Shakib', 'M. Swepson',
   'Nabi', 'Bipul Sharma', 'U. Mir', 'S. Patel', 'Hafeez', 'Hooda', 'D. Hooda', 'Raina', 'Theekshana', 'Shahbaz', 'Short'])
 const DEATH = new Set(['Bumrah', 'Malinga', 'Bravo', 'Starc', 'Arshdeep', 'Rauf', 'Natarajan', 'Harshal', 'Pathirana', 'Mustafizur', 'Coulter-Nile',
