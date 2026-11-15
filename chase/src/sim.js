@@ -2,6 +2,7 @@ import { BALLS, SQUADS, BOWL_SCHEDULE, bowlTarget } from './data.js'
 import { hashStr } from './rng.js'
 
 // Team-level summary used for ratings display.
+const FORM = 0.24
 export function teamRatings(xi) {
   const players = xi.filter(Boolean)
   const top7 = xi.slice(0, 7).filter(Boolean)
@@ -14,7 +15,7 @@ export function teamRatings(xi) {
 }
 
 function ballOutcome(r, bat, pow, morale, pressure, grit = 0) {
-  const p = Math.min(100, pow * morale)
+  const p = Math.min(120, pow * morale)
   const surviveBalls = (5 + Math.pow(bat / 100, 2) * 40) * (1 - 0.4 * grit)
   const pW = Math.min(0.2, (1 / surviveBalls) * (1 + pressure * 0.35 * (p / 100)))
   const x = r()
@@ -37,7 +38,9 @@ function ballOutcome(r, bat, pow, morale, pressure, grit = 0) {
 // Simulates a whole chase. Returns events + summary. `rand` is a seeded rng.
 export function simulate(xi, rand, target = 300) {
   const { pow: tp, bwl, hasKeeper } = teamRatings(xi)
-  const morale = 1 + (bwl - 70) / 500 - (hasKeeper ? 0 : 0.04)
+  // innings 'form': most days average, occasionally the whole side clicks (or doesn't)
+  const form = 1 + (rand() + rand() - 1) * FORM
+  const morale = (1 + (bwl - 70) / 500 - (hasKeeper ? 0 : 0.04)) * form
   const events = []
   const card = xi.map((p) => ({ name: p.name, runs: 0, balls: 0, out: false, fours: 0, sixes: 0 }))
   let striker = 0, nonStriker = 1, next = 2, wickets = 0, score = 0

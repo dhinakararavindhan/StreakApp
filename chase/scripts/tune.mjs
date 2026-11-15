@@ -22,10 +22,14 @@ function randomXI(skill) {
   }
   return xi
 }
+const N = Number(process.env.N || 20000)
 for (const skill of [1, 3, 6]) {
-  const sc = []
-  for (let i = 0; i < 4000; i++) sc.push(simulate(randomXI(skill), r, 9999).score) // uncapped: how many could they make?
-  sc.sort((a, b) => a - b)
-  const wins = (target) => (sc.filter((x) => x >= target).length / sc.length * 100).toFixed(1)
-  console.log(`skill ${skill}: med ${sc[Math.floor(sc.length / 2)]} | win% by level:`, Array.from({ length: BAT_LEVELS }, (_, i) => `L${i + 1}(${batTarget(i + 1)}) ${wins(batTarget(i + 1))}`).join('  '))
+  const xis = Array.from({ length: 2500 }, () => randomXI(skill))
+  const row = []
+  for (let l = 1; l <= BAT_LEVELS; l++) {
+    let w = 0, n = 0
+    for (let k = 0; k < N / 10; k++) { const xi = xis[k % xis.length]; if (simulate(xi, r, batTarget(l)).won) w++; n++ }
+    row.push(`L${l}(${batTarget(l)}) ${(w / n * 100).toFixed(2)}`)
+  }
+  console.log(`skill ${skill}:`, row.join('  '))
 }
