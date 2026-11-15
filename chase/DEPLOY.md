@@ -21,8 +21,13 @@ fly open
 ```
 HTTPS is automatic. Custom domain: `fly certs add yourdomain.com`, then add the DNS records it prints.
 
-## Option B: Render
-Push the repo to GitHub, create a new Blueprint from `chase/render.yaml`, then fill VAPID_PUBLIC and VAPID_PRIVATE in the dashboard. Persistent disks need a paid plan.
+## Option B: Render (no command line)
+1. Create an account at render.com and connect your GitHub.
+2. New + > Blueprint > pick the repo. It reads `render.yaml` at the repo root (root directory `chase`, Docker, 1 GB disk at `/data`, health check `/healthz`).
+3. Choose the branch (the blueprint pins `claude/beautiful-bohr-znhivj`; change to `main` once merged).
+4. Fill in `VAPID_PUBLIC` and `VAPID_PRIVATE` (and edit `VAPID_SUBJECT` to your email) when prompted.
+5. Deploy. HTTPS is automatic; add a custom domain under Settings > Custom Domains.
+The disk needs the paid Starter plan (about $7/month). Do not use the free plan: it sleeps and loses data.
 
 ## After deploy: smoke test (5 minutes)
 - `https://YOUR-APP/healthz` returns `{"ok":true}`.

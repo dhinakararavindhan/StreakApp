@@ -1,8 +1,12 @@
-# Render blueprint (alternative to Fly.io). Add VAPID_PUBLIC / VAPID_PRIVATE in the dashboard.
+# Render blueprint (alternative to Fly.io). Lives at the repo root; the app is in ./chase.
+# Add VAPID_PUBLIC / VAPID_PRIVATE in the dashboard.
 services:
   - type: web
     name: chase-300
     runtime: docker
+    rootDir: chase
+    dockerfilePath: ./Dockerfile
+    branch: claude/beautiful-bohr-znhivj   # change to main once merged
     plan: starter        # persistent disks need a paid plan
     healthCheckPath: /healthz
     disk:
