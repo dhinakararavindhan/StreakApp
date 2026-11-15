@@ -4,7 +4,12 @@ const KEY = 'chase300.v1'
 const empty = { freezes: 0, freezeUsedOn: null, superWins: 0, streak: 0, bestStreak: 0, vsPlayed: 0, best: 0, bestBowl: null, bowlLevel: 1, bowlCleared: 0, batLevel: 1, batCleared: 0, lastPlayed: null, history: {}, played: 0, wins: 0 }
 
 export function load() {
-  try { return { ...empty, ...JSON.parse(localStorage.getItem(KEY) || '{}') } } catch { return { ...empty } }
+  let s
+  try { s = { ...empty, ...JSON.parse(localStorage.getItem(KEY) || '{}') } } catch { s = { ...empty } }
+  // frontier = one past the highest level actually beaten (undoes levels that were opened without winning)
+  s.batLevel = Math.min(BAT_LEVELS, (s.batCleared || 0) + 1)
+  s.bowlLevel = Math.min(BOWL_LEVELS, (s.bowlCleared || 0) + 1)
+  return s
 }
 function save(s) { try { localStorage.setItem(KEY, JSON.stringify(s)) } catch {} }
 
@@ -21,15 +26,19 @@ export function liveStreak(s, today = todayKey()) {
 
 function bump(s, kind, score, won, level) {
   if (kind === 'super') { s.played += 1; if (won) { s.wins += 1; s.superWins = (s.superWins || 0) + 1 } return }
-  // Finishing a level (win or lose) opens the next one. A win also earns the level's tick.
+  // A level opens the next one only when it is beaten.
   if (kind === 'bowl') {
     s.bestBowl = s.bestBowl == null ? score : Math.min(s.bestBowl, score)
-    s.bowlLevel = Math.min(BOWL_LEVELS, Math.max(s.bowlLevel || 1, level + 1))
-    if (won) s.bowlCleared = Math.max(s.bowlCleared || 0, level)
+    if (won) {
+      s.bowlCleared = Math.max(s.bowlCleared || 0, level)
+      s.bowlLevel = Math.min(BOWL_LEVELS, Math.max(s.bowlLevel || 1, level + 1))
+    }
   } else {
     s.best = Math.max(s.best, score)
-    s.batLevel = Math.min(BAT_LEVELS, Math.max(s.batLevel || 1, level + 1))
-    if (won) s.batCleared = Math.max(s.batCleared || 0, level)
+    if (won) {
+      s.batCleared = Math.max(s.batCleared || 0, level)
+      s.batLevel = Math.min(BAT_LEVELS, Math.max(s.batLevel || 1, level + 1))
+    }
   }
   s.played += 1
   if (won) s.wins += 1

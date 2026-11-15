@@ -720,3 +720,5 @@ body::before {
 .tile small { color: var(--mut); font-size: 0.64rem; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; }
 .tile b { font-size: 1.05rem; letter-spacing: -0.02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tile span { color: var(--mut); font-size: 0.66rem; font-weight: 600; }
+
+.unlock.lose { color: var(--red); background: rgba(229, 72, 77, 0.1); border-color: rgba(229, 72, 77, 0.25); }

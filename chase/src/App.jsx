@@ -100,13 +100,13 @@ export default function App() {
   )
 }
 
-// message after a finished level: wins earn a tick; finishing (win or lose) opens the next level
-function unlockMsg({ won, level, levels, frontier, nextText }) {
+// message after a finished level: only a win opens the next one
+function unlockMsg({ won, level, levels, frontier, nextText, gap, kind }) {
   if (won) {
     if (level >= levels) return `🏆 All ${levels} levels cleared!`
     return frontier === level + 1 ? `✅ Level ${level} cleared · level ${level + 1} is open (${nextText})` : `✅ Level ${level} cleared`
   }
-  if (level < levels && frontier === level + 1) return `🔓 Level ${level + 1} is now open (${nextText}). Beat level ${level} to earn its ✓.`
+  if (frontier === level) return `🔒 Level ${level} not beaten: ${gap}. Beat it to open level ${level + 1}.`
   return null
 }
 
@@ -182,7 +182,7 @@ function Home({ stats, onStart, onBoard, onStats, onHelp, onRecap }) {
   )
 }
 
-// compact level control: ‹ Level 3 · chase 220 ›  (the next level opens once you finish the current one)
+// compact level control: ‹ Level 3 · chase 220 ›  (the next level opens once you beat the current one)
 function Stepper({ levels, unlocked, cleared, value, onChange, text }) {
   const atFrontier = value >= unlocked && unlocked < levels
   return (
@@ -192,7 +192,7 @@ function Stepper({ levels, unlocked, cleared, value, onChange, text }) {
         <div className="stepv"><b>Level {value}{value <= cleared ? ' ✓' : ''}</b><small>{text}</small></div>
         <button disabled={value >= unlocked} onClick={() => onChange(value + 1)} aria-label="Harder level">›</button>
       </div>
-      {atFrontier && <small className="stephint">Finish level {value} to open {value + 1}</small>}
+      {atFrontier && <small className="stephint">Beat level {value} to unlock {value + 1}</small>}
     </>
   )
 }
@@ -375,7 +375,7 @@ function Result({ vs, level, cap, xi, result, mode, stats, seedStr, onHome, onPr
     <main className={'result' + (mode !== 'vs' ? ' has-cta' : '')}>
       <div className={'big' + (result.won ? ' win' : '')}>{result.score}<small>/{result.wickets}</small></div>
       {mode === 'vs' && vs ? <VsSummary vs={vs} result={result} kind="bat" /> : <p className="verdict">{verdict(result)}</p>}
-      {mode !== 'vs' && (() => { const m = unlockMsg({ won: result.won, level, levels: BAT_LEVELS, frontier: stats.batLevel, nextText: `chase ${batTarget(level + 1)}` }); return m ? <p className="unlock">{m}</p> : null })()}
+      {mode !== 'vs' && (() => { const m = unlockMsg({ won: result.won, level, levels: BAT_LEVELS, frontier: stats.batLevel, nextText: `chase ${batTarget(level + 1)}`, gap: `${Math.max(0, result.target - result.score)} runs short of ${result.target}` }); return m ? <p className={'unlock' + (result.won ? '' : ' lose')}>{m}</p> : null })()}
       <p className="line">{mode === 'vs' ? '' : `Level ${level} · `}{oversStr(result.ballsUsed)} overs{mode === 'daily' ? ` · 🔥 ${streak}-day streak` : ''}</p>
       <BatCard result={result} />
       {mode === 'vs' && <VsPanel kind="bat" seedStr={seedStr} vs={vs} result={result} cap={cap} picks={xi} />}
@@ -390,10 +390,10 @@ function Result({ vs, level, cap, xi, result, mode, stats, seedStr, onHome, onPr
       {sub === 'done' && (
         <button className="ghost" onClick={onBoard}>{rank ? `🏆 You're #${rank.rank} today — view leaderboard` : '🏆 View leaderboard'}</button>
       )}
-      {mode !== 'vs' && <div className="hcta"><button className="primary" onClick={onNext}>{level < BAT_LEVELS ? `Next level ▶ Level ${level + 1} (chase ${batTarget(level + 1)})` : `Play level ${level} again`}</button></div>}
+      {mode !== 'vs' && <div className="hcta"><button className="primary" onClick={result.won ? onNext : onPractice}>{result.won && level < BAT_LEVELS ? `Next level ▶ Level ${level + 1} (chase ${batTarget(level + 1)})` : result.won ? `Play level ${level} again` : `Try level ${level} again (chase ${batTarget(level)})`}</button></div>}
       <button className={mode === 'vs' ? 'primary' : 'ghost'} onClick={share}>{copied ? 'Copied!' : 'Share result'}</button>
       <button className="ghost" onClick={() => shareCard({ mode: mode === 'vs' ? 'Challenge · Batting' : 'Batting', level: mode === 'vs' ? null : level, score: result.score, wickets: result.wickets, won: result.won, line: verdict(result), names: xi.map((p) => p.name), footer: window.location.host })}>🖼️ Share as image</button>
-      {(mode === 'vs' || level < BAT_LEVELS) && <button className="ghost" onClick={onPractice}>{mode === 'vs' ? 'Play a practice game' : `Play level ${level} again`}</button>}
+      {(mode === 'vs' || (result.won && level < BAT_LEVELS)) && <button className="ghost" onClick={onPractice}>{mode === 'vs' ? 'Play a practice game' : `Play level ${level} again`}</button>}
       <button className="link" onClick={onHome}>Home</button>
     </main>
   )
@@ -610,7 +610,7 @@ function BowlResult({ vs, level, cap, attack, result, mode, stats, seedStr, onHo
     <main className={'result' + (mode !== 'vs' ? ' has-cta' : '')}>
       <div className={'big' + (result.won ? ' win' : '')}>{result.score}<small>/{result.wickets}</small></div>
       {mode === 'vs' && vs ? <VsSummary vs={vs} result={result} kind="bowl" /> : <p className="verdict">{bowlVerdict(result)}</p>}
-      {mode !== 'vs' && (() => { const m = unlockMsg({ won: result.won, level, levels: BOWL_LEVELS, frontier: stats.bowlLevel, nextText: `under ${bowlTarget(level + 1)}` }); return m ? <p className="unlock">{m}</p> : null })()}
+      {mode !== 'vs' && (() => { const m = unlockMsg({ won: result.won, level, levels: BOWL_LEVELS, frontier: stats.bowlLevel, nextText: `under ${bowlTarget(level + 1)}`, gap: `${Math.max(0, result.score - result.target + 1)} runs too many (limit ${result.target - 1})` }); return m ? <p className="unlock lose">{m}</p> : null })()}
       <p className="line">{mode === 'vs' ? '' : `Level ${level} · `}{result.opp.name} {result.opp.year} · {oversStr(result.ballsUsed)} overs{mode === 'daily' ? ` · 🔥 ${streak}-day streak` : ''}</p>
       <BowlCard result={result} />
       {mode === 'vs' && <VsPanel kind="bowl" seedStr={seedStr} vs={vs} result={result} cap={cap} picks={attack} />}
@@ -623,10 +623,10 @@ function BowlResult({ vs, level, cap, attack, result, mode, stats, seedStr, onHo
       {sub === 'sending' && <p className="line">Posting…</p>}
       {sub === 'error' && <p className="warn">Couldn't reach the leaderboard. <button className="link" onClick={submit}>Retry</button></p>}
       {sub === 'done' && <button className="ghost" onClick={onBoard}>{rank ? `🏆 You're #${rank.rank} today — view leaderboard` : '🏆 View leaderboard'}</button>}
-      {mode !== 'vs' && <div className="hcta"><button className="primary" onClick={onNext}>{level < BOWL_LEVELS ? `Next level ▶ Level ${level + 1} (under ${bowlTarget(level + 1)})` : `Play level ${level} again`}</button></div>}
+      {mode !== 'vs' && <div className="hcta"><button className="primary" onClick={result.won ? onNext : onPractice}>{result.won && level < BOWL_LEVELS ? `Next level ▶ Level ${level + 1} (under ${bowlTarget(level + 1)})` : result.won ? `Play level ${level} again` : `Try level ${level} again (under ${bowlTarget(level)})`}</button></div>}
       <button className={mode === 'vs' ? 'primary' : 'ghost'} onClick={share}>{copied ? 'Copied!' : 'Share result'}</button>
       <button className="ghost" onClick={() => shareCard({ mode: mode === 'vs' ? 'Challenge · Bowling' : 'Bowling', level: mode === 'vs' ? null : level, score: result.score, wickets: result.wickets, won: result.won, line: bowlVerdict(result), names: attack.map((p) => p.name), footer: window.location.host })}>🖼️ Share as image</button>
-      {(mode === 'vs' || level < BOWL_LEVELS) && <button className="ghost" onClick={onPractice}>{mode === 'vs' ? 'Play a practice game' : `Play level ${level} again`}</button>}
+      {(mode === 'vs' || (result.won && level < BOWL_LEVELS)) && <button className="ghost" onClick={onPractice}>{mode === 'vs' ? 'Play a practice game' : `Play level ${level} again`}</button>}
       <button className="link" onClick={onHome}>Home</button>
     </main>
   )
@@ -754,7 +754,7 @@ function HowTo({ onClose }) {
     ['🧢', 'Draft your side', 'One player per spin. No undos, one re-roll. Batters keep their usual spots.'],
     ['🏏', 'Batting', 'Chase the target in 20 overs. Level 1 is 200, level 13 is 320.'],
     ['🎯', 'Bowling', 'Draft 5 bowlers and hold them under the target: 60 down to 15.'],
-    ['⬆️', 'Keep playing', 'Play as many levels as you like. Finish one to open the next, win it for a ✓. The first game of the day is your scored daily.'],
+    ['⬆️', 'Keep playing', 'Play as many games as you like. Beat a level to unlock the next. The first game of the day is your scored daily.'],
     ['🌦️', 'Conditions', 'Every day has a pitch and a draft twist. Pick players who suit them.'],
     ['⭐', 'Tactics', 'Pick a captain, tweak the batting order, and fit bowlers to the right phase.'],
     ['⚡', 'Super Over', '3 hitters and 1 bowler: bat one over, then defend it.'],
