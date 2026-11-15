@@ -10,6 +10,28 @@ import { makeSpins, oversStr, initials, avatarColor } from './util.js'
 
 export const Av = ({ p }) => <span className="av" style={{ background: avatarColor(p) }}>{initials(p.name)}</span>
 
+// ---------- placement sheet: appears at the bottom as soon as a player is tapped ----------
+export function PlaceSheet({ player, options, onCancel }) {
+  return (
+    <div className="sheet" role="dialog" aria-label={`Place ${player.name}`}>
+      <div className="sheet-in">
+        <div className="sheet-head">
+          <Av p={player} />
+          <div><b>{player.name}</b><small>{options.length === 1 ? 'Confirm the position' : 'Choose a position'}</small></div>
+          <button className="link" onClick={onCancel}>Cancel</button>
+        </div>
+        <div className="sheet-opts">
+          {options.map((o) => (
+            <button key={o.key} className={'opt' + (options.length === 1 ? ' only' : '')} onClick={o.onPick}>
+              <b>{o.label}</b>{o.hint ? <small className={o.tone || ''}>{o.hint}</small> : null}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ---------- today's pitch + twist ----------
 export function Brief({ seedStr, compact }) {
   const cond = conditionFor(seedStr), mod = modifierFor(seedStr)
@@ -129,7 +151,7 @@ export function SuperDraft({ seedStr, mode, picks, setPicks, onDone, onExit }) {
   const slotOK = (i) => slotOpen(i) && sel && (i < 3 || sel.bwl >= BOWL_MIN)
   const place = (i) => { const next = picks.slice(); next[i] = sel; setPicks(next); setSel(null); setSpinIdx((x) => x + 1) }
   return (
-    <main className="draft">
+    <main className={'draft' + (sel ? ' has-sheet' : '')}>
       <header><button className="link" onClick={onExit}>✕</button><b>{mode === 'daily' ? 'Daily Super Over' : 'Super Over'}</b><span>{picked}/4</span></header>
       <Brief seedStr={seedStr} compact />
       <div className="card opp">
@@ -167,6 +189,7 @@ export function SuperDraft({ seedStr, mode, picks, setPicks, onDone, onExit }) {
           </li>
         ))}
       </ol>
+      {sel && <PlaceSheet player={sel} onCancel={() => setSel(null)} options={SO_SLOTS.map((l, i) => ({ l, i })).filter(({ i }) => slotOK(i)).map(({ l, i }) => ({ key: i, label: l, hint: i < 3 ? `POW ${sel.pow}` : `BWL ${sel.bwl}`, onPick: () => place(i) }))} />}
     </main>
   )
 }

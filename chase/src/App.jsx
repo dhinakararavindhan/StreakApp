@@ -6,7 +6,7 @@ import { load, liveStreak, recordDaily, recordPractice, recordVs, histKey, seenI
 import { shareCard } from './card.js'
 import { fits, oversStr, makeSpins, getTheme, applyTheme } from './util.js'
 import { conditionFor, modifierFor, squadsFor, pickAllowed, tagOf, TAG_LABEL, phaseBonus } from './rules.js'
-import { Brief, Tactics, SuperDraft, SuperInnings, SuperResult, Weekly, Recap, ratingChips, Av } from './extras.jsx'
+import { Brief, Tactics, SuperDraft, SuperInnings, SuperResult, Weekly, Recap, ratingChips, Av, PlaceSheet } from './extras.jsx'
 import { getVs, submitVs, submitScore, fetchBoard, getName, setName, pushSupported, pushEnabled, enablePush, disablePush } from './api.js'
 
 export default function App() {
@@ -226,7 +226,7 @@ function Draft({ level, seedStr, mode, xi, setXi, onDone, onExit }) {
   const r = teamRatings(xi)
 
   return (
-    <main className="draft">
+    <main className={'draft' + (sel ? ' has-sheet' : '')}>
       <header>
         <button className="link" onClick={onExit}>✕</button>
         <b>{mode === 'daily' ? 'Daily draft' : mode === 'vs' ? 'Challenge' : 'Practice'} · L{level}</b>
@@ -282,6 +282,7 @@ function Draft({ level, seedStr, mode, xi, setXi, onDone, onExit }) {
         })}
       </ol>
       {picked > 0 && !r.hasKeeper && <p className="warn">No keeper in your XI yet — small penalty if you don't pick one 🧤</p>}
+      {sel && <PlaceSheet player={sel} onCancel={() => setSel(null)} options={freeSlots.filter((s) => fits(sel, s)).map((s) => ({ key: s, label: `#${s + 1} ${SLOT_LABELS[s]}`, onPick: () => place(s) }))} />}
     </main>
   )
 }
@@ -500,7 +501,7 @@ function BowlDraft({ level, seedStr, mode, attack, setAttack, onDone, onExit }) 
   const oppPow = Math.round(opp.players.reduce((s, p) => s + p.pow, 0) / opp.players.length)
 
   return (
-    <main className="draft">
+    <main className={'draft' + (sel ? ' has-sheet' : '')}>
       <header>
         <button className="link" onClick={onExit}>✕</button>
         <b>{mode === 'daily' ? 'Daily bowling' : mode === 'vs' ? 'Challenge · bowling' : 'Practice bowling'} · L{level}</b>
@@ -555,6 +556,7 @@ function BowlDraft({ level, seedStr, mode, attack, setAttack, onDone, onExit }) 
           )
         })}
       </ol>
+      {sel && <PlaceSheet player={sel} onCancel={() => setSel(null)} options={attack.map((p, i) => ({ p, i })).filter(({ p }) => !p).map(({ i }) => { const f = phaseBonus(i, sel); return { key: i, label: BOWL_SLOTS[i], hint: f > 0 ? `+${f} fit` : f < 0 ? `${f} fit` : '', tone: f > 0 ? 'up' : f < 0 ? 'dn' : '', onPick: () => place(i) } })} />}
     </main>
   )
 }

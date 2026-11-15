@@ -415,3 +415,26 @@ button.ghost:active:not(:disabled), .player:active:not(:disabled) { transform: s
   }
 }
 @media (prefers-reduced-motion: reduce) { body::before { animation: none; } .slots li.can { animation: none; } }
+
+/* ---------- placement sheet (bottom, thumb-friendly) ---------- */
+.draft.has-sheet { padding-bottom: 190px; }
+.sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; display: flex; justify-content: center; padding: 0 12px calc(12px + env(safe-area-inset-bottom)); pointer-events: none; animation: sheetUp 0.22s ease-out; }
+@keyframes sheetUp { from { transform: translateY(30px); opacity: 0; } to { transform: none; opacity: 1; } }
+.sheet-in {
+  pointer-events: auto; width: 100%; max-width: 496px; padding: 14px; border-radius: 28px;
+  background: var(--sheen), color-mix(in srgb, var(--card) 96%, transparent); border: 1px solid var(--glass-edge);
+  box-shadow: var(--glass-hi), 0 -2px 6px rgba(20, 28, 80, 0.06), 0 20px 44px rgba(45, 52, 160, 0.28), 0 40px 80px rgba(91, 91, 240, 0.2);
+  -webkit-backdrop-filter: blur(28px) saturate(190%); backdrop-filter: blur(28px) saturate(190%);
+}
+.sheet-head { display: flex; align-items: center; gap: 12px; }
+.sheet-head > div { flex: 1; display: flex; flex-direction: column; }
+.sheet-head b { font-size: 1rem; }
+.sheet-head small { color: var(--mut); font-size: 0.76rem; font-weight: 600; }
+.sheet-opts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.opt { flex: 1 1 auto; min-width: 84px; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 11px 12px; border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0) 52%), var(--grad); color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.35); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 8px 18px rgba(91, 91, 240, 0.34); text-shadow: 0 1px 2px rgba(40, 30, 160, 0.35); }
+.opt b { font-size: 0.92rem; }
+.opt small { font-size: 0.7rem; font-weight: 700; opacity: 0.95; }
+.opt small.up { color: #c8ffe3; } .opt small.dn { color: #ffd0d3; }
+.opt.only { flex: 1 1 100%; padding: 14px; }
