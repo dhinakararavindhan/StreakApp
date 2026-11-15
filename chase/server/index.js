@@ -199,4 +199,4 @@ const server = http.createServer(async (req, res) => {
     fs.createReadStream(f).pipe(res)
   } catch (e) { send(res, 400, { error: 'bad request' }) }
 })
-server.listen(PORT, () => console.log(`Chase 500 server on :${PORT}`))
+server.listen(PORT, () => console.log(`Chase 300 server on :${PORT}`))
