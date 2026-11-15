@@ -1,7 +1,7 @@
 # Fly.io config. Change `app` to a unique name, then:
 #   fly launch --no-deploy --copy-config
 #   fly volumes create chase_data --size 1
-#   fly secrets set VAPID_PUBLIC=... VAPID_PRIVATE=... VAPID_SUBJECT=mailto:you@example.com
+#   fly secrets set CONTACT_EMAIL=you@example.com VAPID_SUBJECT=mailto:you@example.com
 #   fly deploy
 app = "chase-300-change-me"
 primary_region = "bom"

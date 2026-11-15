@@ -3,9 +3,8 @@
 You need: a host account (Fly.io is the default here), a domain (optional but recommended), and a contact email.
 
 ## Before you deploy (2 minutes)
-1. Edit `public/privacy.html`: replace `REPLACE-WITH-YOUR-CONTACT-EMAIL`.
-2. Generate push keys once and keep them secret:
-   `npx web-push generate-vapid-keys`
+1. Set the `CONTACT_EMAIL` environment variable (shown on the privacy page). No file edit needed.
+2. Push keys are generated automatically on first start and stored in the data file on the disk, so there is nothing to generate. (Optional: set `VAPID_PUBLIC`/`VAPID_PRIVATE` yourself to override.) Set `VAPID_SUBJECT` to `mailto:you@yourdomain` so push services can contact you.
 
 ## Option A: Fly.io (recommended)
 ```
@@ -15,7 +14,7 @@ cd chase
 # edit fly.toml: set a unique `app` name (and primary_region, e.g. bom, sin, lhr, iad)
 fly launch --no-deploy --copy-config
 fly volumes create chase_data --size 1
-fly secrets set VAPID_PUBLIC=... VAPID_PRIVATE=... VAPID_SUBJECT=mailto:you@example.com
+fly secrets set CONTACT_EMAIL=you@example.com VAPID_SUBJECT=mailto:you@example.com
 fly deploy
 fly open
 ```
@@ -25,7 +24,7 @@ HTTPS is automatic. Custom domain: `fly certs add yourdomain.com`, then add the 
 1. Create an account at render.com and connect your GitHub.
 2. New + > Blueprint > pick the repo. It reads `render.yaml` at the repo root (root directory `chase`, Docker, 1 GB disk at `/data`, health check `/healthz`).
 3. Choose the branch (the blueprint pins `claude/beautiful-bohr-znhivj`; change to `main` once merged).
-4. Fill in `VAPID_PUBLIC` and `VAPID_PRIVATE` (and edit `VAPID_SUBJECT` to your email) when prompted.
+4. Fill in `CONTACT_EMAIL` and `VAPID_SUBJECT` (for example `mailto:you@example.com`) when prompted.
 5. Deploy. HTTPS is automatic; add a custom domain under Settings > Custom Domains.
 The disk needs the paid Starter plan (about $7/month). Do not use the free plan: it sleeps and loses data.
 

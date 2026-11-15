@@ -1,5 +1,5 @@
 # Render blueprint (alternative to Fly.io). Lives at the repo root; the app is in ./chase.
-# Add VAPID_PUBLIC / VAPID_PRIVATE in the dashboard.
+# Push keys are generated automatically and stored on the disk. Set CONTACT_EMAIL (shown on the privacy page).
 services:
   - type: web
     name: chase-300
@@ -16,9 +16,7 @@ services:
     envVars:
       - key: DB_FILE
         value: /data/db.json
+      - key: CONTACT_EMAIL
+        sync: false
       - key: VAPID_SUBJECT
-        value: mailto:you@example.com
-      - key: VAPID_PUBLIC
-        sync: false
-      - key: VAPID_PRIVATE
-        sync: false
+        sync: false   # e.g. mailto:you@example.com

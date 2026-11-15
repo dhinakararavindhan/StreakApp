@@ -29,9 +29,14 @@ setInterval(() => {
 }, 2000).unref()
 
 // ---------- push ----------
-const pushOn = !!(process.env.VAPID_PUBLIC && process.env.VAPID_PRIVATE)
-if (pushOn) webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'mailto:admin@example.com', process.env.VAPID_PUBLIC, process.env.VAPID_PRIVATE)
-else console.warn('VAPID keys not set: push reminders disabled (generate with `npx web-push generate-vapid-keys`)')
+// VAPID keys: use env vars if provided, otherwise generate once and keep them in the db file (survives restarts on the disk).
+let vapidPublic = process.env.VAPID_PUBLIC, vapidPrivate = process.env.VAPID_PRIVATE
+if (!vapidPublic || !vapidPrivate) {
+  if (!db.vapid) { db.vapid = webpush.generateVAPIDKeys(); save() }
+  vapidPublic = db.vapid.publicKey; vapidPrivate = db.vapid.privateKey
+}
+const pushOn = true
+webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'mailto:admin@example.com', vapidPublic, vapidPrivate)
 
 const localDay = (tz) => todayKey(new Date(Date.now() - tz * 60000)) // tz = Date#getTimezoneOffset()
 const localHour = (tz) => new Date(Date.now() - tz * 60000).getUTCHours()
@@ -161,7 +166,7 @@ const server = http.createServer(async (req, res) => {
           return send(res, 200, vsView(code, device))
         }
       }
-      if (req.method === 'GET' && url.pathname === '/api/push/key') return send(res, 200, { key: pushOn ? process.env.VAPID_PUBLIC : null })
+      if (req.method === 'GET' && url.pathname === '/api/push/key') return send(res, 200, { key: vapidPublic })
       if (req.method === 'POST' && url.pathname === '/api/score') {
         const body = await readJson(req)
         const { device, name, day, xi } = body
@@ -190,6 +195,10 @@ const server = http.createServer(async (req, res) => {
         return send(res, 200, { ok: true })
       }
       return send(res, 404, { error: 'not found' })
+    }
+    if (url.pathname === '/privacy.html' && fs.existsSync(path.join(DIST, 'privacy.html'))) {
+      const html = fs.readFileSync(path.join(DIST, 'privacy.html'), 'utf8').replace('REPLACE-WITH-YOUR-CONTACT-EMAIL', (process.env.CONTACT_EMAIL || 'contact email not set').replace(/[<>&"]/g, ''))
+      res.writeHead(200, { 'content-type': 'text/html' }); return res.end(html)
     }
     // static files (built PWA)
     let f = path.normalize(path.join(DIST, url.pathname === '/' ? 'index.html' : url.pathname))
