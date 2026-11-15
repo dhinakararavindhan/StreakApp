@@ -6,7 +6,7 @@ import { load, liveStreak, recordDaily, recordPractice, recordVs, histKey, seenI
 import { shareCard } from './card.js'
 import { fits, oversStr, makeSpins, getTheme, applyTheme } from './util.js'
 import { conditionFor, modifierFor, squadsFor, pickAllowed, tagOf, TAG_LABEL, phaseBonus } from './rules.js'
-import { Brief, Tactics, SuperDraft, SuperInnings, SuperResult, Weekly, Recap, ratingChips, Av, PlaceSheet } from './extras.jsx'
+import { Brief, Tactics, SuperDraft, SuperInnings, SuperResult, Weekly, Recap, ratingChips, Av, PlaceSheet, BriefPills, Progress, WheelRow, MyList } from './extras.jsx'
 import { getVs, submitVs, submitScore, fetchBoard, getName, setName, pushSupported, pushEnabled, enablePush, disablePush } from './api.js'
 
 export default function App() {
@@ -231,59 +231,47 @@ function Draft({ vs, level, seedStr, mode, xi, setXi, onDone, onExit }) {
     <main className={'draft' + (sel ? ' has-sheet' : '')}>
       <header>
         <button className="link" onClick={onExit}>✕</button>
-        <b>{mode === 'daily' ? `Daily draft · L${level}` : mode === 'vs' ? 'Challenge' : `Practice · L${level}`}</b>
+        <b>{vs ? (vs.role === 'first' ? 'Set the score' : `Chase ${vs.target}`) : `Chase ${batTarget(level)}`}<small className="sub3">{mode === 'daily' ? ` · daily L${level}` : mode === 'vs' ? ' · challenge' : ` · practice L${level}`}</small></b>
         <span>{picked}/11</span>
       </header>
-
-      <p className="hint">{vs ? (vs.role === 'first' ? <>Set a score: your friend must beat it</> : <>Chase <b>{vs.target}</b> in 20 overs</>) : <>Level {level}: chase <b>{batTarget(level)}</b> in 20 overs</>}</p>
-      <Brief seedStr={seedStr} compact />
-      <div className="ratings">
-        <Meter label="BAT" v={r.bat} /><Meter label="POW" v={r.pow} /><Meter label="BWL" v={r.bwl} />
-      </div>
+      <BriefPills seedStr={seedStr} />
+      <Progress items={xi} total={11} text={`B${Math.round(r.bat)} P${Math.round(r.pow)} W${Math.round(r.bwl)}`} />
 
       {picked < 11 ? (
         <>
-          <div className={'wheel' + (rolling ? ' spinning' : '')}>
-            {rolling ? ticker : <>{squad.name} <small>{squad.year}</small></>}
-          </div>
+          <WheelRow rolling={rolling} ticker={ticker} squad={squad} rerolls={rerolls} canReroll={rerolls > 0 && !sel && !rolling} onReroll={reroll} />
           {!rolling && (
-            <>
-              <div className="players">
-                {squad.players.map((p) => {
-                  const ok = eligible(p)
-                  return (
-                    <button key={p.name} disabled={!ok} className={'player' + (sel === p ? ' sel' : '')} onClick={() => setSel(p)}>
-                      <Av p={p} />
-                      <span className="pn">{p.name}{p.k ? ' 🧤' : ''}</span>
-                      <span className="pp">{p.lo === p.hi ? `#${p.lo}` : `#${p.lo}–${p.hi}`}</span>
-                      <span className="pr"><i>B</i>{p.bat} <i>P</i>{p.pow} <i>W</i>{p.bwl}</span>
-                      <span className="chips">{ratingChips(p, conditionFor(seedStr), 'bat')}</span>
-                    </button>
-                  )
-                })}
-              </div>
-              <p className="hint">{sel ? `Place ${sel.name} in a highlighted slot` : 'Pick a player — no undos.'}</p>
-              <button className="ghost small" disabled={rerolls === 0 || !!sel} onClick={reroll}>Re-roll wheel ({rerolls})</button>
-            </>
+            <div className="players">
+              {squad.players.map((p) => {
+                const ok = eligible(p)
+                return (
+                  <button key={p.name} disabled={!ok} className={'player' + (sel === p ? ' sel' : '')} onClick={() => setSel(p)}>
+                    <Av p={p} />
+                    <span className="pn">{p.name}{p.k ? ' 🧤' : ''}</span>
+                    <span className="meta">{p.lo === p.hi ? `#${p.lo}` : `#${p.lo}–${p.hi}`} · <i>B</i>{p.bat} <i>P</i>{p.pow} <i>W</i>{p.bwl}</span>
+                    <span className="chips">{ratingChips(p, conditionFor(seedStr), 'bat')}</span>
+                  </button>
+                )
+              })}
+            </div>
           )}
         </>
       ) : (
         <button className="primary" onClick={() => onDone(xi)}>Next: tactics</button>
       )}
 
-      <ol className="slots">
-        {xi.map((p, i) => {
-          const can = sel && !p && fits(sel, i)
-          return (
-            <li key={i} className={(can ? 'can ' : '') + (p ? 'filled' : '')} onClick={() => can && place(i)}>
+      {picked > 0 && !r.hasKeeper && <p className="warn">No keeper yet: small penalty without one 🧤</p>}
+      <MyList summary={`My XI · ${picked}/11`}>
+        <ol className="slots">
+          {xi.map((p, i) => (
+            <li key={i} className={p ? 'filled' : ''}>
               <span className="sn">{i + 1}</span>
               <span className="sl">{p ? <>{p.name} <small className="tm">{p.team} {String(p.year).slice(2)}</small></> : SLOT_LABELS[i]}</span>
               {p && <span className="pr"><i>B</i>{p.bat} <i>P</i>{p.pow} <i>W</i>{p.bwl}</span>}
             </li>
-          )
-        })}
-      </ol>
-      {picked > 0 && !r.hasKeeper && <p className="warn">No keeper in your XI yet — small penalty if you don't pick one 🧤</p>}
+          ))}
+        </ol>
+      </MyList>
       {sel && <PlaceSheet player={sel} onCancel={() => setSel(null)} options={freeSlots.filter((s) => fits(sel, s)).map((s) => ({ key: s, label: `#${s + 1} ${SLOT_LABELS[s]}`, onPick: () => place(s) }))} />}
     </main>
   )
@@ -362,7 +350,7 @@ function Result({ vs, level, cap, xi, result, mode, stats, seedStr, onHome, onPr
   const streak = liveStreak(stats)
   const text = [
     `Chase 300 ${mode === 'daily' ? seedStr : '(practice)'}`,
-    `L${level} (${result.target}): ${result.score}/${result.wickets} in ${oversStr(result.ballsUsed)} ov ${result.won ? '🏆' : ''}`,
+    `${mode === 'vs' ? 'Challenge' : `L${level} (${result.target})`}: ${result.score}/${result.wickets} in ${oversStr(result.ballsUsed)} ov ${mode !== 'vs' && result.won ? '🏆' : ''}`,
     xi.map((p) => p.name).join(' · '),
     mode === 'daily' ? `🔥 ${streak}-day streak` : '',
   ].filter(Boolean).join('\n')
@@ -507,58 +495,47 @@ function BowlDraft({ vs, level, seedStr, mode, attack, setAttack, onDone, onExit
     <main className={'draft' + (sel ? ' has-sheet' : '')}>
       <header>
         <button className="link" onClick={onExit}>✕</button>
-        <b>{mode === 'daily' ? `Daily bowling · L${level}` : mode === 'vs' ? 'Challenge · bowling' : `Practice bowling · L${level}`}</b>
+        <b>{vs ? (vs.role === 'first' ? 'Set the score' : `Under ${vs.target}`) : `Under ${bowlTarget(level)}`}<small className="sub3">{mode === 'daily' ? ` · daily L${level}` : mode === 'vs' ? ' · challenge' : ` · practice L${level}`}</small></b>
         <span>{picked}/5</span>
       </header>
-      <div className="card opp">
-        <small>Opponent</small>
-        <b>{opp.name} {opp.year}</b>
-        <span>Batting power {oppPow} · {vs ? (vs.role === 'first' ? 'set the score to beat' : `hold them under ${vs.target}`) : `Level ${level}: hold them under ${bowlTarget(level)}`}</span>
-      </div>
-      <Brief seedStr={seedStr} compact />
-      <div className="ratings"><Meter label="ATTACK" v={r.bwl} /></div>
+      <BriefPills seedStr={seedStr} />
+      <div className="card opp tight"><small>vs</small><b>{opp.name} {opp.year}</b><span>Power {oppPow}</span></div>
+      <Progress items={attack} total={5} text={`Attack ${Math.round(r.bwl)}`} />
 
       {picked < 5 ? (
         <>
-          <div className={'wheel' + (rolling ? ' spinning' : '')}>
-            {rolling ? ticker : <>{squad.name} <small>{squad.year}</small></>}
-          </div>
+          <WheelRow rolling={rolling} ticker={ticker} squad={squad} rerolls={rerolls} canReroll={rerolls > 0 && !sel && !rolling} onReroll={() => { setRerolls(0); setSpinIdx((i) => i + 1) }} />
           {!rolling && (
-            <>
-              <div className="players">
-                {squad.players.filter((p) => p.bwl >= BOWL_MIN).map((p) => {
-                  const ok = eligible(p)
-                  return (
-                    <button key={p.name} disabled={!ok} className={'player' + (sel === p ? ' sel' : '')} onClick={() => setSel(p)}>
-                      <Av p={p} />
-                      <span className="pn">{p.name}</span>
-                      <span className="pr"><i>W</i>{p.bwl} <i>B</i>{p.bat}</span>
-                      <span className="chips">{ratingChips(p, conditionFor(seedStr), 'bowl')}</span>
-                    </button>
-                  )
-                })}
-              </div>
-              <p className="hint">{sel ? `Pick a slot for ${sel.name}` : 'Pick a bowler — no undos.'}</p>
-              <button className="ghost small" disabled={rerolls === 0 || !!sel} onClick={() => { setRerolls(0); setSpinIdx((i) => i + 1) }}>Re-roll wheel ({rerolls})</button>
-            </>
+            <div className="players">
+              {squad.players.filter((p) => p.bwl >= BOWL_MIN).map((p) => {
+                const ok = eligible(p)
+                return (
+                  <button key={p.name} disabled={!ok} className={'player' + (sel === p ? ' sel' : '')} onClick={() => setSel(p)}>
+                    <Av p={p} />
+                    <span className="pn">{p.name}</span>
+                    <span className="meta"><i>W</i>{p.bwl} <i>B</i>{p.bat}</span>
+                    <span className="chips">{ratingChips(p, conditionFor(seedStr), 'bowl')}</span>
+                  </button>
+                )
+              })}
+            </div>
           )}
         </>
       ) : (
         <button className="primary" onClick={() => onDone(attack)}>Next: tactics</button>
       )}
 
-      <ol className="slots">
-        {attack.map((p, i) => {
-          const can = sel && !p
-          return (
-            <li key={i} className={(can ? 'can ' : '') + (p ? 'filled' : '')} onClick={() => can && place(i)}>
+      <MyList summary={`My attack · ${picked}/5`}>
+        <ol className="slots">
+          {attack.map((p, i) => (
+            <li key={i} className={p ? 'filled' : ''}>
               <span className="sn">{i + 1}</span>
-              <span className="sl">{p ? <>{p.name} <small className="tm">{p.team} {String(p.year).slice(2)}</small></> : BOWL_SLOTS[i]}{!p && sel && phaseBonus(i, sel) !== 0 ? <small className="tm"> {phaseBonus(i, sel) > 0 ? `+${phaseBonus(i, sel)} fit` : `${phaseBonus(i, sel)} fit`}</small> : null}</span>
+              <span className="sl">{p ? <>{p.name} <small className="tm">{p.team} {String(p.year).slice(2)}</small></> : BOWL_SLOTS[i]}</span>
               {p && <span className="pr"><i>W</i>{p.bwl}</span>}
             </li>
-          )
-        })}
-      </ol>
+          ))}
+        </ol>
+      </MyList>
       {sel && <PlaceSheet player={sel} onCancel={() => setSel(null)} options={attack.map((p, i) => ({ p, i })).filter(({ p }) => !p).map(({ i }) => { const f = phaseBonus(i, sel); return { key: i, label: BOWL_SLOTS[i], hint: f > 0 ? `+${f} fit` : f < 0 ? `${f} fit` : '', tone: f > 0 ? 'up' : f < 0 ? 'dn' : '', onPick: () => place(i) } })} />}
     </main>
   )
@@ -619,7 +596,7 @@ function BowlResult({ vs, level, cap, attack, result, mode, stats, seedStr, onHo
   }
   const text = [
     `Chase 300 · Bowling ${mode === 'daily' ? seedStr : '(practice)'}`,
-    `L${level} (<${result.target}) vs ${result.opp.name} ${result.opp.year}: ${result.score}/${result.wickets} in ${oversStr(result.ballsUsed)} ov ${result.won ? '🏆' : ''}`,
+    `${mode === 'vs' ? 'Challenge' : `L${level} (<${result.target})`} vs ${result.opp.name} ${result.opp.year}: ${result.score}/${result.wickets} in ${oversStr(result.ballsUsed)} ov ${mode !== 'vs' && result.won ? '🏆' : ''}`,
     attack.map((p) => p.name).join(' · '),
     mode === 'daily' ? `🔥 ${streak}-day streak` : '',
   ].filter(Boolean).join('\n')

@@ -451,3 +451,65 @@ button.ghost:active:not(:disabled), .player:active:not(:disabled) { transform: s
 .vs-banner.lose { background: linear-gradient(135deg, rgba(229, 72, 77, 0.18), rgba(229, 72, 77, 0.05)), var(--glass); border-color: rgba(229, 72, 77, 0.4); }
 .vs-banner.tie { background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(245, 158, 11, 0.05)), var(--glass); border-color: rgba(245, 158, 11, 0.45); }
 .vs-banner.set { background: linear-gradient(135deg, rgba(139, 92, 246, 0.22), rgba(91, 91, 240, 0.08)), var(--glass); border-color: rgba(91, 91, 240, 0.45); }
+
+/* =====================================================================
+   COMPACT DRAFT: the whole draft fits on one screen, no long scrolling
+   ===================================================================== */
+.draft { gap: 10px; }
+.draft header { min-height: 34px; }
+.draft header b { font-size: 1.02rem; letter-spacing: -0.01em; }
+.sub3 { color: var(--mut); font-weight: 600; font-size: 0.78rem; }
+.draft header .link { padding: 4px 8px; }
+.pills { display: flex; gap: 6px; flex-wrap: wrap; }
+.pills span { flex: 1 1 auto; text-align: center; font-size: 0.74rem; font-weight: 700; padding: 7px 10px; border-radius: 999px; background: var(--sheen), var(--glass); border: 1px solid var(--glass-edge); box-shadow: var(--glass-hi), var(--depth-sm); white-space: nowrap; }
+.prog { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border-radius: 18px; background: var(--sheen), var(--glass); border: 1px solid var(--glass-edge); box-shadow: var(--glass-hi), var(--depth-sm); }
+.dots { display: flex; flex-wrap: wrap; gap: 4px; }
+.d { width: 21px; height: 21px; border-radius: 8px; display: grid; place-items: center; font-style: normal; font-size: 0.64rem; font-weight: 800; color: var(--mut); background: rgba(120, 130, 190, 0.14); border: 1px dashed rgba(120, 130, 190, 0.45); }
+.d.on { color: #fff; border: 1px solid rgba(255, 255, 255, 0.4); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 2px 6px rgba(20, 28, 80, 0.25); }
+.ptxt { font-size: 0.72rem; font-weight: 800; color: var(--accent); white-space: nowrap; }
+.wheelrow { display: flex; gap: 8px; align-items: stretch; }
+.wheelrow .wheel { flex: 1; padding: 13px 16px; font-size: 1.12rem; border-radius: 20px; }
+.reroll { width: 54px; padding: 0; border-radius: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; font-size: 1.15rem; }
+.reroll small { font-size: 0.62rem; font-weight: 800; color: var(--mut); }
+.card.opp.tight { padding: 8px 12px; flex-direction: row; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.card.opp.tight b { font-size: 0.92rem; }
+.card.opp.tight span { font-size: 0.74rem; }
+.players { gap: 8px; }
+.player { grid-template-columns: 34px 1fr; grid-template-areas: 'av n' 'av m' 'c c'; padding: 9px 10px; column-gap: 9px; border-radius: 16px; }
+.player .av { grid-area: av; width: 34px; height: 34px; border-radius: 12px; font-size: 0.72rem; }
+.player .pn { grid-area: n; font-size: 0.86rem; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.player .meta { grid-area: m; font-size: 0.68rem; color: var(--mut); font-weight: 600; white-space: nowrap; }
+.player .meta i { font-style: normal; color: var(--accent); font-weight: 800; margin-left: 2px; }
+.player .chips { grid-area: c; margin-top: 3px; gap: 3px; }
+.player .chips:empty { display: none; }
+.player .chip { font-size: 0.56rem; padding: 2px 5px; }
+.xi { border-radius: 18px; background: var(--sheen), var(--glass); border: 1px solid var(--glass-edge); box-shadow: var(--glass-hi), var(--depth-sm); padding: 0 12px; }
+.xi summary { cursor: pointer; padding: 12px 0; font-weight: 700; font-size: 0.86rem; color: var(--mut); list-style: none; }
+.xi summary::-webkit-details-marker { display: none; }
+.xi summary::after { content: ' ▾'; }
+.xi[open] summary::after { content: ' ▴'; }
+.xi .slots { margin: 0 0 12px; }
+.draft.has-sheet { padding-bottom: 170px; }
+
+/* fixes: keep the 2-column grid inside the screen and tighten vertical rhythm */
+.players { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.player { min-width: 0; }
+.player .meta, .player .pn { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.draft { gap: 8px; }
+.card.opp.tight { flex-wrap: nowrap; overflow: hidden; }
+.card.opp.tight b { white-space: nowrap; }
+.card.opp.tight span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
+/* short phone screens: drop the least essential chips and trim spacing so drafts still fit */
+@media (max-height: 760px) {
+  .player .chip:not(.up):not(.dn) { display: none; }
+  .player { padding: 7px 9px; }
+  .player .av { width: 30px; height: 30px; font-size: 0.66rem; }
+  .player { grid-template-columns: 30px 1fr; }
+  .players { gap: 6px; }
+  .app { padding-top: max(10px, env(safe-area-inset-top)); }
+  .draft { gap: 6px; }
+  .wheelrow .wheel { padding: 10px 14px; }
+  .prog { padding: 6px 10px; }
+  .pills span { padding: 5px 8px; }
+}

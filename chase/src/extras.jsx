@@ -32,6 +32,35 @@ export function PlaceSheet({ player, options, onCancel }) {
   )
 }
 
+// ---------- compact draft pieces (keep a whole draft on one screen) ----------
+export function BriefPills({ seedStr }) {
+  const cond = conditionFor(seedStr), mod = modifierFor(seedStr)
+  return <div className="pills"><span>{cond.icon} {cond.name}</span><span>{mod.icon} {mod.title}</span></div>
+}
+export function Progress({ items, total, text }) {
+  return (
+    <div className="prog">
+      <div className="dots">
+        {Array.from({ length: total }, (_, i) => (items[i]
+          ? <i key={i} className="d on" style={{ background: avatarColor(items[i]) }}>{initials(items[i].name)[0]}</i>
+          : <i key={i} className="d">{i + 1}</i>))}
+      </div>
+      {text && <span className="ptxt">{text}</span>}
+    </div>
+  )
+}
+export function WheelRow({ rolling, ticker, squad, rerolls, canReroll, onReroll }) {
+  return (
+    <div className="wheelrow">
+      <div className={'wheel' + (rolling ? ' spinning' : '')}>{rolling ? ticker : <>{squad.name} <small>{squad.year}</small></>}</div>
+      <button className="ghost reroll" disabled={!canReroll} onClick={onReroll} aria-label="Re-roll wheel">🔄<small>{rerolls}</small></button>
+    </div>
+  )
+}
+export function MyList({ summary, children }) {
+  return <details className="xi"><summary>{summary}</summary>{children}</details>
+}
+
 // ---------- today's pitch + twist ----------
 export function Brief({ seedStr, compact }) {
   const cond = conditionFor(seedStr), mod = modifierFor(seedStr)
@@ -152,43 +181,38 @@ export function SuperDraft({ seedStr, mode, picks, setPicks, onDone, onExit }) {
   const place = (i) => { const next = picks.slice(); next[i] = sel; setPicks(next); setSel(null); setSpinIdx((x) => x + 1) }
   return (
     <main className={'draft' + (sel ? ' has-sheet' : '')}>
-      <header><button className="link" onClick={onExit}>✕</button><b>{mode === 'daily' ? 'Daily Super Over' : 'Super Over'}</b><span>{picked}/4</span></header>
-      <Brief seedStr={seedStr} compact />
-      <div className="card opp">
-        <small>Their Super Over side · {opp.name} {opp.year}</small>
-        <b>{opp.bats.map((p) => p.name).join(', ')}</b>
-        <span>Bowler: {opp.bowler.name} (BWL {opp.bowler.bwl})</span>
-      </div>
+      <header><button className="link" onClick={onExit}>✕</button><b>Super Over<small className="sub3">{mode === 'daily' ? ' · daily' : ' · practice'}</small></b><span>{picked}/4</span></header>
+      <BriefPills seedStr={seedStr} />
+      <div className="card opp tight"><small>vs</small><b>{opp.name} {opp.year}</b><span>{opp.bats.map((p) => p.name).join(', ')} · bowler {opp.bowler.name}</span></div>
+      <Progress items={picks} total={4} text="3 bat + 1 bowl" />
       {picked < 4 ? (
         <>
-          <div className={'wheel' + (rolling ? ' spinning' : '')}>{rolling ? ticker : <>{squad.name} <small>{squad.year}</small></>}</div>
+          <WheelRow rolling={rolling} ticker={ticker} squad={squad} rerolls={rerolls} canReroll={rerolls > 0 && !sel && !rolling} onReroll={() => { setRerolls(0); setSpinIdx((i) => i + 1) }} />
           {!rolling && (
-            <>
-              <div className="players">
-                {squad.players.map((p) => (
-                  <button key={p.id} disabled={!eligible(p)} className={'player' + (sel === p ? ' sel' : '')} onClick={() => setSel(p)}>
-                    <Av p={p} />
-                    <span className="pn">{p.name}</span>
-                    <span className="pr"><i>B</i>{p.bat} <i>P</i>{p.pow} <i>W</i>{p.bwl}</span>
-                    <span className="chips">{ratingChips(p, conditionFor(seedStr), 'both')}</span>
-                  </button>
-                ))}
-              </div>
-              <p className="hint">{sel ? `Place ${sel.name} in a highlighted slot` : '3 hitters and 1 bowler. Think about the pitch.'}</p>
-              <button className="ghost small" disabled={rerolls === 0 || !!sel} onClick={() => { setRerolls(0); setSpinIdx((i) => i + 1) }}>Re-roll wheel ({rerolls})</button>
-            </>
+            <div className="players">
+              {squad.players.map((p) => (
+                <button key={p.id} disabled={!eligible(p)} className={'player' + (sel === p ? ' sel' : '')} onClick={() => setSel(p)}>
+                  <Av p={p} />
+                  <span className="pn">{p.name}</span>
+                  <span className="meta"><i>B</i>{p.bat} <i>P</i>{p.pow} <i>W</i>{p.bwl}</span>
+                  <span className="chips">{ratingChips(p, conditionFor(seedStr), 'both')}</span>
+                </button>
+              ))}
+            </div>
           )}
         </>
       ) : <button className="primary" onClick={() => onDone(picks)}>Next: tactics</button>}
-      <ol className="slots">
-        {picks.map((p, i) => (
-          <li key={i} className={(slotOK(i) ? 'can ' : '') + (p ? 'filled' : '')} onClick={() => slotOK(i) && place(i)}>
-            <span className="sn">{i + 1}</span>
-            <span className="sl">{p ? <>{p.name} <small className="tm">{p.team} {String(p.year).slice(2)}</small></> : SO_SLOTS[i]}</span>
-            {p && <span className="pr"><i>{i < 3 ? 'P' : 'W'}</i>{i < 3 ? p.pow : p.bwl}</span>}
-          </li>
-        ))}
-      </ol>
+      <MyList summary={`My Super Over side · ${picked}/4`}>
+        <ol className="slots">
+          {picks.map((p, i) => (
+            <li key={i} className={p ? 'filled' : ''}>
+              <span className="sn">{i + 1}</span>
+              <span className="sl">{p ? <>{p.name} <small className="tm">{p.team} {String(p.year).slice(2)}</small></> : SO_SLOTS[i]}</span>
+              {p && <span className="pr"><i>{i < 3 ? 'P' : 'W'}</i>{i < 3 ? p.pow : p.bwl}</span>}
+            </li>
+          ))}
+        </ol>
+      </MyList>
       {sel && <PlaceSheet player={sel} onCancel={() => setSel(null)} options={SO_SLOTS.map((l, i) => ({ l, i })).filter(({ i }) => slotOK(i)).map(({ l, i }) => ({ key: i, label: l, hint: i < 3 ? `POW ${sel.pow}` : `BWL ${sel.bwl}`, onPick: () => place(i) }))} />}
     </main>
   )
