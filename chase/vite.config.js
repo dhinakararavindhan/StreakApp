@@ -10,15 +10,15 @@ export default defineConfig({
       strategies: 'injectManifest',
       srcDir: 'src',
       filename: 'sw.js',
-      injectManifest: { globPatterns: ['**/*.{js,css,html,svg,png,webmanifest}'], globIgnores: ['privacy.html'] },
+      injectManifest: { globPatterns: ['**/*.{js,css,html,svg,png,webmanifest,woff2}'], globIgnores: ['privacy.html'] },
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg'],
       manifest: {
         name: 'Chase 300 — Franchise T20',
         short_name: 'Chase 300',
         description: 'Draft an XI from iconic franchise T20 seasons and chase 300 in 20 overs. New wheel every day.',
-        theme_color: '#070a1c',
-        background_color: '#070a1c',
+        theme_color: '#f3f5fb',
+        background_color: '#f3f5fb',
         display: 'standalone',
         start_url: '.',
         icons: [

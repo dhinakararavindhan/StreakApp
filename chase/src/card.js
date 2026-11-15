@@ -1,31 +1,40 @@
 // Draws a shareable result card (PNG) with canvas. No external assets.
 export async function makeCard({ mode, level, score, wickets, won, line, names, footer }) {
+  const F = '"Plus Jakarta Sans Variable", system-ui, sans-serif'
+  try { await Promise.all([document.fonts.load(`800 100px ${F}`), document.fonts.load(`600 40px ${F}`)]) } catch {}
   const W = 1080, H = 1350
   const c = document.createElement('canvas'); c.width = W; c.height = H
   const g = c.getContext('2d')
-  g.fillStyle = '#070a1c'; g.fillRect(0, 0, W, H)
-  const grad = g.createRadialGradient(W / 2, 330, 40, W / 2, 330, 700)
-  grad.addColorStop(0, won ? 'rgba(245,185,66,.28)' : 'rgba(80,100,200,.18)'); grad.addColorStop(1, 'rgba(7,10,28,0)')
-  g.fillStyle = grad; g.fillRect(0, 0, W, H)
+  const bg = g.createLinearGradient(0, 0, W, H); bg.addColorStop(0, '#5b5bf0'); bg.addColorStop(1, '#8b5cf6')
+  g.fillStyle = bg; g.fillRect(0, 0, W, H)
+  g.fillStyle = 'rgba(255,255,255,.08)'; g.beginPath(); g.arc(W - 120, 140, 320, 0, Math.PI * 2); g.fill()
+  g.fillStyle = 'rgba(255,255,255,.06)'; g.beginPath(); g.arc(120, H - 160, 260, 0, Math.PI * 2); g.fill()
   g.textAlign = 'center'
-  g.fillStyle = '#f5b942'; g.font = '800 54px system-ui, sans-serif'; g.fillText('CHASE 300', W / 2, 120)
-  g.fillStyle = '#8b93c4'; g.font = '600 38px system-ui, sans-serif'; g.fillText(`${mode} · Level ${level}`, W / 2, 182)
-  g.fillStyle = '#eef1ff'; g.font = '900 250px system-ui, sans-serif'; g.fillText(String(score), W / 2 - 60, 470)
-  const sw = g.measureText(String(score)).width
-  g.fillStyle = '#8b93c4'; g.font = '800 96px system-ui, sans-serif'; g.textAlign = 'left'; g.fillText(`/${wickets}`, W / 2 - 60 + sw / 2 + 12, 470)
+  g.fillStyle = '#fff'; g.font = `800 54px ${F}`; g.fillText('CHASE 300', W / 2, 118)
+  g.fillStyle = 'rgba(255,255,255,.8)'; g.font = `600 38px ${F}`; g.fillText(`${mode} · Level ${level}`, W / 2, 178)
+  // score card
+  g.fillStyle = 'rgba(255,255,255,.96)'; g.beginPath(); g.roundRect(80, 230, W - 160, 420, 48); g.fill()
+  g.fillStyle = '#121936'; g.font = `800 230px ${F}`
+  const sc = String(score), sw = g.measureText(sc).width
+  g.fillText(sc, W / 2 - 40, 470)
+  g.textAlign = 'left'; g.fillStyle = '#667090'; g.font = `800 90px ${F}`; g.fillText(`/${wickets}`, W / 2 - 40 + sw / 2 + 10, 470)
   g.textAlign = 'center'
-  g.fillStyle = won ? '#f5b942' : '#eef1ff'; g.font = '800 48px system-ui, sans-serif'; g.fillText(won ? '🏆 Level cleared!' : line, W / 2, 575)
-  g.fillStyle = '#8b93c4'; g.font = '600 36px system-ui, sans-serif'; g.fillText(won ? line : '', W / 2, 630)
+  // shrink-to-fit so long verdicts are never cut off
+  const fit = (text, weight, start, maxW) => { let s = start; g.font = `${weight} ${s}px ${F}`; while (g.measureText(text).width > maxW && s > 20) { s -= 2; g.font = `${weight} ${s}px ${F}` } }
+  g.fillStyle = won ? '#d97706' : '#5b5bf0'
+  const head = won ? '🏆 Level cleared!' : line
+  fit(head, 800, 46, W - 220); g.fillText(head, W / 2, 570)
+  if (won) { g.fillStyle = '#667090'; fit(line, 600, 32, W - 220); g.fillText(line, W / 2, 615) }
   // lineup
-  g.textAlign = 'left'; g.font = '600 40px system-ui, sans-serif'
-  const colW = 460, x0 = 110, y0 = 740, rowH = 74
+  g.textAlign = 'left'; g.font = `700 40px ${F}`
+  const colW = 440, x0 = 130, y0 = 790, rowH = 74
   names.forEach((n, i) => {
     const col = i < 6 ? 0 : 1, row = col === 0 ? i : i - 6
-    const x = x0 + col * (colW + 40), y = y0 + row * rowH
-    g.fillStyle = '#f5b942'; g.fillText(String(i + 1), x, y)
-    g.fillStyle = '#eef1ff'; g.fillText(n.length > 17 ? n.slice(0, 16) + '…' : n, x + 56, y)
+    const x = x0 + col * (colW + 60), y = y0 + row * rowH
+    g.fillStyle = 'rgba(255,255,255,.65)'; g.fillText(String(i + 1), x, y)
+    g.fillStyle = '#fff'; g.fillText(n.length > 16 ? n.slice(0, 15) + '…' : n, x + 62, y)
   })
-  g.textAlign = 'center'; g.fillStyle = '#8b93c4'; g.font = '600 34px system-ui, sans-serif'
+  g.textAlign = 'center'; g.fillStyle = 'rgba(255,255,255,.8)'; g.font = `600 34px ${F}`
   g.fillText(footer, W / 2, H - 70)
   return new Promise((res) => c.toBlob(res, 'image/png'))
 }

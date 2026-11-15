@@ -4,9 +4,9 @@ import { hashStr, rng, todayKey } from './rng.js'
 import { simulate, teamRatings, verdict, simulateBowl, simulateSuper, superOpponent, opponentFor, bowlRatings, bowlVerdict } from './sim.js'
 import { load, liveStreak, recordDaily, recordPractice, recordVs, histKey, seenIntro, markIntroSeen, BADGES } from './storage.js'
 import { shareCard } from './card.js'
-import { fits, oversStr, makeSpins } from './util.js'
+import { fits, oversStr, makeSpins, getTheme, applyTheme } from './util.js'
 import { conditionFor, modifierFor, squadsFor, pickAllowed, tagOf, TAG_LABEL, phaseBonus } from './rules.js'
-import { Brief, Tactics, SuperDraft, SuperInnings, SuperResult, Weekly, Recap, ratingChips } from './extras.jsx'
+import { Brief, Tactics, SuperDraft, SuperInnings, SuperResult, Weekly, Recap, ratingChips, Av } from './extras.jsx'
 import { getVs, submitVs, submitScore, fetchBoard, getName, setName, pushSupported, pushEnabled, enablePush, disablePush } from './api.js'
 
 export default function App() {
@@ -66,9 +66,10 @@ export default function App() {
   }
   const home = () => setScreen('home')
   const picks = kind === 'bat' ? xi : kind === 'bowl' ? attack : soPicks
+  const navOn = ['home', 'board', 'stats', 'recap'].includes(screen)
 
   return (
-    <div className="app">
+    <div className={'app' + (navOn ? ' has-nav' : '')}>
       {screen === 'home' && <Home stats={stats} onStart={start} onBoard={() => setScreen('board')} onStats={() => setScreen('stats')} onHelp={() => setScreen('howto')} onRecap={() => setScreen('recap')} />}
       {screen === 'howto' && <HowTo onClose={() => { markIntroSeen(); setScreen('home') }} />}
       {screen === 'stats' && <Stats stats={stats} onBack={home} />}
@@ -84,6 +85,13 @@ export default function App() {
       {screen === 'chase' && kind === 'super' && <SuperInnings result={result} onDone={done} />}
       {screen === 'result' && kind === 'bat' && <Result level={level} cap={cap} xi={xi} result={result} mode={mode} stats={stats} seedStr={seedStr} onHome={home} onPractice={() => start('practice', 'bat', level)} onBoard={() => setScreen('board')} />}
       {screen === 'result' && kind === 'bowl' && <BowlResult level={level} cap={cap} attack={attack} result={result} mode={mode} stats={stats} seedStr={seedStr} onHome={home} onPractice={() => start('practice', 'bowl', level)} onBoard={() => setScreen('board')} />}
+      {navOn && (
+        <div className="nav"><nav>
+          {[['home', '🏠', 'Home'], ['board', '🏆', 'Boards'], ['stats', '📊', 'Stats'], ['recap', '📰', 'Recap']].map(([s, i, l]) => (
+            <button key={s} className={screen === s ? 'on' : ''} onClick={() => setScreen(s)}><span>{i}</span>{l}</button>
+          ))}
+        </nav></div>
+      )}
       {screen === 'result' && kind === 'super' && <SuperResult picks={soPicks} cap={cap} result={result} mode={mode} stats={stats} seedStr={seedStr} onHome={home} onPractice={() => start('practice', 'super')} />}
     </div>
   )
@@ -97,11 +105,14 @@ function Home({ stats, onStart, onBoard, onStats, onHelp, onRecap }) {
   const superDone = stats.history[histKey('super', today)]
   const opp = opponentFor(today)
   const unlocked = stats.bowlLevel || 1
+  const [theme, setTheme] = useState(getTheme())
+  const flip = () => { const t = theme === 'dark' ? 'light' : 'dark'; applyTheme(t); setTheme(t) }
   const batUnlocked = stats.batLevel || 1
   const [lv, setLv] = useState(unlocked)
   const [bl, setBl] = useState(batUnlocked)
   return (
     <main className="home">
+      <div className="topbar"><button className="theme" onClick={flip} aria-label="Toggle theme">{theme === 'dark' ? '☀️' : '🌙'}</button></div>
       <div className="logo">300</div>
       <h1>Chase 300</h1>
       <p className="sub">Draft from iconic franchise T20 seasons. A new wheel every day.</p>
@@ -151,11 +162,6 @@ function Home({ stats, onStart, onBoard, onStats, onHelp, onRecap }) {
         <button className="link" onClick={() => onStart('practice', 'super')}>Practice</button>
       </section>
 
-      <div className="row" style={{ width: '100%' }}>
-        <button className="ghost" onClick={onBoard}>🏆 Leaderboards</button>
-        <button className="ghost" onClick={onStats}>📊 Stats &amp; badges</button>
-      </div>
-      <button className="ghost" onClick={onRecap} style={{ width: '100%' }}>📰 Yesterday's best XIs</button>
       <button className="link" onClick={onHelp}>❓ How to play</button>
       <Reminders />
       <p className="fine">Fan-made, free and unofficial. Ratings are approximate. Not affiliated with or endorsed by any league, board, team or player. Team and player names are used for identification only. <a href="/privacy.html">Privacy</a></p>
@@ -245,6 +251,7 @@ function Draft({ level, seedStr, mode, xi, setXi, onDone, onExit }) {
                   const ok = eligible(p)
                   return (
                     <button key={p.name} disabled={!ok} className={'player' + (sel === p ? ' sel' : '')} onClick={() => setSel(p)}>
+                      <Av p={p} />
                       <span className="pn">{p.name}{p.k ? ' 🧤' : ''}</span>
                       <span className="pp">{p.lo === p.hi ? `#${p.lo}` : `#${p.lo}–${p.hi}`}</span>
                       <span className="pr"><i>B</i>{p.bat} <i>P</i>{p.pow} <i>W</i>{p.bwl}</span>
@@ -519,6 +526,7 @@ function BowlDraft({ level, seedStr, mode, attack, setAttack, onDone, onExit }) 
                   const ok = eligible(p)
                   return (
                     <button key={p.name} disabled={!ok} className={'player' + (sel === p ? ' sel' : '')} onClick={() => setSel(p)}>
+                      <Av p={p} />
                       <span className="pn">{p.name}</span>
                       <span className="pr"><i>W</i>{p.bwl} <i>B</i>{p.bat}</span>
                       <span className="chips">{ratingChips(p, conditionFor(seedStr), 'bowl')}</span>

@@ -6,7 +6,9 @@ import { conditionFor, modifierFor, squadsFor, pickAllowed, tagOf, TAG_LABEL, ph
 import { getName, setName, submitScore, fetchWeekly, fetchRecap } from './api.js'
 import { liveStreak } from './storage.js'
 import { shareCard } from './card.js'
-import { makeSpins, oversStr } from './util.js'
+import { makeSpins, oversStr, initials, avatarColor } from './util.js'
+
+export const Av = ({ p }) => <span className="av" style={{ background: avatarColor(p) }}>{initials(p.name)}</span>
 
 // ---------- today's pitch + twist ----------
 export function Brief({ seedStr, compact }) {
@@ -74,6 +76,7 @@ export function Tactics({ kind, picks, seedStr, onConfirm }) {
           return (
             <li key={p.id} className={(sel === i ? 'can ' : '') + 'filled'} onClick={() => tapRow(i)}>
               <span className="sn">{kind === 'bat' ? i + 1 : ''}</span>
+              <Av p={p} />
               <span className="sl">
                 {p.name} <small className="tm">{p.team} {String(p.year).slice(2)}</small>
                 <small className="sub2">{label(i)}{kind === 'bat' && !nativeSlot(p, i) ? ' ⚠ out of position' : ''}</small>
@@ -142,6 +145,7 @@ export function SuperDraft({ seedStr, mode, picks, setPicks, onDone, onExit }) {
               <div className="players">
                 {squad.players.map((p) => (
                   <button key={p.id} disabled={!eligible(p)} className={'player' + (sel === p ? ' sel' : '')} onClick={() => setSel(p)}>
+                    <Av p={p} />
                     <span className="pn">{p.name}</span>
                     <span className="pr"><i>B</i>{p.bat} <i>P</i>{p.pow} <i>W</i>{p.bwl}</span>
                     <span className="chips">{ratingChips(p, conditionFor(seedStr), 'both')}</span>
