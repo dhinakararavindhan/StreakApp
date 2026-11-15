@@ -1,4 +1,5 @@
-import { BALLS } from './data.js'
+import { BALLS, SQUADS, BOWL_SCHEDULE, BOWL_TARGET } from './data.js'
+import { hashStr } from './rng.js'
 
 // Team-level summary used for ratings display.
 export function teamRatings(xi) {
@@ -12,16 +13,17 @@ export function teamRatings(xi) {
   return { bat, pow, bwl, hasKeeper }
 }
 
-function ballOutcome(r, bat, pow, morale, pressure) {
+function ballOutcome(r, bat, pow, morale, pressure, grit = 0) {
   const p = Math.min(100, pow * morale)
-  const surviveBalls = 5 + Math.pow(bat / 100, 2) * 40
+  const surviveBalls = (5 + Math.pow(bat / 100, 2) * 40) * (1 - 0.4 * grit)
   const pW = Math.min(0.2, (1 / surviveBalls) * (1 + pressure * 0.35 * (p / 100)))
   const x = r()
   if (x < pW) return 'W'
   const q = p / 100
-  const mean = 0.58 + p * 0.0158
-  const p6 = 0.02 + 0.16 * q * q
-  const p4 = 0.08 + 0.1 * q
+  const sc = 1 - 0.4 * grit // good bowling squeezes scoring
+  const mean = (0.58 + p * 0.0158) * sc
+  const p6 = (0.02 + 0.16 * q * q) * sc
+  const p4 = (0.08 + 0.1 * q) * sc
   const rest = 1 - p4 - p6
   const mu = Math.max(0.1, Math.min(1.5, (mean - 4 * p4 - 6 * p6) / rest))
   const y = r()
@@ -87,4 +89,55 @@ export function verdict(res, target = 300) {
   if (d <= 70) return 'Respectable, but 300 is still a mountain.'
   if (d <= 110) return 'A strong T20 total. Nowhere near 300.'
   return 'Collapse. Back to the drawing board.'
+}
+
+
+// ---------------- Bowling challenge ----------------
+// The daily opponent: a squad's XI, in batting order.
+export function opponentFor(seedStr) {
+  const sq = SQUADS[hashStr('opp' + seedStr) % SQUADS.length]
+  return { id: sq.id, name: sq.name, year: sq.year, players: [...sq.players].sort((a, b) => a.lo - b.lo || b.bat - a.bat) }
+}
+
+export function bowlRatings(attack) {
+  const a = attack.filter(Boolean)
+  const avg = (k) => (a.length ? a.reduce((s, p) => s + p[k], 0) / a.length : 0)
+  return { bwl: avg('bwl'), n: a.length }
+}
+
+export function simulateBowl(attack, opp, rand, target = BOWL_TARGET) {
+  const events = []
+  const figs = attack.map((p) => ({ name: p.name, balls: 0, runs: 0, wkts: 0 }))
+  let striker = 0, nonStriker = 1, next = 2, wickets = 0, score = 0, ball = 0
+  outer: for (let over = 0; over < 20; over++) {
+    const bi = BOWL_SCHEDULE[over]
+    const grit = Math.max(0, (attack[bi].bwl - 50) / 50)
+    for (let b = 0; b < 6; b++) {
+      const bat = opp[striker]
+      const o = ballOutcome(rand, bat.bat, bat.pow, 1, 0, grit)
+      ball++
+      figs[bi].balls++
+      let runs = 0, wicket = false
+      if (o === 'W') {
+        wicket = true; wickets++; figs[bi].wkts++
+        if (next < 11) striker = next++; else striker = -1
+      } else {
+        runs = o; score += runs; figs[bi].runs += runs
+        if (runs % 2 === 1) [striker, nonStriker] = [nonStriker, striker]
+      }
+      events.push({ ball, bowler: attack[bi].name, batter: bat.name, runs, wicket, score, wickets })
+      if (striker < 0) break outer
+    }
+    if (striker >= 0) [striker, nonStriker] = [nonStriker, striker]
+  }
+  return { events, figs, score, wickets, ballsUsed: ball, allOut: wickets >= 10, won: score < target, opp }
+}
+
+export function bowlVerdict(res, target = BOWL_TARGET) {
+  if (res.won) return res.score < target * 0.7 ? 'UNTOUCHABLE — a historic bowling display!' : 'LEGENDARY — held them under the line!'
+  const d = res.score - target
+  if (d <= 5) return `So close — ${d + 1} runs too many.`
+  if (d <= 30) return 'Tight, but they got away from you.'
+  if (d <= 70) return 'A good effort. Not enough to bowl them out cheap.'
+  return 'Smashed all over the park.'
 }

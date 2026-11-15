@@ -15,10 +15,10 @@ async function j(path, opts) {
   if (!r.ok) throw Object.assign(new Error(body.error || 'request failed'), { status: r.status })
   return body
 }
-export const submitScore = (name, day, xi) =>
-  j('/score', { method: 'POST', body: JSON.stringify({ device: deviceId(), name, day, xi: xi.map((p) => p.id) }) })
-export const fetchBoard = (scope, day) =>
-  j(`/leaderboard?scope=${scope}&day=${encodeURIComponent(day)}&device=${encodeURIComponent(deviceId())}`)
+export const submitScore = (kind, name, day, picks) =>
+  j('/score', { method: 'POST', body: JSON.stringify({ device: deviceId(), kind, name, day, xi: picks.map((p) => p.id) }) })
+export const fetchBoard = (kind, scope, day) =>
+  j(`/leaderboard?kind=${kind}&scope=${scope}&day=${encodeURIComponent(day)}&device=${encodeURIComponent(deviceId())}`)
 
 // ---- push ----
 const b64 = (s) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0))

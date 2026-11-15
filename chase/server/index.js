@@ -6,8 +6,8 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 const webpush = createRequire(import.meta.url)('web-push')
-import { SQUADS, TARGET } from '../src/data.js'
-import { simulate } from '../src/sim.js'
+import { SQUADS, TARGET, BOWL_TARGET, BOWL_MIN } from '../src/data.js'
+import { simulate, simulateBowl, opponentFor } from '../src/sim.js'
 import { rng, hashStr, todayKey } from '../src/rng.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -62,13 +62,20 @@ setInterval(sendReminders, 10 * 60 * 1000).unref()
 
 // ---------- score verification ----------
 const byId = new Map(SQUADS.flatMap((s) => s.players.map((p) => [p.id, p])))
-function verify(xiIds, day) {
-  if (!Array.isArray(xiIds) || xiIds.length !== 11) return null
-  const xi = xiIds.map((id) => byId.get(id))
+function verify(kind, ids, day) {
+  if (kind === 'bowl') {
+    if (!Array.isArray(ids) || ids.length !== 5) return null
+    const attack = ids.map((id) => byId.get(id))
+    if (attack.some((p) => !p || p.bwl < BOWL_MIN)) return null
+    if (new Set(attack.map((p) => p.name)).size !== 5) return null
+    const rand = rng(hashStr(day + 'bowl' + attack.map((p) => p.id).join('|')))
+    return simulateBowl(attack, opponentFor(day).players, rand, BOWL_TARGET)
+  }
+  if (!Array.isArray(ids) || ids.length !== 11) return null
+  const xi = ids.map((id) => byId.get(id))
   if (xi.some((p, i) => !p || i + 1 < p.lo || i + 1 > p.hi)) return null
   if (new Set(xi.map((p) => p.name)).size !== 11) return null // a real player only once
-  const res = simulate(xi, rng(hashStr(day + xi.map((p) => p.id).join('|'))), TARGET)
-  return res
+  return simulate(xi, rng(hashStr(day + xi.map((p) => p.id).join('|'))), TARGET)
 }
 const cleanName = (n) => String(n || 'Anon').replace(/[^\p{L}\p{N} _.-]/gu, '').trim().slice(0, 16) || 'Anon'
 const validDay = (d) => {
@@ -77,14 +84,16 @@ const validDay = (d) => {
   return diff <= 1.5 // tolerate timezones
 }
 
-function board(scope, device, day) {
+function board(kind, scope, device, day) {
+  const mine = db.scores.filter((s) => (s.kind || 'bat') === kind)
+  const better = kind === 'bowl' ? (a, b) => a.score - b.score || b.wickets - a.wickets || a.balls - b.balls : (a, b) => b.score - a.score || a.balls - b.balls
   let rows
   if (scope === 'all') {
     const best = new Map()
-    for (const s of db.scores) { const b = best.get(s.device); if (!b || s.score > b.score || (s.score === b.score && s.balls < b.balls)) best.set(s.device, s) }
+    for (const s of mine) { const b = best.get(s.device); if (!b || better(s, b) < 0) best.set(s.device, s) }
     rows = [...best.values()]
-  } else rows = db.scores.filter((s) => s.day === day)
-  rows.sort((a, b) => b.score - a.score || a.balls - b.balls)
+  } else rows = mine.filter((s) => s.day === day)
+  rows.sort(better)
   const ranked = rows.map((s, i) => ({ rank: i + 1, name: s.name, score: s.score, wickets: s.wickets, won: s.won, balls: s.balls, you: s.device === device }))
   return { top: ranked.slice(0, 50), me: ranked.find((r) => r.you) || null, total: ranked.length }
 }
@@ -108,19 +117,21 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname.startsWith('/api/')) {
       if (limited(req.socket.remoteAddress)) return send(res, 429, { error: 'slow down' })
       if (req.method === 'GET' && url.pathname === '/api/leaderboard') {
-        return send(res, 200, board(url.searchParams.get('scope') === 'all' ? 'all' : 'today', url.searchParams.get('device'), url.searchParams.get('day')))
+        return send(res, 200, board(url.searchParams.get('kind') === 'bowl' ? 'bowl' : 'bat', url.searchParams.get('scope') === 'all' ? 'all' : 'today', url.searchParams.get('device'), url.searchParams.get('day')))
       }
       if (req.method === 'GET' && url.pathname === '/api/push/key') return send(res, 200, { key: pushOn ? process.env.VAPID_PUBLIC : null })
       if (req.method === 'POST' && url.pathname === '/api/score') {
-        const { device, name, day, xi } = await readJson(req)
+        const body = await readJson(req)
+        const { device, name, day, xi } = body
+        const kind = body.kind === 'bowl' ? 'bowl' : 'bat'
         if (typeof device !== 'string' || device.length < 8 || device.length > 64) return send(res, 400, { error: 'bad device' })
         if (!validDay(day)) return send(res, 400, { error: 'bad day' })
-        const r = verify(xi, day)
+        const r = verify(kind, xi, day)
         if (!r) return send(res, 400, { error: 'invalid XI' })
-        if (db.scores.some((s) => s.device === device && s.day === day)) return send(res, 409, { error: 'already submitted' })
-        db.scores.push({ device, name: cleanName(name), day, score: r.score, wickets: r.wickets, won: r.won, balls: r.ballsUsed })
+        if (db.scores.some((s) => s.device === device && s.day === day && (s.kind || 'bat') === kind)) return send(res, 409, { error: 'already submitted' })
+        db.scores.push({ device, kind, name: cleanName(name), day, score: r.score, wickets: r.wickets, won: r.won, balls: r.ballsUsed })
         save()
-        return send(res, 200, { score: r.score, ...board('today', device, day) })
+        return send(res, 200, { score: r.score, ...board(kind, 'today', device, day) })
       }
       if (req.method === 'POST' && url.pathname === '/api/push/subscribe') {
         if (!pushOn) return send(res, 503, { error: 'push disabled' })

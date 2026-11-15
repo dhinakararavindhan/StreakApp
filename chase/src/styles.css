@@ -53,3 +53,7 @@ input{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--l
 .rows li.you{border:1px solid var(--gold)}.rk{width:28px;color:var(--gold);font-weight:800}.nm{flex:1}.sc{font-variant-numeric:tabular-nums;font-weight:700}
 .wheel small{color:var(--mut);font-weight:600;margin-left:6px}
 .tm{color:var(--mut);font-size:.72rem;margin-left:4px}
+.mode{width:100%;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px;text-align:left}
+.mode h2{margin:0;font-size:1.05rem}.mode p{margin:0;color:var(--mut);font-size:.9rem}.mode .done{background:var(--bg);border-radius:10px;padding:12px}
+.opp{display:flex;flex-direction:column;gap:2px}.opp small{color:var(--mut)}.opp span{color:var(--mut);font-size:.8rem}
+.big.over{color:var(--red)}.log .wk{color:var(--grn)}

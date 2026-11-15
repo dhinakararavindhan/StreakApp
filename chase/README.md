@@ -2,6 +2,12 @@
 
 Daily franchise-T20 draft game (PWA). Draft an XI from spun franchise-season squads, chase 300 in 20 overs.
 
+## Game modes
+- **Batting challenge:** draft an XI (11 spins), chase **300** in 20 overs.
+- **Bowling challenge:** draft 5 bowlers (4 overs each: 2 new-ball, 2 middle, 1 death) and hold the day's opponent (a squad from the pool, same for everyone) under **60**. Fewest runs conceded ranks first.
+- Either daily challenge keeps the shared day streak alive. Leaderboards are separate per mode.
+- `npm run tune` / `node scripts/tune-bowl.mjs` check balance for each mode.
+
 ## Dev
 ```
 npm install
