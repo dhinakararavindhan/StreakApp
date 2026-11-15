@@ -722,3 +722,26 @@ body::before {
 .tile span { color: var(--mut); font-size: 0.66rem; font-weight: 600; }
 
 .unlock.lose { color: var(--red); background: rgba(229, 72, 77, 0.1); border-color: rgba(229, 72, 77, 0.25); }
+
+/* ---------- levels won grid ---------- */
+.lvbox { background: var(--sheen), var(--glass); border: 1px solid var(--glass-edge); border-radius: 18px; box-shadow: var(--glass-hi), var(--depth-sm); padding: 12px; }
+.lvhead { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+.lvhead span { color: var(--mut); font-size: 0.74rem; font-weight: 700; }
+.lvgrid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.lvc { border: 1px solid var(--line); border-radius: 12px; padding: 5px 2px; text-align: center; display: flex; flex-direction: column; gap: 0; background: var(--card2); color: var(--mut); line-height: 1.25; }
+.lvc b { font-size: 0.74rem; color: var(--mut); }
+.lvc span { font-size: 0.78rem; font-weight: 800; }
+.lvc small { font-size: 0.62rem; font-weight: 700; }
+.lvc.won { background: rgba(18, 166, 106, 0.1); border-color: rgba(18, 166, 106, 0.35); color: var(--grn); }
+.lvc.won b, .lvc.won small { color: var(--ink); }
+.lvc.open { background: var(--card); border-color: rgba(var(--a1), 0.55); box-shadow: 0 0 0 3px rgba(var(--a1), 0.1); color: var(--accent); }
+.lvc.open b { color: var(--ink); }
+
+/* stats page: compact badges (3 per row) and a shorter calendar */
+.badges { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.badge { padding: 9px 8px; gap: 1px; border-radius: 14px; }
+.badge span { font-size: 1.25rem; }
+.badge b { font-size: 0.74rem; line-height: 1.2; }
+.badge small { font-size: 0.6rem; line-height: 1.25; }
+.cal { gap: 5px; }
+.cal span { aspect-ratio: 1.45; border-radius: 10px; font-size: 0.72rem; }

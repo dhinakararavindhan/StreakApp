@@ -24,6 +24,19 @@ export function liveStreak(s, today = todayKey()) {
   return d === 2 && (s.freezes || 0) > 0 ? s.streak : 0 // a freeze token covers one missed day
 }
 
+// remember each level win: per-level best/first/count and a newest-first log
+function recordWin(s, kind, level, score) {
+  const day = todayKey()
+  s.lvl = s.lvl || { bat: {}, bowl: {} }
+  const slot = s.lvl[kind] || (s.lvl[kind] = {})
+  const e = slot[level] || { wins: 0, first: day }
+  e.wins += 1
+  e.best = e.best == null ? score : kind === 'bowl' ? Math.min(e.best, score) : Math.max(e.best, score)
+  e.last = day
+  slot[level] = e
+  s.winLog = [{ kind, level, score, day }, ...(s.winLog || [])].slice(0, 200)
+}
+
 function bump(s, kind, score, won, level) {
   if (kind === 'super') { s.played += 1; if (won) { s.wins += 1; s.superWins = (s.superWins || 0) + 1 } return }
   // A level opens the next one only when it is beaten.
@@ -32,12 +45,14 @@ function bump(s, kind, score, won, level) {
     if (won) {
       s.bowlCleared = Math.max(s.bowlCleared || 0, level)
       s.bowlLevel = Math.min(BOWL_LEVELS, Math.max(s.bowlLevel || 1, level + 1))
+      recordWin(s, 'bowl', level, score)
     }
   } else {
     s.best = Math.max(s.best, score)
     if (won) {
       s.batCleared = Math.max(s.batCleared || 0, level)
       s.batLevel = Math.min(BAT_LEVELS, Math.max(s.batLevel || 1, level + 1))
+      recordWin(s, 'bat', level, score)
     }
   }
   s.played += 1

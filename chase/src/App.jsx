@@ -778,6 +778,50 @@ function HowTo({ onClose }) {
   )
 }
 
+function LevelGrid({ title, kind, total, cleared, frontier, data }) {
+  return (
+    <div className="lvbox">
+      <div className="lvhead"><b>{title}</b><span>{cleared}/{total} beaten</span></div>
+      <div className="lvgrid">
+        {Array.from({ length: total }, (_, i) => i + 1).map((n) => {
+          const e = data[n]
+          const won = (e && e.wins > 0) || n <= cleared
+          const open = !won && n === frontier
+          const tgt = kind === 'bat' ? `${batTarget(n)}` : `<${bowlTarget(n)}`
+          return (
+            <div key={n} className={'lvc' + (won ? ' won' : open ? ' open' : '')} title={e ? `Level ${n}: best ${e.best}, won ${e.wins}x` : `Level ${n}: target ${tgt}`}>
+              <b>L{n}</b>
+              <span>{won ? '✓' : open ? 'next' : '🔒'}</span>
+              <small>{won ? (e ? e.best : 'beaten') : tgt}</small>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function WinHistory({ log }) {
+  const [all, setAll] = useState(false)
+  const shown = all ? log : log.slice(0, 8)
+  return (
+    <>
+      <h2>Win history <small>{log.length}</small></h2>
+      {log.length === 0 && <p className="line">Beat a level and it will appear here.</p>}
+      <ul className="recent">
+        {shown.map((w, i) => (
+          <li key={i}>
+            <span>{w.day}</span>
+            <span>{w.kind === 'bowl' ? '🎯' : '🏏'} Level {w.level}</span>
+            <b>{w.score}<small className="lv"> {w.kind === 'bowl' ? `vs <${bowlTarget(w.level)}` : `vs ${batTarget(w.level)}`}</small></b>
+          </li>
+        ))}
+      </ul>
+      {log.length > 8 && <button className="link" onClick={() => setAll(!all)}>{all ? 'Show less' : `Show all ${log.length}`}</button>}
+    </>
+  )
+}
+
 function Stats({ stats, onBack }) {
   const today = new Date()
   const key = (d) => todayKey(d)
@@ -801,10 +845,13 @@ function Stats({ stats, onBack }) {
         <div><b>🧊 {stats.freezes || 0}</b><span>streak freezes</span></div>
       </div>
       <div className="stats">
-        <div><b>{stats.wins}</b><span>levels won</span></div>
+        <div><b>{stats.wins}</b><span>total wins</span></div>
         <div><b>{stats.batCleared || 0}/{BAT_LEVELS}</b><span>batting cleared</span></div>
         <div><b>{stats.bowlCleared || 0}/{BOWL_LEVELS}</b><span>bowling cleared</span></div>
       </div>
+      <h2>Levels won</h2>
+      <LevelGrid title="🏏 Batting" kind="bat" total={BAT_LEVELS} cleared={stats.batCleared || 0} frontier={stats.batLevel} data={(stats.lvl || {}).bat || {}} />
+      <LevelGrid title="🎯 Bowling" kind="bowl" total={BOWL_LEVELS} cleared={stats.bowlCleared || 0} frontier={stats.bowlLevel} data={(stats.lvl || {}).bowl || {}} />
       <h2>Last 28 days</h2>
       <div className="cal">
         {days.map((d) => <span key={d.k} className={(d.played ? (d.won ? 'won ' : 'on ') : '') + (d.today ? 'today' : '')} title={d.k}>{d.n}</span>)}
@@ -816,13 +863,7 @@ function Stats({ stats, onBack }) {
           return <div key={b.id} className={'badge' + (ok ? ' got' : '')}><span>{ok ? b.icon : '🔒'}</span><b>{b.name}</b><small>{b.desc}</small></div>
         })}
       </div>
-      <h2>Recent daily games</h2>
-      {recent.length === 0 && <p className="line">Nothing yet. Play today's challenge!</p>}
-      <ul className="recent">
-        {recent.map((r) => (
-          <li key={r.day + r.kind}><span>{r.day}</span><span>{r.kind === 'bowl' ? '🎯' : r.kind === 'super' ? '⚡' : '🏏'}{r.kind === 'super' ? '' : ` L${r.level || 1}`}</span><b>{r.score}{r.won ? ' 🏆' : ''}</b></li>
-        ))}
-      </ul>
+      <WinHistory log={stats.winLog || []} />
     </main>
   )
 }
