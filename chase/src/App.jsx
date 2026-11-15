@@ -99,6 +99,16 @@ export default function App() {
   )
 }
 
+// message after a finished level: wins earn a tick; finishing (win or lose) opens the next level
+function unlockMsg({ won, level, levels, frontier, nextText }) {
+  if (won) {
+    if (level >= levels) return `🏆 All ${levels} levels cleared!`
+    return frontier === level + 1 ? `✅ Level ${level} cleared · level ${level + 1} is open (${nextText})` : `✅ Level ${level} cleared`
+  }
+  if (level < levels && frontier === level + 1) return `🔓 Level ${level + 1} is now open (${nextText}). Beat level ${level} to earn its ✓.`
+  return null
+}
+
 function Home({ stats, onStart, onBoard, onStats, onHelp, onRecap }) {
   const today = todayKey()
   const streak = liveStreak(stats)
@@ -168,14 +178,18 @@ function Home({ stats, onStart, onBoard, onStats, onHelp, onRecap }) {
   )
 }
 
-// compact level control: ‹ L3 · chase 220 ›
+// compact level control: ‹ Level 3 · chase 220 ›  (the next level opens once you finish the current one)
 function Stepper({ levels, unlocked, cleared, value, onChange, text }) {
+  const atFrontier = value >= unlocked && unlocked < levels
   return (
-    <div className="step">
-      <button disabled={value <= 1} onClick={() => onChange(value - 1)} aria-label="Easier level">‹</button>
-      <div className="stepv"><b>Level {value}{value <= cleared ? ' ✓' : ''}</b><small>{text}</small></div>
-      <button disabled={value >= unlocked} onClick={() => onChange(value + 1)} aria-label="Harder level">{value >= unlocked && unlocked < levels ? '🔒' : '›'}</button>
-    </div>
+    <>
+      <div className="step">
+        <button disabled={value <= 1} onClick={() => onChange(value - 1)} aria-label="Easier level">‹</button>
+        <div className="stepv"><b>Level {value}{value <= cleared ? ' ✓' : ''}</b><small>{text}</small></div>
+        <button disabled={value >= unlocked} onClick={() => onChange(value + 1)} aria-label="Harder level">›</button>
+      </div>
+      {atFrontier && <small className="stephint">Finish level {value} to open {value + 1}</small>}
+    </>
   )
 }
 
@@ -357,7 +371,7 @@ function Result({ vs, level, cap, xi, result, mode, stats, seedStr, onHome, onPr
     <main className="result">
       <div className={'big' + (result.won ? ' win' : '')}>{result.score}<small>/{result.wickets}</small></div>
       {mode === 'vs' && vs ? <VsSummary vs={vs} result={result} kind="bat" /> : <p className="verdict">{verdict(result)}</p>}
-      {mode !== 'vs' && result.won && <p className="unlock">{level >= BAT_LEVELS ? `🏆 All ${BAT_LEVELS} levels cleared!` : `🔓 Level ${level} cleared — level ${level + 1} unlocked (chase ${batTarget(level + 1)})`}</p>}
+      {mode !== 'vs' && (() => { const m = unlockMsg({ won: result.won, level, levels: BAT_LEVELS, frontier: stats.batLevel, nextText: `chase ${batTarget(level + 1)}` }); return m ? <p className="unlock">{m}</p> : null })()}
       <p className="line">{mode === 'vs' ? '' : `Level ${level} · `}{oversStr(result.ballsUsed)} overs{mode === 'daily' ? ` · 🔥 ${streak}-day streak` : ''}</p>
       <table className="card-table">
         <thead><tr><th>Batter</th><th>R</th><th>B</th><th>4s</th><th>6s</th></tr></thead>
@@ -600,7 +614,7 @@ function BowlResult({ vs, level, cap, attack, result, mode, stats, seedStr, onHo
     <main className="result">
       <div className={'big' + (result.won ? ' win' : '')}>{result.score}<small>/{result.wickets}</small></div>
       {mode === 'vs' && vs ? <VsSummary vs={vs} result={result} kind="bowl" /> : <p className="verdict">{bowlVerdict(result)}</p>}
-      {mode !== 'vs' && result.won && <p className="unlock">{level >= BOWL_LEVELS ? '🏆 All 10 levels cleared!' : `🔓 Level ${level} cleared — level ${level + 1} unlocked (under ${bowlTarget(level + 1)})`}</p>}
+      {mode !== 'vs' && (() => { const m = unlockMsg({ won: result.won, level, levels: BOWL_LEVELS, frontier: stats.bowlLevel, nextText: `under ${bowlTarget(level + 1)}` }); return m ? <p className="unlock">{m}</p> : null })()}
       <p className="line">{mode === 'vs' ? '' : `Level ${level} · `}{result.opp.name} {result.opp.year} · {oversStr(result.ballsUsed)} overs{mode === 'daily' ? ` · 🔥 ${streak}-day streak` : ''}</p>
       <table className="card-table">
         <thead><tr><th>Bowler</th><th>O</th><th>R</th><th>W</th></tr></thead>
@@ -750,7 +764,7 @@ function HowTo({ onClose }) {
     ['🧢', 'Draft your side', 'One player per spin. No undos, one re-roll. Batters keep their usual spots.'],
     ['🏏', 'Batting', 'Chase the target in 20 overs. Level 1 is 200, level 13 is 320.'],
     ['🎯', 'Bowling', 'Draft 5 bowlers and hold them under the target: 60 down to 15.'],
-    ['⬆️', 'Levels', 'Win a level to unlock the next. Daily games build a 🔥 streak and weekly points.'],
+    ['⬆️', 'Levels', 'Finish a level to open the next. Win it to earn a ✓. Daily games build a 🔥 streak and weekly points.'],
     ['🌦️', 'Conditions', 'Every day has a pitch and a draft twist. Pick players who suit them.'],
     ['⭐', 'Tactics', 'Pick a captain, tweak the batting order, and fit bowlers to the right phase.'],
     ['⚡', 'Super Over', '3 hitters and 1 bowler: bat one over, then defend it.'],

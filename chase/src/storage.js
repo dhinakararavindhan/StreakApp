@@ -21,20 +21,15 @@ export function liveStreak(s, today = todayKey()) {
 
 function bump(s, kind, score, won, level) {
   if (kind === 'super') { s.played += 1; if (won) { s.wins += 1; s.superWins = (s.superWins || 0) + 1 } return }
+  // Finishing a level (win or lose) opens the next one. A win also earns the level's tick.
   if (kind === 'bowl') {
     s.bestBowl = s.bestBowl == null ? score : Math.min(s.bestBowl, score)
-    // winning a level unlocks the next one
-    if (won) {
-      s.bowlCleared = Math.max(s.bowlCleared || 0, level)
-      s.bowlLevel = Math.min(BOWL_LEVELS, Math.max(s.bowlLevel || 1, level + 1))
-    }
-  }
-  if (kind !== 'bowl') {
+    s.bowlLevel = Math.min(BOWL_LEVELS, Math.max(s.bowlLevel || 1, level + 1))
+    if (won) s.bowlCleared = Math.max(s.bowlCleared || 0, level)
+  } else {
     s.best = Math.max(s.best, score)
-    if (won) {
-      s.batCleared = Math.max(s.batCleared || 0, level)
-      s.batLevel = Math.min(BAT_LEVELS, Math.max(s.batLevel || 1, level + 1))
-    }
+    s.batLevel = Math.min(BAT_LEVELS, Math.max(s.batLevel || 1, level + 1))
+    if (won) s.batCleared = Math.max(s.batCleared || 0, level)
   }
   s.played += 1
   if (won) s.wins += 1
