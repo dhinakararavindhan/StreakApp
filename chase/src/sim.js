@@ -1,4 +1,4 @@
-import { BALLS, SQUADS, BOWL_SCHEDULE, BOWL_TARGET } from './data.js'
+import { BALLS, SQUADS, BOWL_SCHEDULE, bowlTarget } from './data.js'
 import { hashStr } from './rng.js'
 
 // Team-level summary used for ratings display.
@@ -105,7 +105,7 @@ export function bowlRatings(attack) {
   return { bwl: avg('bwl'), n: a.length }
 }
 
-export function simulateBowl(attack, opp, rand, target = BOWL_TARGET) {
+export function simulateBowl(attack, opp, rand, target = bowlTarget(1)) {
   const events = []
   const figs = attack.map((p) => ({ name: p.name, balls: 0, runs: 0, wkts: 0 }))
   let striker = 0, nonStriker = 1, next = 2, wickets = 0, score = 0, ball = 0
@@ -130,10 +130,10 @@ export function simulateBowl(attack, opp, rand, target = BOWL_TARGET) {
     }
     if (striker >= 0) [striker, nonStriker] = [nonStriker, striker]
   }
-  return { events, figs, score, wickets, ballsUsed: ball, allOut: wickets >= 10, won: score < target, opp }
+  return { events, figs, score, wickets, ballsUsed: ball, allOut: wickets >= 10, won: score < target, target, opp }
 }
 
-export function bowlVerdict(res, target = BOWL_TARGET) {
+export function bowlVerdict(res, target = res.target) {
   if (res.won) return res.score < target * 0.7 ? 'UNTOUCHABLE — a historic bowling display!' : 'LEGENDARY — held them under the line!'
   const d = res.score - target
   if (d <= 5) return `So close — ${d + 1} runs too many.`

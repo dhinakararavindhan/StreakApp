@@ -1,4 +1,4 @@
-import { SQUADS, BOWL_MIN, BOWL_TARGET } from '../src/data.js'
+import { SQUADS, BOWL_MIN, bowlTarget } from '../src/data.js'
 import { simulateBowl, opponentFor } from '../src/sim.js'
 import { rng } from '../src/rng.js'
 const r = rng(7)
@@ -12,10 +12,10 @@ function attack(skill) {
   }
   return a
 }
-for (const skill of [1, 2, 4, 8]) {
+for (const skill of [1, 4, 8]) {
   const sc = []
-  for (let i = 0; i < 4000; i++) sc.push(simulateBowl(attack(skill), opponentFor('x' + i).players, r).score)
+  for (let i = 0; i < 6000; i++) sc.push(simulateBowl(attack(skill), opponentFor('x' + i).players, r).score)
   sc.sort((a, b) => a - b)
-  const q = (p) => sc[Math.floor(p * (sc.length - 1))]
-  console.log(`skill ${skill}: min ${q(0)} p10 ${q(.1)} med ${q(.5)} p90 ${q(.9)} wins(<${BOWL_TARGET}) ${(sc.filter((x) => x < BOWL_TARGET).length / sc.length * 100).toFixed(2)}%`)
+  const wins = (t) => (sc.filter((x) => x < t).length / sc.length * 100).toFixed(2)
+  console.log(`skill ${skill}: med ${sc[Math.floor(sc.length / 2)]} | win% by level:`, Array.from({ length: 10 }, (_, i) => `L${i + 1}(<${bowlTarget(i + 1)}) ${wins(bowlTarget(i + 1))}`).join('  '))
 }

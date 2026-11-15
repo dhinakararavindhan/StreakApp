@@ -15,8 +15,8 @@ async function j(path, opts) {
   if (!r.ok) throw Object.assign(new Error(body.error || 'request failed'), { status: r.status })
   return body
 }
-export const submitScore = (kind, name, day, picks) =>
-  j('/score', { method: 'POST', body: JSON.stringify({ device: deviceId(), kind, name, day, xi: picks.map((p) => p.id) }) })
+export const submitScore = (kind, name, day, picks, level = 1) =>
+  j('/score', { method: 'POST', body: JSON.stringify({ device: deviceId(), kind, name, day, level, xi: picks.map((p) => p.id) }) })
 export const fetchBoard = (kind, scope, day) =>
   j(`/leaderboard?kind=${kind}&scope=${scope}&day=${encodeURIComponent(day)}&device=${encodeURIComponent(deviceId())}`)
 

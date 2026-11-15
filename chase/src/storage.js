@@ -1,6 +1,6 @@
 import { todayKey } from './rng'
 const KEY = 'chase300.v1'
-const empty = { streak: 0, best: 0, bestBowl: null, lastPlayed: null, history: {}, played: 0, wins: 0 }
+const empty = { streak: 0, best: 0, bestBowl: null, bowlLevel: 1, bowlCleared: 0, lastPlayed: null, history: {}, played: 0, wins: 0 }
 
 export function load() {
   try { return { ...empty, ...JSON.parse(localStorage.getItem(KEY) || '{}') } } catch { return { ...empty } }
@@ -16,15 +16,22 @@ export function liveStreak(s, today = todayKey()) {
   return dayDiff(s.lastPlayed, today) <= 1 ? s.streak : 0
 }
 
-function bump(s, kind, score, won) {
-  if (kind === 'bowl') s.bestBowl = s.bestBowl == null ? score : Math.min(s.bestBowl, score)
-  else s.best = Math.max(s.best, score)
+function bump(s, kind, score, won, level) {
+  if (kind === 'bowl') {
+    s.bestBowl = s.bestBowl == null ? score : Math.min(s.bestBowl, score)
+    // winning a level unlocks the next one
+    if (won) {
+      s.bowlCleared = Math.max(s.bowlCleared || 0, level)
+      s.bowlLevel = Math.min(10, Math.max(s.bowlLevel || 1, level + 1))
+    }
+  }
+  if (kind !== 'bowl') s.best = Math.max(s.best, score)
   s.played += 1
   if (won) s.wins += 1
 }
 
 // Either daily challenge keeps the streak alive; it grows once per day.
-export function recordDaily(kind, score, won, today = todayKey()) {
+export function recordDaily(kind, score, won, level = 1, today = todayKey()) {
   const s = load()
   const k = histKey(kind, today)
   if (s.history[k]) return s
@@ -33,14 +40,14 @@ export function recordDaily(kind, score, won, today = todayKey()) {
     s.streak = d === 1 ? s.streak + 1 : 1
     s.lastPlayed = today
   }
-  bump(s, kind, score, won)
-  s.history[k] = { score, won }
+  bump(s, kind, score, won, level)
+  s.history[k] = { score, won, level }
   save(s)
   return s
 }
-export function recordPractice(kind, score, won) {
+export function recordPractice(kind, score, won, level = 1) {
   const s = load()
-  bump(s, kind, score, won)
+  bump(s, kind, score, won, level)
   save(s)
   return s
 }

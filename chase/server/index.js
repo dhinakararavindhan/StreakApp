@@ -6,7 +6,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 const webpush = createRequire(import.meta.url)('web-push')
-import { SQUADS, TARGET, BOWL_TARGET, BOWL_MIN } from '../src/data.js'
+import { SQUADS, TARGET, bowlTarget, BOWL_MIN } from '../src/data.js'
 import { simulate, simulateBowl, opponentFor } from '../src/sim.js'
 import { rng, hashStr, todayKey } from '../src/rng.js'
 
@@ -62,14 +62,14 @@ setInterval(sendReminders, 10 * 60 * 1000).unref()
 
 // ---------- score verification ----------
 const byId = new Map(SQUADS.flatMap((s) => s.players.map((p) => [p.id, p])))
-function verify(kind, ids, day) {
+function verify(kind, ids, day, level) {
   if (kind === 'bowl') {
     if (!Array.isArray(ids) || ids.length !== 5) return null
     const attack = ids.map((id) => byId.get(id))
     if (attack.some((p) => !p || p.bwl < BOWL_MIN)) return null
     if (new Set(attack.map((p) => p.name)).size !== 5) return null
     const rand = rng(hashStr(day + 'bowl' + attack.map((p) => p.id).join('|')))
-    return simulateBowl(attack, opponentFor(day).players, rand, BOWL_TARGET)
+    return simulateBowl(attack, opponentFor(day).players, rand, bowlTarget(level))
   }
   if (!Array.isArray(ids) || ids.length !== 11) return null
   const xi = ids.map((id) => byId.get(id))
@@ -126,7 +126,8 @@ const server = http.createServer(async (req, res) => {
         const kind = body.kind === 'bowl' ? 'bowl' : 'bat'
         if (typeof device !== 'string' || device.length < 8 || device.length > 64) return send(res, 400, { error: 'bad device' })
         if (!validDay(day)) return send(res, 400, { error: 'bad day' })
-        const r = verify(kind, xi, day)
+        const level = Math.min(10, Math.max(1, Number(body.level) | 0 || 1))
+        const r = verify(kind, xi, day, level)
         if (!r) return send(res, 400, { error: 'invalid XI' })
         if (db.scores.some((s) => s.device === device && s.day === day && (s.kind || 'bat') === kind)) return send(res, 409, { error: 'already submitted' })
         db.scores.push({ device, kind, name: cleanName(name), day, score: r.score, wickets: r.wickets, won: r.won, balls: r.ballsUsed })

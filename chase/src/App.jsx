@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { SQUADS, SLOT_LABELS, TARGET, BALLS, BOWL_SLOTS, BOWL_TARGET, BOWL_MIN } from './data.js'
+import { SQUADS, SLOT_LABELS, TARGET, BALLS, BOWL_SLOTS, BOWL_LEVELS, bowlTarget, BOWL_MIN } from './data.js'
 import { hashStr, rng, todayKey } from './rng.js'
 import { simulate, teamRatings, verdict, simulateBowl, opponentFor, bowlRatings, bowlVerdict } from './sim.js'
 import { load, liveStreak, recordDaily, recordPractice, histKey } from './storage.js'
@@ -17,6 +17,7 @@ function makeSpins(seed) {
 export default function App() {
   const [screen, setScreen] = useState('home')
   const [kind, setKind] = useState('bat') // 'bat' | 'bowl'
+  const [level, setLevel] = useState(1) // bowling level being played
   const [mode, setMode] = useState('daily')
   const [seedStr, setSeedStr] = useState('')
   const [xi, setXi] = useState(Array(11).fill(null))
@@ -24,9 +25,9 @@ export default function App() {
   const [result, setResult] = useState(null)
   const [stats, setStats] = useState(load())
 
-  const start = (m, k = 'bat') => {
+  const start = (m, k = 'bat', lv = 1) => {
     const key = m === 'daily' ? todayKey() : String(Date.now())
-    setKind(k); setMode(m); setSeedStr(key); setXi(Array(11).fill(null)); setAttack(Array(5).fill(null)); setResult(null); setScreen('draft')
+    setLevel(lv); setKind(k); setMode(m); setSeedStr(key); setXi(Array(11).fill(null)); setAttack(Array(5).fill(null)); setResult(null); setScreen('draft')
   }
   const finish = (finalXi) => {
     const rand = rng(hashStr(seedStr + finalXi.map((p) => p.id).join('|')))
@@ -35,10 +36,10 @@ export default function App() {
   }
   const finishBowl = (final) => {
     const rand = rng(hashStr(seedStr + 'bowl' + final.map((p) => p.id).join('|')))
-    setAttack(final); setResult(simulateBowl(final, opponentFor(seedStr).players, rand, BOWL_TARGET)); setScreen('chase')
+    setAttack(final); setResult(simulateBowl(final, opponentFor(seedStr).players, rand, bowlTarget(level))); setScreen('chase')
   }
   const done = () => {
-    setStats(mode === 'daily' ? recordDaily(kind, result.score, result.won) : recordPractice(kind, result.score, result.won))
+    setStats(mode === 'daily' ? recordDaily(kind, result.score, result.won, level) : recordPractice(kind, result.score, result.won, level))
     setScreen('result')
   }
   const bowl = kind === 'bowl'
@@ -48,11 +49,11 @@ export default function App() {
       {screen === 'home' && <Home stats={stats} onStart={start} onBoard={() => setScreen('board')} />}
       {screen === 'board' && <Board onBack={() => setScreen('home')} initialKind={kind} />}
       {screen === 'draft' && !bowl && <Draft key={seedStr} seedStr={seedStr} mode={mode} xi={xi} setXi={setXi} onDone={finish} onExit={() => setScreen('home')} />}
-      {screen === 'draft' && bowl && <BowlDraft key={seedStr} seedStr={seedStr} mode={mode} attack={attack} setAttack={setAttack} onDone={finishBowl} onExit={() => setScreen('home')} />}
+      {screen === 'draft' && bowl && <BowlDraft key={seedStr} level={level} seedStr={seedStr} mode={mode} attack={attack} setAttack={setAttack} onDone={finishBowl} onExit={() => setScreen('home')} />}
       {screen === 'chase' && !bowl && <Chase xi={xi} result={result} onDone={done} />}
       {screen === 'chase' && bowl && <BowlInnings result={result} onDone={done} />}
       {screen === 'result' && !bowl && <Result xi={xi} result={result} mode={mode} stats={stats} seedStr={seedStr} onHome={() => setScreen('home')} onPractice={() => start('practice', 'bat')} onBoard={() => setScreen('board')} />}
-      {screen === 'result' && bowl && <BowlResult attack={attack} result={result} mode={mode} stats={stats} seedStr={seedStr} onHome={() => setScreen('home')} onPractice={() => start('practice', 'bowl')} onBoard={() => setScreen('board')} />}
+      {screen === 'result' && bowl && <BowlResult level={level} attack={attack} result={result} mode={mode} stats={stats} seedStr={seedStr} onHome={() => setScreen('home')} onPractice={() => start('practice', 'bowl', level)} onBoard={() => setScreen('board')} />}
     </div>
   )
 }
@@ -63,6 +64,8 @@ function Home({ stats, onStart, onBoard }) {
   const batDone = stats.history[histKey('bat', today)]
   const bowlDone = stats.history[histKey('bowl', today)]
   const opp = opponentFor(today)
+  const unlocked = stats.bowlLevel || 1
+  const [lv, setLv] = useState(unlocked)
   return (
     <main className="home">
       <div className="logo">300</div>
@@ -84,10 +87,18 @@ function Home({ stats, onStart, onBoard }) {
 
       <section className="mode">
         <h2>🎯 Bowling challenge</h2>
-        <p>Draft 5 bowlers and hold <b>{opp.name} {opp.year}</b> under <b>{BOWL_TARGET}</b>.</p>
+        <p>Draft 5 bowlers and hold <b>{opp.name} {opp.year}</b> under <b>{bowlTarget(lv)}</b>.</p>
+        <div className="levels">
+          {Array.from({ length: BOWL_LEVELS }, (_, i) => i + 1).map((n) => (
+            <button key={n} disabled={n > unlocked} className={(n === lv ? 'on ' : '') + (n <= stats.bowlCleared ? 'cleared' : '')} onClick={() => setLv(n)}>
+              {n <= stats.bowlCleared ? '✓' : n > unlocked ? '🔒' : n}
+            </button>
+          ))}
+        </div>
+        <small className="lvl">Level {lv} · under {bowlTarget(lv)} runs{lv === unlocked && unlocked > stats.bowlCleared ? ' · win to unlock the next' : ''}</small>
         {bowlDone ? <div className="done">Today: <b>{bowlDone.score}</b>{bowlDone.won ? ' 🏆' : ''}</div>
-          : <button className="primary" onClick={() => onStart('daily', 'bowl')}>Play today's defence</button>}
-        <button className="link" onClick={() => onStart('practice', 'bowl')}>Practice</button>
+          : <button className="primary" onClick={() => onStart('daily', 'bowl', lv)}>Play today's defence</button>}
+        <button className="link" onClick={() => onStart('practice', 'bowl', lv)}>Practice</button>
       </section>
 
       <button className="ghost" onClick={onBoard}>🏆 Leaderboards</button>
@@ -364,7 +375,7 @@ function Reminders() {
   )
 }
 
-function BowlDraft({ seedStr, mode, attack, setAttack, onDone, onExit }) {
+function BowlDraft({ level, seedStr, mode, attack, setAttack, onDone, onExit }) {
   const spins = useMemo(() => makeSpins(hashStr('bspin' + seedStr)), [seedStr])
   const opp = useMemo(() => opponentFor(seedStr), [seedStr])
   const [spinIdx, setSpinIdx] = useState(0)
@@ -408,7 +419,7 @@ function BowlDraft({ seedStr, mode, attack, setAttack, onDone, onExit }) {
       <div className="card opp">
         <small>Opponent</small>
         <b>{opp.name} {opp.year}</b>
-        <span>Batting power {oppPow} · hold them under {BOWL_TARGET}</span>
+        <span>Batting power {oppPow} · Level {level}: hold them under {bowlTarget(level)}</span>
       </div>
       <div className="ratings"><Meter label="ATTACK" v={r.bwl} /></div>
 
@@ -474,10 +485,10 @@ function BowlInnings({ result, onDone }) {
   const log = shown.filter((e) => e.wicket || e.runs >= 4).slice(-30)
   return (
     <main className="chase">
-      <div className="target">{result.opp.name} {result.opp.year} batting · hold under {BOWL_TARGET}</div>
-      <div className={'big' + (score >= BOWL_TARGET ? ' over' : '')}>{score}<small>/{cur ? cur.wickets : 0}</small></div>
+      <div className="target">{result.opp.name} {result.opp.year} batting · hold under {result.target}</div>
+      <div className={'big' + (score >= result.target ? ' over' : '')}>{score}<small>/{cur ? cur.wickets : 0}</small></div>
       <div className="line">{oversStr(balls)} ov{cur ? ` · ${cur.bowler} bowling` : ''}</div>
-      <div className="bar big"><div style={{ width: `${Math.min(100, (score / BOWL_TARGET) * 100)}%`, background: score >= BOWL_TARGET ? 'var(--red)' : undefined }} /></div>
+      <div className="bar big"><div style={{ width: `${Math.min(100, (score / result.target) * 100)}%`, background: score >= result.target ? 'var(--red)' : undefined }} /></div>
       <ul className="log" ref={logRef}>
         {log.map((e) => (
           <li key={e.ball} className={e.wicket ? 'wk' : e.runs === 6 ? 'w' : 'w'}>
@@ -496,7 +507,7 @@ function BowlInnings({ result, onDone }) {
   )
 }
 
-function BowlResult({ attack, result, mode, stats, seedStr, onHome, onPractice, onBoard }) {
+function BowlResult({ level, attack, result, mode, stats, seedStr, onHome, onPractice, onBoard }) {
   const [copied, setCopied] = useState(false)
   const [name, setNameState] = useState(getName())
   const [sub, setSub] = useState(mode === 'daily' ? 'ask' : 'none')
@@ -504,12 +515,12 @@ function BowlResult({ attack, result, mode, stats, seedStr, onHome, onPractice, 
   const streak = liveStreak(stats)
   const submit = async () => {
     setName(name.trim()); setSub('sending')
-    try { const r = await submitScore('bowl', name.trim() || 'Anon', seedStr, attack); setRank(r.me); setSub('done') }
+    try { const r = await submitScore('bowl', name.trim() || 'Anon', seedStr, attack, level); setRank(r.me); setSub('done') }
     catch (e) { setSub(e.status === 409 ? 'done' : 'error') }
   }
   const text = [
     `Chase 300 · Bowling ${mode === 'daily' ? seedStr : '(practice)'}`,
-    `${result.opp.name} ${result.opp.year}: ${result.score}/${result.wickets} in ${oversStr(result.ballsUsed)} ov ${result.won ? '🏆' : ''}`,
+    `L${level} (<${result.target}) vs ${result.opp.name} ${result.opp.year}: ${result.score}/${result.wickets} in ${oversStr(result.ballsUsed)} ov ${result.won ? '🏆' : ''}`,
     attack.map((p) => p.name).join(' · '),
     mode === 'daily' ? `🔥 ${streak}-day streak` : '',
   ].filter(Boolean).join('\n')
@@ -519,8 +530,9 @@ function BowlResult({ attack, result, mode, stats, seedStr, onHome, onPractice, 
   return (
     <main className="result">
       <div className={'big' + (result.won ? ' win' : '')}>{result.score}<small>/{result.wickets}</small></div>
-      <p className="verdict">{bowlVerdict(result, BOWL_TARGET)}</p>
-      <p className="line">{result.opp.name} {result.opp.year} · {oversStr(result.ballsUsed)} overs{mode === 'daily' ? ` · 🔥 ${streak}-day streak` : ''}</p>
+      <p className="verdict">{bowlVerdict(result)}</p>
+      {result.won && <p className="unlock">{level >= BOWL_LEVELS ? '🏆 All 10 levels cleared!' : `🔓 Level ${level} cleared — level ${level + 1} unlocked (under ${bowlTarget(level + 1)})`}</p>}
+      <p className="line">Level {level} · {result.opp.name} {result.opp.year} · {oversStr(result.ballsUsed)} overs{mode === 'daily' ? ` · 🔥 ${streak}-day streak` : ''}</p>
       <table className="card-table">
         <thead><tr><th>Bowler</th><th>O</th><th>R</th><th>W</th></tr></thead>
         <tbody>

@@ -57,3 +57,7 @@ input{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--l
 .mode h2{margin:0;font-size:1.05rem}.mode p{margin:0;color:var(--mut);font-size:.9rem}.mode .done{background:var(--bg);border-radius:10px;padding:12px}
 .opp{display:flex;flex-direction:column;gap:2px}.opp small{color:var(--mut)}.opp span{color:var(--mut);font-size:.8rem}
 .big.over{color:var(--red)}.log .wk{color:var(--grn)}
+.levels{display:grid;grid-template-columns:repeat(10,1fr);gap:4px}
+.levels button{padding:8px 0;border-radius:8px;background:var(--bg);border:1px solid var(--line);font-size:.8rem}
+.levels .on{border-color:var(--gold);color:var(--gold);font-weight:800}.levels .cleared{color:var(--grn)}
+.lvl{color:var(--mut)}.unlock{margin:0;color:var(--grn);font-weight:700}
