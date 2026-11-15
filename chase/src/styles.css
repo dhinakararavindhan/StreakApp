@@ -64,3 +64,11 @@ input{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--l
 .lv{color:var(--mut);font-size:.75rem;align-self:center}
 .fine a{color:var(--gold)}
 .row button.ghost{flex:1}
+.howto h1{margin:6px 0 0;text-align:center}.howto ol{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.howto li{display:flex;gap:12px;background:var(--card);border-radius:12px;padding:12px}.howto .ic{font-size:1.6rem}.howto p{margin:2px 0 0;color:var(--mut);font-size:.88rem}
+.stats-screen header{display:flex;justify-content:space-between;align-items:center}.stats-screen h2{margin:8px 0 0;font-size:1rem}.stats-screen h2 small{color:var(--mut)}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}.cal span{aspect-ratio:1;display:grid;place-items:center;border-radius:8px;background:var(--card);color:var(--mut);font-size:.78rem}
+.cal .on{background:#33429e;color:#fff;font-weight:700}.cal .won{background:var(--gold);color:#1a1300;font-weight:800}.cal .today{outline:2px solid var(--fg)}
+.badges{display:grid;grid-template-columns:1fr 1fr;gap:8px}.badge{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:2px;opacity:.55}
+.badge.got{opacity:1;border-color:var(--gold)}.badge span{font-size:1.5rem}.badge small{color:var(--mut);font-size:.72rem}
+.recent{list-style:none;margin:0;padding:0;display:grid;gap:6px}.recent li{display:flex;justify-content:space-between;background:var(--card);border-radius:10px;padding:10px 12px;font-size:.9rem}

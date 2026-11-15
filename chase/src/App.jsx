@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { SQUADS, SLOT_LABELS, TARGET, BALLS, BOWL_SLOTS, BOWL_LEVELS, bowlTarget, BOWL_MIN, BAT_LEVELS, batTarget } from './data.js'
 import { hashStr, rng, todayKey } from './rng.js'
 import { simulate, teamRatings, verdict, simulateBowl, opponentFor, bowlRatings, bowlVerdict } from './sim.js'
-import { load, liveStreak, recordDaily, recordPractice, histKey } from './storage.js'
+import { load, liveStreak, recordDaily, recordPractice, recordVs, histKey, seenIntro, markIntroSeen, BADGES } from './storage.js'
+import { shareCard } from './card.js'
 import { getVs, submitVs, submitScore, fetchBoard, getName, setName, pushSupported, pushEnabled, enablePush, disablePush } from './api.js'
 
 const fits = (p, s) => s + 1 >= p.lo && s + 1 <= p.hi
@@ -15,7 +16,7 @@ function makeSpins(seed) {
 }
 
 export default function App() {
-  const [screen, setScreen] = useState('home')
+  const [screen, setScreen] = useState(() => (seenIntro() ? 'home' : 'howto'))
   const [kind, setKind] = useState('bat') // 'bat' | 'bowl'
   const [level, setLevel] = useState(1) // level being played (either mode)
   const [mode, setMode] = useState('daily')
@@ -50,7 +51,7 @@ export default function App() {
     setAttack(final); setResult(simulateBowl(final, opponentFor(seedStr).players, rand, bowlTarget(level))); setScreen('chase')
   }
   const done = () => {
-    if (mode === 'vs') { setScreen('result'); return }
+    if (mode === 'vs') { setStats(recordVs()); setScreen('result'); return }
     setStats(mode === 'daily' ? recordDaily(kind, result.score, result.won, level) : recordPractice(kind, result.score, result.won, level))
     setScreen('result')
   }
@@ -58,7 +59,9 @@ export default function App() {
 
   return (
     <div className="app">
-      {screen === 'home' && <Home stats={stats} onStart={start} onBoard={() => setScreen('board')} />}
+      {screen === 'home' && <Home stats={stats} onStart={start} onBoard={() => setScreen('board')} onStats={() => setScreen('stats')} onHelp={() => setScreen('howto')} />}
+      {screen === 'howto' && <HowTo onClose={() => { markIntroSeen(); setScreen('home') }} />}
+      {screen === 'stats' && <Stats stats={stats} onBack={() => setScreen('home')} />}
       {screen === 'vs' && <VsIntro info={vsInfo} onPlay={() => start('vs', vsInfo.kind, vsInfo.level, vsInfo.code)} onHome={leaveVs} />}
       {screen === 'board' && <Board onBack={() => setScreen('home')} initialKind={kind} />}
       {screen === 'draft' && !bowl && <Draft key={seedStr} level={level} seedStr={seedStr} mode={mode} xi={xi} setXi={setXi} onDone={finish} onExit={() => setScreen('home')} />}
@@ -71,7 +74,7 @@ export default function App() {
   )
 }
 
-function Home({ stats, onStart, onBoard }) {
+function Home({ stats, onStart, onBoard, onStats, onHelp }) {
   const today = todayKey()
   const streak = liveStreak(stats)
   const batDone = stats.history[histKey('bat', today)]
@@ -119,7 +122,11 @@ function Home({ stats, onStart, onBoard }) {
         </div>
       </section>
 
-      <button className="ghost" onClick={onBoard}>🏆 Leaderboards</button>
+      <div className="row" style={{ width: '100%' }}>
+        <button className="ghost" onClick={onBoard}>🏆 Leaderboards</button>
+        <button className="ghost" onClick={onStats}>📊 Stats &amp; badges</button>
+      </div>
+      <button className="link" onClick={onHelp}>❓ How to play</button>
       <Reminders />
       <p className="fine">Fan-made, free and unofficial. Ratings are approximate. Not affiliated with or endorsed by any league, board, team or player. Team and player names are used for identification only. <a href="/privacy.html">Privacy</a></p>
     </main>
@@ -349,6 +356,7 @@ function Result({ level, xi, result, mode, stats, seedStr, onHome, onPractice, o
         <button className="ghost" onClick={onBoard}>{rank ? `🏆 You're #${rank.rank} today — view leaderboard` : '🏆 View leaderboard'}</button>
       )}
       <button className="primary" onClick={share}>{copied ? 'Copied!' : 'Share result'}</button>
+      <button className="ghost" onClick={() => shareCard({ mode: 'Batting', level, score: result.score, wickets: result.wickets, won: result.won, line: verdict(result), names: xi.map((p) => p.name), footer: window.location.host })}>🖼️ Share as image</button>
       <button className="ghost" onClick={onPractice}>Practice again</button>
       <button className="link" onClick={onHome}>Home</button>
     </main>
@@ -589,6 +597,7 @@ function BowlResult({ level, attack, result, mode, stats, seedStr, onHome, onPra
       {sub === 'error' && <p className="warn">Couldn't reach the leaderboard. <button className="link" onClick={submit}>Retry</button></p>}
       {sub === 'done' && <button className="ghost" onClick={onBoard}>{rank ? `🏆 You're #${rank.rank} today — view leaderboard` : '🏆 View leaderboard'}</button>}
       <button className="primary" onClick={share}>{copied ? 'Copied!' : 'Share result'}</button>
+      <button className="ghost" onClick={() => shareCard({ mode: 'Bowling', level, score: result.score, wickets: result.wickets, won: result.won, line: bowlVerdict(result), names: attack.map((p) => p.name), footer: window.location.host })}>🖼️ Share as image</button>
       <button className="ghost" onClick={onPractice}>Practice again</button>
       <button className="link" onClick={onHome}>Home</button>
     </main>
@@ -666,5 +675,77 @@ function VsPanel({ kind, seedStr, level, picks }) {
         <small className="lvl">Anyone with the link plays the same wheel{kind === 'bowl' ? ' and opponent' : ''}.</small>
       </>}
     </div>
+  )
+}
+
+function HowTo({ onClose }) {
+  const steps = [
+    ['🎡', 'Spin the wheel', 'Every spin shows a famous franchise T20 squad from leagues around the world.'],
+    ['🧢', 'Draft your side', 'Pick one player per spin, no undos. In batting, each player must bat where he actually batted. You get one re-roll.'],
+    ['🏏', 'Batting challenge', 'Draft an XI and chase the target in 20 overs. Level 1 is 200. Level 13 is 320: almost impossible.'],
+    ['🎯', 'Bowling challenge', 'Draft 5 bowlers and hold the opposition under the target. Level 1 is under 60, level 10 is under 15.'],
+    ['⬆️', 'Climb the levels', 'Win a level to unlock the next. A new wheel every day, and playing daily builds your streak 🔥.'],
+    ['⚔️', 'Challenge a friend', 'Play, then send your link. They get the same wheel. Higher score wins.'],
+  ]
+  return (
+    <main className="howto">
+      <h1>How to play</h1>
+      <ol>
+        {steps.map(([icon, title, text]) => (
+          <li key={title}><span className="ic">{icon}</span><div><b>{title}</b><p>{text}</p></div></li>
+        ))}
+      </ol>
+      <p className="fine">Ratings are fan estimates, and some line-ups may not be exact.</p>
+      <button className="primary" onClick={onClose}>Let's play</button>
+    </main>
+  )
+}
+
+function Stats({ stats, onBack }) {
+  const today = new Date()
+  const key = (d) => todayKey(d)
+  const played = (k) => stats.history[k] || stats.history['bowl:' + k]
+  const days = Array.from({ length: 28 }, (_, i) => {
+    const d = new Date(today); d.setDate(d.getDate() - (27 - i))
+    const k = key(d)
+    const hit = [stats.history[k], stats.history['bowl:' + k]].filter(Boolean)
+    return { k, n: d.getDate(), played: hit.length > 0, won: hit.some((h) => h.won), today: i === 27 }
+  })
+  const recent = Object.entries(stats.history)
+    .map(([k, v]) => ({ kind: k.startsWith('bowl:') ? 'bowl' : 'bat', day: k.replace('bowl:', ''), ...v }))
+    .sort((x, y) => (y.day + y.kind).localeCompare(x.day + x.kind)).slice(0, 8)
+  const earned = BADGES.filter((b) => b.test(stats))
+  return (
+    <main className="stats-screen">
+      <header><button className="link" onClick={onBack}>← Back</button><b>Stats &amp; badges</b><span /></header>
+      <div className="stats">
+        <div><b>🔥 {liveStreak(stats)}</b><span>current streak</span></div>
+        <div><b>{Math.max(stats.bestStreak || 0, liveStreak(stats))}</b><span>best streak</span></div>
+        <div><b>{stats.played}</b><span>games</span></div>
+      </div>
+      <div className="stats">
+        <div><b>{stats.wins}</b><span>levels won</span></div>
+        <div><b>{stats.batCleared || 0}/{BAT_LEVELS}</b><span>batting cleared</span></div>
+        <div><b>{stats.bowlCleared || 0}/{BOWL_LEVELS}</b><span>bowling cleared</span></div>
+      </div>
+      <h2>Last 28 days</h2>
+      <div className="cal">
+        {days.map((d) => <span key={d.k} className={(d.played ? (d.won ? 'won ' : 'on ') : '') + (d.today ? 'today' : '')} title={d.k}>{d.n}</span>)}
+      </div>
+      <h2>Badges <small>{earned.length}/{BADGES.length}</small></h2>
+      <div className="badges">
+        {BADGES.map((b) => {
+          const ok = b.test(stats)
+          return <div key={b.id} className={'badge' + (ok ? ' got' : '')}><span>{ok ? b.icon : '🔒'}</span><b>{b.name}</b><small>{b.desc}</small></div>
+        })}
+      </div>
+      <h2>Recent daily games</h2>
+      {recent.length === 0 && <p className="line">Nothing yet. Play today's challenge!</p>}
+      <ul className="recent">
+        {recent.map((r) => (
+          <li key={r.day + r.kind}><span>{r.day}</span><span>{r.kind === 'bowl' ? '🎯' : '🏏'} L{r.level || 1}</span><b>{r.score}{r.won ? ' 🏆' : ''}</b></li>
+        ))}
+      </ul>
+    </main>
   )
 }
