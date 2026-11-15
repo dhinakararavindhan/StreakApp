@@ -1,4 +1,5 @@
 import { todayKey } from './rng'
+import { BAT_LEVELS, BOWL_LEVELS } from './data'
 const KEY = 'chase300.v1'
 const empty = { streak: 0, best: 0, bestBowl: null, bowlLevel: 1, bowlCleared: 0, batLevel: 1, batCleared: 0, lastPlayed: null, history: {}, played: 0, wins: 0 }
 
@@ -22,14 +23,14 @@ function bump(s, kind, score, won, level) {
     // winning a level unlocks the next one
     if (won) {
       s.bowlCleared = Math.max(s.bowlCleared || 0, level)
-      s.bowlLevel = Math.min(10, Math.max(s.bowlLevel || 1, level + 1))
+      s.bowlLevel = Math.min(BOWL_LEVELS, Math.max(s.bowlLevel || 1, level + 1))
     }
   }
   if (kind !== 'bowl') {
     s.best = Math.max(s.best, score)
     if (won) {
       s.batCleared = Math.max(s.batCleared || 0, level)
-      s.batLevel = Math.min(10, Math.max(s.batLevel || 1, level + 1))
+      s.batLevel = Math.min(BAT_LEVELS, Math.max(s.batLevel || 1, level + 1))
     }
   }
   s.played += 1

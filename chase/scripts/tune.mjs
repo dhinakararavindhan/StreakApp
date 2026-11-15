@@ -1,4 +1,4 @@
-import { SQUADS, batTarget } from '../src/data.js'
+import { SQUADS, batTarget, BAT_LEVELS } from '../src/data.js'
 import { simulate } from '../src/sim.js'
 import { rng } from '../src/rng.js'
 
@@ -27,5 +27,5 @@ for (const skill of [1, 3, 6]) {
   for (let i = 0; i < 4000; i++) sc.push(simulate(randomXI(skill), r, 9999).score) // uncapped: how many could they make?
   sc.sort((a, b) => a - b)
   const wins = (target) => (sc.filter((x) => x >= target).length / sc.length * 100).toFixed(1)
-  console.log(`skill ${skill}: med ${sc[Math.floor(sc.length / 2)]} | win% by level:`, Array.from({ length: 10 }, (_, i) => `L${i + 1}(${batTarget(i + 1)}) ${wins(batTarget(i + 1))}`).join('  '))
+  console.log(`skill ${skill}: med ${sc[Math.floor(sc.length / 2)]} | win% by level:`, Array.from({ length: BAT_LEVELS }, (_, i) => `L${i + 1}(${batTarget(i + 1)}) ${wins(batTarget(i + 1))}`).join('  '))
 }

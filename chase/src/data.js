@@ -183,10 +183,10 @@ const RAW = [
 export const SQUADS = RAW.map((s) => ({ ...s, players: s.players.map((p) => ({ ...p, id: `${s.id}:${p.name}`, team: s.short, year: s.year })) }))
 
 export const SLOT_LABELS = ['Opener', 'Opener', 'No. 3', 'No. 4', 'No. 5', 'No. 6', 'No. 7', 'No. 8', 'No. 9', 'No. 10', 'No. 11']
-export const TARGET = 300 // the headline target (batting level 10)
-export const BAT_LEVELS = 10
-// Level 1 = chase 120, level 2 = 140 ... level 10 = 300
-export const batTarget = (level) => 100 + 20 * Math.min(BAT_LEVELS, Math.max(1, level | 0 || 1))
+export const TARGET = 300 // brand name; the top batting level is 320
+export const BAT_LEVELS = 13
+// Level 1 = chase 200, level 2 = 210 ... level 13 = 320
+export const batTarget = (level) => 190 + 10 * Math.min(BAT_LEVELS, Math.max(1, level | 0 || 1))
 export const BALLS = 120 // 20 overs
 
 // ---- Bowling challenge: draft 5 bowlers (4 overs each) and defend against a daily opponent ----

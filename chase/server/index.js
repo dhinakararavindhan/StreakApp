@@ -6,7 +6,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 const webpush = createRequire(import.meta.url)('web-push')
-import { SQUADS, batTarget, bowlTarget, BOWL_MIN } from '../src/data.js'
+import { SQUADS, batTarget, bowlTarget, BOWL_MIN, BAT_LEVELS, BOWL_LEVELS } from '../src/data.js'
 import { simulate, simulateBowl, opponentFor } from '../src/sim.js'
 import { rng, hashStr, todayKey } from '../src/rng.js'
 
@@ -87,7 +87,7 @@ const validDay = (d) => {
 function board(kind, scope, device, day) {
   const mine = db.scores.filter((s) => (s.kind || 'bat') === kind)
   // bowling: fewest runs wins. batting: chases end at their target, so rank by level first, then runs, then speed.
-  const better = kind === 'bowl' ? (a, b) => a.score - b.score || b.wickets - a.wickets || a.balls - b.balls : (a, b) => (b.level || 10) - (a.level || 10) || b.score - a.score || a.balls - b.balls
+  const better = kind === 'bowl' ? (a, b) => a.score - b.score || b.wickets - a.wickets || a.balls - b.balls : (a, b) => (b.level || 1) - (a.level || 1) || b.score - a.score || a.balls - b.balls
   let rows
   if (scope === 'all') {
     const best = new Map()
@@ -95,7 +95,7 @@ function board(kind, scope, device, day) {
     rows = [...best.values()]
   } else rows = mine.filter((s) => s.day === day)
   rows.sort(better)
-  const ranked = rows.map((s, i) => ({ rank: i + 1, name: s.name, score: s.score, wickets: s.wickets, won: s.won, balls: s.balls, level: s.level || (s.kind === 'bowl' ? 1 : 10), you: s.device === device }))
+  const ranked = rows.map((s, i) => ({ rank: i + 1, name: s.name, score: s.score, wickets: s.wickets, won: s.won, balls: s.balls, level: s.level || 1, you: s.device === device }))
   return { top: ranked.slice(0, 50), me: ranked.find((r) => r.you) || null, total: ranked.length }
 }
 
@@ -127,7 +127,7 @@ const server = http.createServer(async (req, res) => {
         const kind = body.kind === 'bowl' ? 'bowl' : 'bat'
         if (typeof device !== 'string' || device.length < 8 || device.length > 64) return send(res, 400, { error: 'bad device' })
         if (!validDay(day)) return send(res, 400, { error: 'bad day' })
-        const level = Math.min(10, Math.max(1, Number(body.level) | 0 || 1))
+        const level = Math.min(kind === 'bowl' ? BOWL_LEVELS : BAT_LEVELS, Math.max(1, Number(body.level) | 0 || 1))
         const r = verify(kind, xi, day, level)
         if (!r) return send(res, 400, { error: 'invalid XI' })
         if (db.scores.some((s) => s.device === device && s.day === day && (s.kind || 'bat') === kind)) return send(res, 409, { error: 'already submitted' })

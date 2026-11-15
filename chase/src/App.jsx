@@ -107,7 +107,7 @@ function Home({ stats, onStart, onBoard }) {
 function LevelPicker({ levels, unlocked, cleared, value, onChange, text }) {
   return (
     <>
-      <div className="levels">
+      <div className="levels" style={{ gridTemplateColumns: `repeat(${levels > 10 ? 7 : levels}, 1fr)` }}>
         {Array.from({ length: levels }, (_, i) => i + 1).map((n) => (
           <button key={n} disabled={n > unlocked} className={(n === value ? 'on ' : '') + (n <= cleared ? 'cleared' : '')} onClick={() => onChange(n)}>
             {n <= cleared ? '✓' : n > unlocked ? '🔒' : n}
@@ -302,7 +302,7 @@ function Result({ level, xi, result, mode, stats, seedStr, onHome, onPractice, o
     <main className="result">
       <div className={'big' + (result.won ? ' win' : '')}>{result.score}<small>/{result.wickets}</small></div>
       <p className="verdict">{verdict(result)}</p>
-      {result.won && <p className="unlock">{level >= BAT_LEVELS ? '🏆 All 10 levels cleared!' : `🔓 Level ${level} cleared — level ${level + 1} unlocked (chase ${batTarget(level + 1)})`}</p>}
+      {result.won && <p className="unlock">{level >= BAT_LEVELS ? `🏆 All ${BAT_LEVELS} levels cleared!` : `🔓 Level ${level} cleared — level ${level + 1} unlocked (chase ${batTarget(level + 1)})`}</p>}
       <p className="line">Level {level} · {oversStr(result.ballsUsed)} overs{mode === 'daily' ? ` · 🔥 ${streak}-day streak` : ''}</p>
       <table className="card-table">
         <thead><tr><th>Batter</th><th>R</th><th>B</th><th>4s</th><th>6s</th></tr></thead>
