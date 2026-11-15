@@ -118,6 +118,66 @@ const RAW = [
     P('Ramdin', 3, 5, 40, 70, 0, true), P('Darren Bravo', 3, 4, 60, 76, 0), P('Pollard', 4, 6, 62, 96, 60),
     P('Bravo', 6, 7, 40, 86, 85), P('Narine', 7, 8, 20, 70, 95), P('Ali Khan', 9, 10, 6, 16, 82),
     P('K. Pierre', 9, 10, 6, 16, 80), P('Emrit', 10, 11, 6, 16, 78)] },
+  { id: 'mum17', name: 'Mumbai', short: 'MUM', year: 2017, players: [
+    P('Parthiv Patel', 1, 2, 56, 80, 0, true), P('Simmons', 1, 2, 66, 82, 0), P('N. Rana', 3, 4, 58, 84, 0),
+    P('Rohit', 3, 4, 72, 88, 20), P('Pollard', 4, 6, 62, 96, 60), P('Hardik', 5, 6, 54, 94, 64),
+    P('Krunal', 6, 7, 44, 78, 78), P('Harbhajan', 7, 8, 22, 54, 80), P('McClenaghan', 8, 9, 8, 20, 88),
+    P('Malinga', 9, 10, 8, 30, 94), P('Bumrah', 10, 11, 8, 20, 96)] },
+  { id: 'mum19', name: 'Mumbai', short: 'MUM', year: 2019, players: [
+    P('de Kock', 1, 2, 74, 90, 0, true), P('Rohit', 1, 2, 72, 90, 20), P('SKY', 3, 4, 72, 94, 0),
+    P('I. Kishan', 3, 5, 58, 90, 0), P('Pollard', 4, 6, 64, 98, 55), P('Hardik', 5, 6, 56, 98, 62),
+    P('Krunal', 6, 7, 44, 78, 80), P('R. Chahar', 8, 9, 8, 20, 84), P('Markande', 8, 10, 6, 14, 78),
+    P('Malinga', 9, 10, 8, 30, 94), P('Bumrah', 10, 11, 8, 20, 98)] },
+  { id: 'kol24', name: 'Kolkata', short: 'KOL', year: 2024, players: [
+    P('Salt', 1, 2, 72, 96, 0, true), P('Narine', 1, 2, 50, 96, 92), P('V. Iyer', 3, 4, 60, 88, 30),
+    P('S. Iyer', 3, 4, 68, 86, 0), P('Rinku Singh', 5, 6, 56, 92, 0), P('Russell', 5, 6, 54, 98, 86),
+    P('Ramandeep', 6, 7, 36, 84, 50), P('Starc', 8, 9, 10, 30, 92), P('H. Rana', 9, 10, 6, 14, 84),
+    P('Varun C.', 10, 11, 6, 14, 88), P('V. Arora', 10, 11, 6, 14, 82)] },
+  { id: 'amd23', name: 'Ahmedabad', short: 'AMD', year: 2023, players: [
+    P('Saha', 1, 2, 66, 84, 0, true), P('Gill', 1, 2, 82, 92, 0), P('Sudharsan', 3, 4, 64, 82, 0),
+    P('Hardik', 3, 5, 64, 88, 78), P('Miller', 4, 5, 66, 94, 0), P('V. Shankar', 4, 6, 46, 82, 40),
+    P('Tewatia', 5, 6, 40, 92, 40), P('Rashid', 7, 8, 30, 86, 96), P('Shami', 9, 10, 8, 24, 94),
+    P('Mohit Sharma', 9, 10, 6, 14, 88), P('Noor Ahmad', 10, 11, 6, 14, 84)] },
+  { id: 'del12', name: 'Delhi', short: 'DEL', year: 2012, players: [
+    P('Warner', 1, 2, 80, 92, 0), P('Sehwag', 1, 2, 60, 90, 10), P('Jayawardene', 3, 4, 78, 76, 0),
+    P('N. Ojha', 3, 5, 52, 78, 0, true), P('Venugopal Rao', 4, 5, 56, 80, 0), P('I. Pathan', 6, 7, 40, 72, 82),
+    P('Russell', 6, 7, 50, 96, 82), P('M. Morkel', 8, 9, 8, 26, 90), P('Umesh Yadav', 9, 10, 8, 24, 88),
+    P('Nehra', 10, 11, 6, 14, 84), P('V. Aaron', 10, 11, 6, 14, 80)] },
+  { id: 'jai24', name: 'Jaipur', short: 'JAI', year: 2024, players: [
+    P('Jaiswal', 1, 2, 74, 94, 0), P('Buttler', 1, 2, 82, 94, 0), P('Samson', 3, 4, 72, 94, 0, true),
+    P('R. Parag', 3, 5, 62, 94, 30), P('D. Jurel', 5, 6, 46, 86, 0, true), P('Hetmyer', 5, 6, 44, 92, 0),
+    P('Ashwin', 7, 8, 22, 52, 86), P('Boult', 8, 9, 6, 20, 94), P('Chahal', 9, 10, 6, 20, 90),
+    P('Avesh Khan', 9, 10, 8, 20, 86), P('Sandeep Sharma', 10, 11, 6, 16, 86)] },
+  { id: 'che23', name: 'Chennai', short: 'CHE', year: 2023, players: [
+    P('Conway', 1, 2, 80, 92, 0), P('Gaikwad', 1, 2, 70, 88, 0), P('Rahane', 3, 4, 62, 90, 0),
+    P('Rayudu', 3, 5, 62, 84, 0), P('S. Dube', 4, 5, 52, 94, 30), P('Moeen Ali', 4, 6, 52, 88, 60),
+    P('Jadeja', 6, 7, 46, 80, 86), P('Dhoni', 6, 7, 78, 96, 0, true), P('Theekshana', 8, 9, 8, 20, 88),
+    P('Pathirana', 9, 10, 6, 14, 90), P('Deshpande', 10, 11, 6, 14, 82)] },
+  { id: 'hyd18', name: 'Hyderabad', short: 'HYD', year: 2018, players: [
+    P('Dhawan', 1, 2, 80, 80, 0), P('Saha', 1, 2, 64, 82, 0, true), P('Williamson', 3, 3, 86, 84, 10),
+    P('M. Pandey', 4, 5, 62, 82, 0), P('Shakib', 5, 6, 46, 76, 82), P('Y. Pathan', 5, 6, 50, 90, 40),
+    P('Rashid', 7, 8, 26, 80, 95), P('Bhuvneshwar', 8, 9, 24, 50, 94), P('S. Kaul', 9, 10, 6, 14, 84),
+    P('Sandeep Sharma', 9, 11, 6, 16, 86), P('B. Thampi', 10, 11, 6, 14, 80)] },
+  { id: 'lko22', name: 'Lucknow', short: 'LKO', year: 2022, players: [
+    P('KL Rahul', 1, 2, 82, 86, 0), P('de Kock', 1, 2, 76, 90, 0, true), P('D. Hooda', 3, 4, 52, 86, 30),
+    P('Stoinis', 3, 5, 54, 88, 60), P('Badoni', 4, 6, 46, 84, 0), P('Krunal', 5, 7, 44, 78, 78),
+    P('J. Holder', 6, 7, 36, 78, 86), P('Avesh Khan', 8, 9, 8, 20, 86), P('Mohsin Khan', 9, 10, 6, 14, 86),
+    P('Bishnoi', 8, 9, 8, 20, 86), P('Chameera', 10, 11, 6, 14, 84)] },
+  { id: 'pun21', name: 'Punjab', short: 'PUN', year: 2021, players: [
+    P('KL Rahul', 1, 2, 84, 88, 0, true), P('M. Agarwal', 1, 2, 66, 90, 0), P('Gayle', 2, 3, 70, 94, 20),
+    P('Pooran', 3, 5, 60, 92, 0), P('Markram', 3, 5, 66, 84, 40), P('D. Hooda', 4, 6, 52, 86, 30),
+    P('Shahrukh Khan', 5, 6, 36, 90, 0), P('H. Brar', 7, 8, 14, 50, 76), P('Shami', 8, 9, 8, 24, 94),
+    P('Arshdeep', 9, 10, 6, 14, 88), P('Bishnoi', 10, 11, 8, 20, 86)] },
+  { id: 'ade18', name: 'Adelaide', short: 'ADE', year: 2018, players: [
+    P('Weatherald', 1, 2, 62, 86, 0), P('Carey', 1, 3, 70, 86, 0, true), P('C. Ingram', 3, 4, 70, 84, 0),
+    P('J. Wells', 3, 5, 54, 78, 0), P('Short', 4, 6, 60, 88, 50), P('Rashid', 7, 8, 30, 86, 96),
+    P('Neser', 7, 8, 24, 70, 78), P('Laughlin', 8, 9, 8, 24, 82), P('Stanlake', 10, 11, 6, 14, 88),
+    P('Zampa', 9, 10, 6, 16, 90), P('Gurinder Sandhu', 10, 11, 6, 14, 76)] },
+  { id: 'bri18', name: 'Brisbane', short: 'BRI', year: 2018, players: [
+    P('C. Lynn', 1, 2, 68, 98, 0), P('McCullum', 1, 3, 58, 94, 0), P('Peirson', 3, 5, 50, 76, 0, true),
+    P('A. Ross', 4, 5, 56, 80, 0), P('Burns', 3, 4, 56, 78, 0), P('Cutting', 6, 7, 38, 98, 82),
+    P('Heazlett', 5, 6, 40, 78, 40), P('Mujeeb', 8, 9, 10, 20, 90), P('Steketee', 9, 10, 6, 14, 82),
+    P('Doggett', 10, 11, 6, 14, 78), P('M. Swepson', 10, 11, 6, 16, 84)] },
 ]
 // Unique id per player-in-squad (same real player can appear in several seasons).
 export const SQUADS = RAW.map((s) => ({ ...s, players: s.players.map((p) => ({ ...p, id: `${s.id}:${p.name}`, team: s.short, year: s.year })) }))
