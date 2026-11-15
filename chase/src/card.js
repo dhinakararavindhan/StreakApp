@@ -5,7 +5,7 @@ export async function makeCard({ mode, level, score, wickets, won, line, names, 
   const W = 1080, H = 1350
   const c = document.createElement('canvas'); c.width = W; c.height = H
   const g = c.getContext('2d')
-  const bg = g.createLinearGradient(0, 0, W, H); bg.addColorStop(0, '#0b8f84'); bg.addColorStop(1, '#22c5d8')
+  const bg = g.createLinearGradient(0, 0, W, H); bg.addColorStop(0, '#2c4145'); bg.addColorStop(1, '#16252a')
   g.fillStyle = bg; g.fillRect(0, 0, W, H)
   g.fillStyle = 'rgba(255,255,255,.08)'; g.beginPath(); g.arc(W - 120, 140, 320, 0, Math.PI * 2); g.fill()
   g.fillStyle = 'rgba(255,255,255,.06)'; g.beginPath(); g.arc(120, H - 160, 260, 0, Math.PI * 2); g.fill()
@@ -21,7 +21,7 @@ export async function makeCard({ mode, level, score, wickets, won, line, names, 
   g.textAlign = 'center'
   // shrink-to-fit so long verdicts are never cut off
   const fit = (text, weight, start, maxW) => { let s = start; g.font = `${weight} ${s}px ${F}`; while (g.measureText(text).width > maxW && s > 20) { s -= 2; g.font = `${weight} ${s}px ${F}` } }
-  g.fillStyle = won ? '#d97706' : '#0b8f84'
+  g.fillStyle = won ? '#d97706' : '#2b8c84'
   const head = won ? '🏆 Level cleared!' : line
   fit(head, 800, 46, W - 220); g.fillText(head, W / 2, 570)
   if (won) { g.fillStyle = '#667090'; fit(line, 600, 32, W - 220); g.fillText(line, W / 2, 615) }

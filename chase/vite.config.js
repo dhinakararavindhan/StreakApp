@@ -17,8 +17,8 @@ export default defineConfig({
         name: 'Chase 300 — Franchise T20',
         short_name: 'Chase 300',
         description: 'Draft an XI from iconic franchise T20 seasons and chase 300 in 20 overs. New wheel every day.',
-        theme_color: '#eef8f7',
-        background_color: '#eef8f7',
+        theme_color: '#f6f8f8',
+        background_color: '#f6f8f8',
         display: 'standalone',
         start_url: '.',
         icons: [

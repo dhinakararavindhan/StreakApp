@@ -15,7 +15,7 @@ const THEME_KEY = 'chase300.theme'
 export const getTheme = () => { try { return localStorage.getItem(THEME_KEY) === 'dark' ? 'dark' : 'light' } catch { return 'light' } }
 export function applyTheme(t) {
   document.documentElement.setAttribute('data-theme', t)
-  const m = document.querySelector('meta[name="theme-color"]'); if (m) m.setAttribute('content', t === 'dark' ? '#06181c' : '#eef8f7')
+  const m = document.querySelector('meta[name="theme-color"]'); if (m) m.setAttribute('content', t === 'dark' ? '#0e1517' : '#f6f8f8')
   try { localStorage.setItem(THEME_KEY, t) } catch {}
 }
 

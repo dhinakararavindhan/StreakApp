@@ -577,3 +577,116 @@ button.ghost:active:not(:disabled), .player:active:not(:disabled) { transform: s
 .dots { gap: 3px; }
 .d { width: 18px; height: 18px; border-radius: 7px; font-size: 0.6rem; }
 .ptxt { font-size: 0.68rem; }
+
+/* =====================================================================
+   SUBTLE PALETTE: near-white and soft grey surfaces, quiet slate buttons.
+   Teal is only a faint accent (small labels, selected rings, links).
+   ===================================================================== */
+:root {
+  --bg: #f6f8f8;
+  --card: #ffffff;
+  --card2: #f2f5f5;
+  --ink: #142022;
+  --mut: #667679;
+  --line: #e4eaea;
+  --accent: #2b8c84;
+  --accent2: #6bb5ae;
+  --accent-soft: #eef4f4;
+  --a1: 43, 140, 132;
+  --a2: 150, 172, 176;
+  --shade: 20, 34, 36;
+  --deep: 12, 24, 26;
+  --ink-rgb: 20, 32, 34;
+  --grad: linear-gradient(180deg, #324549 0%, #1b2a2e 100%);
+}
+:root[data-theme='dark'] {
+  --bg: #0e1517;
+  --card: #162124;
+  --card2: #1b282b;
+  --ink: #eef3f3;
+  --mut: #94a8aa;
+  --line: #243236;
+  --accent: #6cc3bb;
+  --accent2: #8fd0ca;
+  --accent-soft: #1a2a2c;
+  --a1: 108, 195, 187;
+  --a2: 160, 180, 184;
+  --shade: 0, 0, 0;
+  --deep: 0, 0, 0;
+  --ink-rgb: 0, 0, 0;
+  --grad: linear-gradient(180deg, #f3f7f7 0%, #d7e2e2 100%);
+}
+/* backdrop: almost white, only the faintest cool wash */
+body { background: #f4f7f7; }
+:root[data-theme='dark'] body { background: #0b1214; }
+body::before {
+  background:
+    radial-gradient(38% 30% at 14% 10%, rgba(20, 184, 166, 0.07), transparent 70%),
+    radial-gradient(34% 28% at 90% 14%, rgba(56, 189, 248, 0.06), transparent 70%),
+    radial-gradient(40% 32% at 82% 90%, rgba(110, 231, 183, 0.06), transparent 70%);
+  animation: none;
+}
+:root[data-theme='dark'] body::before {
+  background:
+    radial-gradient(38% 30% at 14% 10%, rgba(20, 184, 166, 0.07), transparent 70%),
+    radial-gradient(34% 28% at 90% 14%, rgba(56, 189, 248, 0.05), transparent 70%);
+}
+
+/* buttons: quiet slate instead of bright teal gradients */
+.primary, .opt {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0) 55%), var(--grad);
+  color: #fff; border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 2px 4px rgba(var(--ink-rgb), 0.14), 0 10px 22px rgba(var(--ink-rgb), 0.16);
+  text-shadow: none;
+}
+.primary:active:not(:disabled) { box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.25), 0 3px 8px rgba(var(--ink-rgb), 0.16); }
+:root[data-theme='dark'] .primary, :root[data-theme='dark'] .opt { color: #0e1a1c; border-color: rgba(255, 255, 255, 0.5); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 6px 18px rgba(0, 0, 0, 0.4); }
+.opt small.up { color: #9be0c2; } .opt small.dn { color: #ffc2c6; }
+:root[data-theme='dark'] .opt small.up { color: #0c6b49; } :root[data-theme='dark'] .opt small.dn { color: #a02a31; }
+
+/* hero pieces: neutral, no colour blocks */
+.wheel {
+  background: var(--sheen), var(--glass); color: var(--ink); text-shadow: none;
+  border: 1px solid var(--glass-edge); box-shadow: var(--glass-hi), var(--depth);
+}
+.wheel small { color: var(--mut); opacity: 1; }
+.wheel.spinning { color: var(--mut); }
+.logo, .logo.sm {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0) 55%), var(--grad);
+  color: #fff; text-shadow: none; border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 8px 18px rgba(var(--ink-rgb), 0.22);
+}
+:root[data-theme='dark'] .logo, :root[data-theme='dark'] .logo.sm { color: #0e1a1c; }
+.home h1, .brand h1 { background: none; -webkit-background-clip: initial; background-clip: initial; color: var(--ink); }
+.vs-target b { background: none; -webkit-background-clip: initial; background-clip: initial; color: var(--ink); }
+.mode::before { width: 3px; background: rgba(var(--a1), 0.28); }
+.mode.sm::before { width: 3px; }
+
+/* progress, calendar, ranks: soft instead of solid colour */
+.bar div { background: var(--accent); box-shadow: none; }
+.cal .on { background: rgba(var(--a1), 0.16); color: var(--accent); border-color: rgba(var(--a1), 0.3); box-shadow: none; }
+.rk { background: rgba(var(--ink-rgb), 0.06); color: var(--ink); box-shadow: none; }
+:root[data-theme='dark'] .rk { background: rgba(255, 255, 255, 0.08); }
+.mode .done { background: rgba(var(--ink-rgb), 0.05); border: 1px solid var(--line); }
+:root[data-theme='dark'] .mode .done { background: rgba(255, 255, 255, 0.06); }
+
+/* selected / highlighted states: a thin teal ring, no fill */
+.rows li.you, .player.sel, .levels .on, .slots li.can, .so-board .on, .vs-banner.set {
+  background: var(--card);
+  border-color: rgba(var(--a1), 0.5);
+  box-shadow: var(--glass-hi), 0 0 0 3px rgba(var(--a1), 0.1), var(--depth-sm);
+}
+.tabs .on { box-shadow: var(--glass-hi), var(--depth-sm); color: var(--ink); }
+.nav button.on { background: rgba(var(--ink-rgb), 0.06); color: var(--ink); box-shadow: none; }
+:root[data-theme='dark'] .nav button.on { background: rgba(255, 255, 255, 0.09); }
+
+/* chips: neutral grey unless they carry meaning (good / bad pitch fit) */
+.chip { background: rgba(var(--ink-rgb), 0.06); border-color: transparent; color: var(--mut); }
+:root[data-theme='dark'] .chip { background: rgba(255, 255, 255, 0.08); }
+.chip.pw, .chip.dn { background: rgba(229, 72, 77, 0.1); color: var(--red); }
+.chip.tg, .chip.up { background: rgba(18, 166, 106, 0.1); color: var(--grn); }
+.chip.an { background: rgba(var(--ink-rgb), 0.06); color: var(--mut); }
+.player .meta i, .pr i, .sn, .target, .ptxt, .meter small, .recap .xi .c, .fine a { color: var(--accent); }
+.av, .d.on { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 2px 6px rgba(var(--ink-rgb), 0.18); }
+.pills span, .prog, .meter, .stats > div { box-shadow: var(--glass-hi), var(--depth-sm); }
+.cap.on { background: var(--gold-soft); border-color: var(--gold); color: #a16207; }
