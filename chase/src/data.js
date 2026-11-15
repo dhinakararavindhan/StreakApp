@@ -178,6 +178,112 @@ const RAW = [
     P('A. Ross', 4, 5, 56, 80, 0), P('Burns', 3, 4, 56, 78, 0), P('Cutting', 6, 7, 38, 98, 82),
     P('Heazlett', 5, 6, 40, 78, 40), P('Mujeeb', 8, 9, 10, 20, 90), P('Steketee', 9, 10, 6, 14, 82),
     P('Doggett', 10, 11, 6, 14, 78), P('M. Swepson', 10, 11, 6, 16, 84)] },
+  // ---- more IPL seasons ----
+  { id: 'che19', name: 'Chennai', short: 'CHE', year: 2019, players: [
+    P('Watson', 1, 2, 72, 88, 66), P('du Plessis', 1, 2, 76, 84, 0), P('Raina', 3, 4, 70, 86, 30),
+    P('Rayudu', 3, 4, 62, 84, 0), P('K. Jadhav', 5, 6, 50, 80, 20), P('Dhoni', 5, 6, 84, 98, 0, true),
+    P('Jadeja', 6, 7, 44, 78, 86), P('Bravo', 7, 8, 40, 84, 84), P('D. Chahar', 8, 9, 14, 40, 88),
+    P('Tahir', 9, 10, 6, 20, 94), P('Harbhajan', 10, 11, 14, 50, 80)] },
+  { id: 'mum21', name: 'Mumbai', short: 'MUM', year: 2021, players: [
+    P('Rohit', 1, 2, 72, 88, 20), P('de Kock', 1, 2, 74, 88, 0, true), P('SKY', 3, 4, 74, 96, 0),
+    P('I. Kishan', 3, 5, 60, 92, 0), P('Pollard', 4, 6, 62, 96, 55), P('Hardik', 5, 6, 56, 94, 58),
+    P('Krunal', 6, 7, 44, 76, 78), P('Coulter-Nile', 7, 8, 14, 60, 88), P('R. Chahar', 8, 9, 8, 20, 84),
+    P('Boult', 9, 10, 6, 20, 94), P('Bumrah', 10, 11, 8, 20, 98)] },
+  { id: 'blr21', name: 'Bengaluru', short: 'BLR', year: 2021, players: [
+    P('Kohli', 1, 2, 90, 88, 0), P('Padikkal', 1, 2, 62, 86, 0), P('Maxwell', 3, 4, 58, 100, 60),
+    P('de Villiers', 3, 5, 84, 100, 5), P('S. Bharat', 4, 5, 48, 80, 0, true), P('D. Christian', 5, 6, 40, 90, 70),
+    P('W. Sundar', 6, 7, 34, 70, 78), P('Jamieson', 7, 8, 30, 70, 86), P('Harshal', 8, 9, 8, 24, 90),
+    P('Siraj', 9, 10, 8, 20, 90), P('Chahal', 10, 11, 6, 20, 88)] },
+  { id: 'kol21', name: 'Kolkata', short: 'KOL', year: 2021, players: [
+    P('Gill', 1, 2, 76, 82, 0), P('V. Iyer', 1, 2, 60, 88, 30), P('R. Tripathi', 3, 4, 60, 88, 0),
+    P('N. Rana', 3, 4, 58, 84, 0), P('Morgan', 4, 5, 58, 92, 0), P('D. Karthik', 5, 6, 60, 92, 0, true),
+    P('Shakib', 6, 7, 44, 70, 82), P('Narine', 7, 8, 24, 76, 94), P('Ferguson', 8, 9, 6, 20, 92),
+    P('Varun C.', 9, 10, 6, 14, 88), P('P. Krishna', 10, 11, 6, 16, 88)] },
+  // ---- CPL ----
+  { id: 'tri20', name: 'Trinidad', short: 'TRI', year: 2020, players: [
+    P('Simmons', 1, 2, 62, 80, 0), P('Munro', 1, 2, 68, 96, 0), P('Seifert', 3, 4, 56, 92, 0, true),
+    P('Darren Bravo', 3, 4, 60, 76, 0), P('Pollard', 4, 6, 62, 96, 60), P('Bravo', 6, 7, 40, 86, 85),
+    P('Narine', 7, 8, 20, 70, 95), P('Ali Khan', 8, 9, 6, 16, 82), P('F. Ahmed', 9, 10, 6, 14, 84),
+    P('K. Pierre', 9, 10, 6, 14, 80), P('A. Phillip', 10, 11, 6, 14, 78)] },
+  { id: 'jam16', name: 'Jamaica', short: 'JAM', year: 2016, players: [
+    P('Walton', 1, 2, 60, 92, 0, true), P('Gayle', 1, 3, 80, 98, 20), P('Sangakkara', 3, 4, 84, 84, 0),
+    P('R. Powell', 3, 4, 56, 86, 0), P('D. Smith', 4, 6, 58, 90, 50), P('Russell', 5, 6, 54, 98, 86),
+    P('J. Mohammed', 6, 7, 54, 76, 0), P('Permaul', 8, 9, 10, 20, 84), P('N. Miller', 8, 10, 8, 20, 82),
+    P('J. Taylor', 9, 10, 6, 16, 84), P('Cottrell', 10, 11, 6, 16, 90)] },
+  // ---- BBL ----
+  { id: 'hob24', name: 'Hobart', short: 'HOB', year: 2024, players: [
+    P('McDermott', 1, 2, 60, 92, 0), P('Wade', 1, 3, 62, 92, 0, true), P('T. David', 3, 4, 60, 98, 0),
+    P('M. Owen', 3, 5, 48, 94, 0), P('N. Chaudhary', 5, 6, 44, 88, 0), P('M. Wright', 5, 6, 42, 84, 0),
+    P('W. Agar', 7, 8, 24, 60, 82), P('C. Jordan', 7, 8, 30, 76, 84), P('N. Ellis', 8, 9, 10, 30, 92),
+    P('Meredith', 9, 10, 8, 20, 90), P('Hatzoglou', 10, 11, 6, 14, 80)] },
+  { id: 'per23', name: 'Perth', short: 'PER', year: 2023, players: [
+    P('Eskinazi', 1, 2, 58, 86, 0), P('Bancroft', 1, 2, 56, 76, 0), P('Inglis', 3, 5, 62, 92, 0, true),
+    P('Laurie Evans', 3, 4, 62, 88, 0), P('A. Turner', 4, 5, 54, 92, 0), P('A. Hardie', 5, 6, 46, 88, 66),
+    P('Agar', 7, 8, 22, 58, 82), P('J. Richardson', 8, 9, 8, 20, 90), P('Behrendorff', 9, 10, 6, 16, 90),
+    P('A. Tye', 9, 10, 8, 20, 86), P('L. Morris', 10, 11, 6, 14, 90)] },
+  { id: 'mel19', name: 'Melbourne', short: 'MEL', year: 2019, players: [
+    P('Finch', 1, 2, 70, 90, 0), P('M. Harris', 1, 2, 60, 76, 0), P('T. Cooper', 3, 4, 56, 76, 0),
+    P('S. Harper', 3, 5, 56, 84, 0, true), P('M. Gilkes', 4, 5, 50, 80, 0), P('D. Christian', 5, 6, 40, 90, 70),
+    P('Nabi', 6, 7, 30, 84, 86), P('W. Sutherland', 7, 8, 30, 76, 76), P('Boyce', 8, 9, 8, 16, 82),
+    P('K. Richardson', 9, 10, 6, 16, 90), P('J. Lalor', 10, 11, 6, 14, 80)] },
+  // ---- SA20 ----
+  { id: 'gqe24', name: 'Gqeberha', short: 'GQE', year: 2024, players: [
+    P('Markram', 1, 3, 70, 86, 40), P('J. Hermann', 1, 2, 52, 84, 0, true), P('T. Abell', 3, 4, 50, 80, 0),
+    P('Bedingham', 3, 4, 56, 84, 0), P('Stubbs', 4, 5, 60, 94, 0), P('Bairstow', 3, 5, 62, 92, 0, true),
+    P('L. Dawson', 5, 7, 34, 72, 80), P('Jansen', 7, 8, 24, 76, 90), P('B. Carse', 8, 9, 12, 44, 86),
+    P('S. Harmer', 9, 10, 10, 20, 86), P('Baartman', 10, 11, 6, 14, 86)] },
+  { id: 'paa23', name: 'Paarl', short: 'PAA', year: 2023, players: [
+    P('Buttler', 1, 2, 80, 94, 0, true), P('J. Roy', 1, 2, 68, 90, 0), P('van der Dussen', 3, 4, 74, 78, 0),
+    P('Vilas', 3, 5, 58, 84, 0, true), P('Miller', 4, 6, 66, 94, 0), P('M. van Buuren', 6, 7, 38, 80, 60),
+    P('F. Adams', 7, 8, 30, 76, 40), P('McCoy', 8, 9, 6, 16, 84), P('Ngidi', 9, 10, 6, 14, 90),
+    P('Shamsi', 9, 10, 6, 14, 86), P('D. Olivier', 10, 11, 6, 14, 86)] },
+  { id: 'joh23', name: 'Johannesburg', short: 'JOH', year: 2023, players: [
+    P('du Plessis', 1, 2, 76, 86, 0), P('Hendricks', 1, 2, 66, 82, 0), P('Klaasen', 3, 5, 72, 98, 0, true),
+    P('Moeen Ali', 3, 5, 52, 88, 60), P('L. du Plooy', 3, 4, 60, 84, 0), P('R. Shepherd', 6, 7, 28, 90, 76),
+    P('A. Hosein', 7, 8, 20, 56, 86), P('G. Coetzee', 8, 9, 10, 40, 88), P('L. Williams', 9, 10, 6, 14, 86),
+    P('Tahir', 10, 11, 6, 16, 94), P('B. Fortuin', 10, 11, 6, 14, 80)] },
+  { id: 'pre23', name: 'Pretoria', short: 'PRE', year: 2023, players: [
+    P('Salt', 1, 2, 72, 96, 0, true), P('W. Jacks', 1, 3, 62, 96, 40), P('Rossouw', 3, 4, 62, 90, 0),
+    P('T. de Bruyn', 3, 4, 58, 80, 0), P('S. Dadswell', 4, 5, 50, 80, 0), P('Parnell', 6, 7, 28, 70, 84),
+    P('M. Pretorius', 7, 8, 28, 70, 80), P('Nortje', 8, 9, 8, 20, 92), P('A. Rashid', 9, 10, 10, 30, 90),
+    P('E. Bosch', 9, 10, 8, 20, 82), P('Dupavillon', 10, 11, 6, 14, 80)] },
+  // ---- PSL ----
+  { id: 'kar20', name: 'Karachi', short: 'KAR', year: 2020, players: [
+    P('Babar', 1, 2, 88, 82, 0), P('Sharjeel', 1, 2, 60, 92, 0), P('J. Clarke', 3, 4, 58, 86, 0, true),
+    P('Denly', 3, 4, 62, 76, 20), P('Iftikhar', 4, 6, 48, 88, 40), P('Imad', 6, 7, 30, 70, 84),
+    P('A. Yamin', 7, 8, 26, 70, 80), P('M. Ilyas', 8, 9, 6, 14, 80), P('M. Amir', 9, 10, 6, 16, 92),
+    P('A. Iqbal', 9, 10, 6, 14, 84), P('Shinwari', 10, 11, 6, 14, 86)] },
+  { id: 'isl18', name: 'Islamabad', short: 'ISL', year: 2018, players: [
+    P('Ronchi', 1, 2, 60, 94, 0, true), P('Hales', 1, 2, 74, 94, 0), P('Misbah', 3, 4, 66, 72, 0),
+    P('Talat', 3, 5, 50, 82, 0), P('Asif Ali', 4, 5, 46, 94, 0), P('S. Patel', 5, 6, 46, 76, 70),
+    P('Shadab', 6, 7, 28, 76, 88), P('F. Ashraf', 7, 8, 30, 82, 78), P('Rumman', 9, 10, 6, 14, 86),
+    P('M. Sami', 9, 10, 6, 14, 84), P('Z. Gohar', 10, 11, 6, 14, 76)] },
+  { id: 'mul21', name: 'Multan', short: 'MUL', year: 2021, players: [
+    P('Rizwan', 1, 2, 82, 84, 0, true), P('S. Masood', 1, 3, 66, 76, 0), P('Rossouw', 3, 4, 62, 90, 0),
+    P('S. Maqsood', 3, 5, 58, 82, 0), P('Khushdil', 5, 6, 40, 92, 0), P('S. Tanvir', 6, 8, 30, 76, 84),
+    P('U. Mir', 8, 9, 10, 20, 82), P('Tahir', 9, 10, 6, 16, 92), P('Dahani', 9, 10, 6, 14, 88),
+    P('J. Khan', 10, 11, 6, 14, 82), P('I. Khan', 10, 11, 6, 14, 78)] },
+  { id: 'que19', name: 'Quetta', short: 'QUE', year: 2019, players: [
+    P('Watson', 1, 2, 74, 90, 66), P('A. Shehzad', 1, 2, 62, 82, 0), P('Sarfaraz', 3, 5, 52, 80, 0, true),
+    P('U. Akmal', 3, 4, 52, 84, 0), P('A. Ali', 4, 5, 54, 78, 0), P('Cutting', 6, 7, 38, 98, 82),
+    P('M. Nawaz', 7, 8, 28, 70, 82), P('Anwar Ali', 8, 9, 24, 70, 74), P('Hasnain', 9, 10, 6, 14, 92),
+    P('Z. Khan', 9, 10, 6, 14, 84), P('Naseem', 10, 11, 6, 14, 92)] },
+  { id: 'pes23', name: 'Peshawar', short: 'PES', year: 2023, players: [
+    P('Babar', 1, 2, 88, 84, 0), P('S. Ayub', 1, 2, 58, 90, 0), P('Kohler-Cadmore', 3, 4, 60, 90, 0),
+    P('M. Haris', 3, 5, 52, 92, 0, true), P('R. Powell', 4, 6, 56, 86, 0), P('Talat', 5, 6, 50, 82, 0),
+    P('A. Jamal', 7, 8, 28, 72, 78), P('W. Riaz', 8, 9, 10, 30, 84), P('S. Irshad', 9, 10, 6, 14, 86),
+    P('A. Iqbal', 9, 10, 6, 14, 84), P('S. Muqeem', 10, 11, 6, 14, 80)] },
+  // ---- The Hundred ----
+  { id: 'lon21', name: 'London', short: 'LON', year: 2021, players: [
+    P('J. Roy', 1, 2, 70, 92, 0), P('Billings', 1, 3, 56, 84, 0, true), P('W. Jacks', 3, 4, 62, 96, 40),
+    P('Laurie Evans', 3, 5, 62, 88, 0), P('S. Curran', 5, 7, 36, 82, 88), P('S. Abbott', 6, 8, 20, 68, 88),
+    P('Narine', 7, 8, 20, 72, 94), P('T. Curran', 8, 9, 14, 56, 86), P('Zampa', 9, 10, 6, 16, 90),
+    P('G. Atkinson', 9, 11, 6, 14, 90), P('Topley', 10, 11, 6, 14, 86)] },
+  { id: 'not22', name: 'Nottingham', short: 'NOT', year: 2022, players: [
+    P('Hales', 1, 2, 74, 94, 0), P('T. Moores', 1, 3, 50, 84, 0, true), P('Root', 3, 4, 86, 84, 20),
+    P('S. Mullaney', 4, 6, 50, 82, 40), P('S. Patel', 5, 6, 46, 76, 70), P('Imad', 6, 7, 30, 70, 84),
+    P('L. Gregory', 7, 8, 22, 70, 82), P('D. Sams', 8, 9, 14, 70, 86), P('Rashid', 8, 9, 20, 84, 96),
+    P('M. de Lange', 9, 10, 6, 14, 86), P('M. Carter', 10, 11, 6, 14, 78)] },
 ]
 // Unique id per player-in-squad (same real player can appear in several seasons).
 export const SQUADS = RAW.map((s) => ({ ...s, players: s.players.map((p) => ({ ...p, id: `${s.id}:${p.name}`, team: s.short, year: s.year })) }))
