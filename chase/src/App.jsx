@@ -3,6 +3,7 @@ import { SQUADS, SLOT_LABELS, TARGET, BALLS } from './data.js'
 import { hashStr, rng, todayKey } from './rng.js'
 import { simulate, teamRatings, verdict } from './sim.js'
 import { load, liveStreak, recordDaily, recordPractice } from './storage.js'
+import { submitScore, fetchBoard, getName, setName, pushSupported, pushEnabled, enablePush, disablePush } from './api.js'
 
 const fits = (p, s) => s + 1 >= p.lo && s + 1 <= p.hi
 const oversStr = (b) => `${Math.floor(b / 6)}.${b % 6}`
@@ -37,15 +38,16 @@ export default function App() {
 
   return (
     <div className="app">
-      {screen === 'home' && <Home stats={stats} onStart={start} />}
+      {screen === 'home' && <Home stats={stats} onStart={start} onBoard={() => setScreen('board')} />}
+      {screen === 'board' && <Board onBack={() => setScreen('home')} />}
       {screen === 'draft' && <Draft key={seedStr} seedStr={seedStr} mode={mode} xi={xi} setXi={setXi} onDone={finish} onExit={() => setScreen('home')} />}
       {screen === 'chase' && <Chase xi={xi} result={result} onDone={done} />}
-      {screen === 'result' && <Result xi={xi} result={result} mode={mode} stats={stats} seedStr={seedStr} onHome={() => setScreen('home')} onPractice={() => start('practice')} />}
+      {screen === 'result' && <Result xi={xi} result={result} mode={mode} stats={stats} seedStr={seedStr} onHome={() => setScreen('home')} onPractice={() => start('practice')} onBoard={() => setScreen('board')} />}
     </div>
   )
 }
 
-function Home({ stats, onStart }) {
+function Home({ stats, onStart, onBoard }) {
   const today = todayKey()
   const played = stats.history[today]
   const streak = liveStreak(stats)
@@ -65,6 +67,8 @@ function Home({ stats, onStart }) {
         <button className="primary" onClick={() => onStart('daily')}>Play today's draft</button>
       )}
       <button className="ghost" onClick={() => onStart('practice')}>Practice (random wheel)</button>
+      <button className="ghost" onClick={onBoard}>🏆 Leaderboard</button>
+      <Reminders />
       <p className="fine">Fan-made. Ratings are approximate and unofficial; not affiliated with any cricket board or player.</p>
     </main>
   )
@@ -222,8 +226,18 @@ function Chase({ xi, result, onDone }) {
   )
 }
 
-function Result({ xi, result, mode, stats, seedStr, onHome, onPractice }) {
+function Result({ xi, result, mode, stats, seedStr, onHome, onPractice, onBoard }) {
   const [copied, setCopied] = useState(false)
+  const [name, setNameState] = useState(getName())
+  const [sub, setSub] = useState(mode === 'daily' ? 'ask' : 'none') // ask | sending | done | error
+  const [rank, setRank] = useState(null)
+  const submit = async () => {
+    setName(name.trim()); setSub('sending')
+    try {
+      const r = await submitScore(name.trim() || 'Anon', seedStr, xi)
+      setRank(r.me); setSub('done')
+    } catch (e) { setSub(e.status === 409 ? 'done' : 'error') }
+  }
   const streak = liveStreak(stats)
   const text = [
     `Chase 500 ${mode === 'daily' ? seedStr : '(practice)'}`,
@@ -252,9 +266,71 @@ function Result({ xi, result, mode, stats, seedStr, onHome, onPractice }) {
           ))}
         </tbody>
       </table>
+      {sub === 'ask' && (
+        <div className="card submit">
+          <input value={name} maxLength={16} placeholder="Your name" onChange={(e) => setNameState(e.target.value)} />
+          <button className="primary" onClick={submit}>Post to leaderboard</button>
+        </div>
+      )}
+      {sub === 'sending' && <p className="line">Posting…</p>}
+      {sub === 'error' && <p className="warn">Couldn't reach the leaderboard. <button className="link" onClick={submit}>Retry</button></p>}
+      {sub === 'done' && (
+        <button className="ghost" onClick={onBoard}>{rank ? `🏆 You're #${rank.rank} today — view leaderboard` : '🏆 View leaderboard'}</button>
+      )}
       <button className="primary" onClick={share}>{copied ? 'Copied!' : 'Share result'}</button>
       <button className="ghost" onClick={onPractice}>Practice again</button>
       <button className="link" onClick={onHome}>Home</button>
     </main>
+  )
+}
+
+function Board({ onBack }) {
+  const [scope, setScope] = useState('today')
+  const [data, setData] = useState(null)
+  const [err, setErr] = useState(false)
+  useEffect(() => {
+    setData(null); setErr(false)
+    fetchBoard(scope, todayKey()).then(setData).catch(() => setErr(true))
+  }, [scope])
+  return (
+    <main className="board">
+      <header><button className="link" onClick={onBack}>← Back</button><b>Leaderboard</b><span /></header>
+      <div className="tabs">
+        {['today', 'all'].map((t) => <button key={t} className={scope === t ? 'on' : ''} onClick={() => setScope(t)}>{t === 'today' ? 'Today' : 'All-time'}</button>)}
+      </div>
+      {err && <p className="warn">Couldn't load the leaderboard.</p>}
+      {!data && !err && <p className="line">Loading…</p>}
+      {data && data.top.length === 0 && <p className="line">No scores yet. Be the first!</p>}
+      {data && (
+        <ol className="rows">
+          {data.top.map((r) => (
+            <li key={r.rank} className={r.you ? 'you' : ''}>
+              <span className="rk">{r.rank}</span><span className="nm">{r.name}{r.won ? ' 🏆' : ''}</span>
+              <span className="sc">{r.score}/{r.wickets}</span>
+            </li>
+          ))}
+          {data.me && data.me.rank > 50 && <li className="you"><span className="rk">{data.me.rank}</span><span className="nm">{data.me.name}</span><span className="sc">{data.me.score}/{data.me.wickets}</span></li>}
+        </ol>
+      )}
+    </main>
+  )
+}
+
+function Reminders() {
+  const [on, setOn] = useState(false)
+  const [msg, setMsg] = useState('')
+  const [ok] = useState(pushSupported())
+  useEffect(() => { if (ok) pushEnabled().then(setOn).catch(() => {}) }, [ok])
+  if (!ok) return null
+  const toggle = async () => {
+    setMsg('')
+    try { if (on) { await disablePush(); setOn(false) } else { await enablePush(); setOn(true) } }
+    catch (e) { setMsg(e.message) }
+  }
+  return (
+    <>
+      <button className="ghost" onClick={toggle}>{on ? '🔔 Streak reminders on' : '🔕 Remind me before my streak ends'}</button>
+      {msg && <p className="warn">{msg}</p>}
+    </>
   )
 }
