@@ -69,7 +69,7 @@ function Home({ stats, onStart, onBoard }) {
       <button className="ghost" onClick={() => onStart('practice')}>Practice (random wheel)</button>
       <button className="ghost" onClick={onBoard}>🏆 Leaderboard</button>
       <Reminders />
-      <p className="fine">Fan-made. Ratings are approximate and unofficial. Not affiliated with or endorsed by the IPL, the BCCI, any franchise or any player.</p>
+      <p className="fine">Fan-made, free and unofficial. Ratings are approximate. Not affiliated with or endorsed by any league, board, team or player. Team and player names are used for identification only.</p>
     </main>
   )
 }
@@ -127,7 +127,7 @@ function Draft({ seedStr, mode, xi, setXi, onDone, onExit }) {
 
       {picked < 11 ? (
         <>
-          <div className={'wheel' + (rolling ? ' spinning' : '')} style={rolling ? undefined : { borderColor: squad.color }}>
+          <div className={'wheel' + (rolling ? ' spinning' : '')}>
             {rolling ? ticker : <>{squad.name} <small>{squad.year}</small></>}
           </div>
           {!rolling && (
@@ -241,7 +241,7 @@ function Result({ xi, result, mode, stats, seedStr, onHome, onPractice, onBoard 
   }
   const streak = liveStreak(stats)
   const text = [
-    `IPL Chase 300 ${mode === 'daily' ? seedStr : '(practice)'}`,
+    `Chase 300 ${mode === 'daily' ? seedStr : '(practice)'}`,
     `${result.score}/${result.wickets} in ${oversStr(result.ballsUsed)} ov ${result.won ? '🏆' : ''}`,
     xi.map((p) => p.name).join(' · '),
     mode === 'daily' ? `🔥 ${streak}-day streak` : '',

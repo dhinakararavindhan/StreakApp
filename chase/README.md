@@ -1,6 +1,6 @@
-# Chase 300 — IPL Edition
+# Chase 300 — Franchise T20
 
-Daily IPL draft game (PWA). Draft an XI from spun IPL franchise-season squads, chase 300 in 20 overs.
+Daily franchise-T20 draft game (PWA). Draft an XI from spun franchise-season squads, chase 300 in 20 overs.
 
 ## Dev
 ```
@@ -24,3 +24,8 @@ Push needs HTTPS in production (localhost is exempt). Without VAPID keys the ser
 - **Reminders:** each subscribed device is checked every 10 min; at `REMINDER_HOUR` (default 18:00 local) a push is sent if that device hasn't played today, mentioning the streak at risk.
 - **Storage:** a single JSON file (`DB_FILE`). Swap for SQLite/Postgres if traffic grows.
 - Device identity is an anonymous random ID, so leaderboard entries are not account-bound.
+
+## Branding / legal notes
+- No league, franchise nickname, logo, kit or team-colour branding is used: teams appear as city + year only.
+- Player names are plain text for identification; no photos or likenesses. Ratings are fan estimates.
+- Keep it free/non-commercial, avoid league names in the domain, store listing and keywords, and be ready to rename or swap in fictional players if asked. Consider a short consult with an IP lawyer before any commercial launch.
