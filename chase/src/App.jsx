@@ -53,13 +53,13 @@ function Home({ stats, onStart, onBoard }) {
   const streak = liveStreak(stats)
   return (
     <main className="home">
-      <div className="logo">500</div>
-      <h1>Chase 500</h1>
-      <p className="sub">Draft an XI from legendary squads. Chase 500 in 50 overs. A new wheel every day.</p>
+      <div className="logo">300</div>
+      <h1>Chase 300</h1>
+      <p className="sub">Draft an XI from legendary squads. Chase 300 in 50 overs. A new wheel every day.</p>
       <div className="stats">
         <div><b>🔥 {streak}</b><span>day streak</span></div>
         <div><b>{stats.best || '–'}</b><span>best score</span></div>
-        <div><b>{stats.wins}</b><span>500s</span></div>
+        <div><b>{stats.wins}</b><span>300s</span></div>
       </div>
       {played ? (
         <div className="card">Today's chase: <b>{played.score}</b>{played.won ? ' 🏆' : ''}<br /><small>Come back tomorrow to keep your streak.</small></div>
@@ -240,7 +240,7 @@ function Result({ xi, result, mode, stats, seedStr, onHome, onPractice, onBoard 
   }
   const streak = liveStreak(stats)
   const text = [
-    `Chase 500 ${mode === 'daily' ? seedStr : '(practice)'}`,
+    `Chase 300 ${mode === 'daily' ? seedStr : '(practice)'}`,
     `${result.score}/${result.wickets} in ${oversStr(result.ballsUsed)} ov ${result.won ? '🏆' : ''}`,
     xi.map((p) => p.name).join(' · '),
     mode === 'daily' ? `🔥 ${streak}-day streak` : '',

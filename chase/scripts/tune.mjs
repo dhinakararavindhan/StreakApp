@@ -27,5 +27,5 @@ for (const skill of [1, 2, 3, 6]) {
   for (let i = 0; i < 3000; i++) sc.push(simulate(randomXI(skill), r).score)
   sc.sort((a, b) => a - b)
   const q = (p) => sc[Math.floor(p * (sc.length - 1))]
-  console.log(`skill ${skill}: p10 ${q(.1)} med ${q(.5)} p90 ${q(.9)} max ${q(1)} wins ${(sc.filter((x) => x >= 500).length / sc.length * 100).toFixed(2)}%`)
+  console.log(`skill ${skill}: p10 ${q(.1)} med ${q(.5)} p90 ${q(.9)} max ${q(1)} wins ${(sc.filter((x) => x >= 300).length / sc.length * 100).toFixed(2)}%`)
 }

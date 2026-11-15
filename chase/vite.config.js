@@ -14,9 +14,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg'],
       manifest: {
-        name: 'Chase 500 — Daily Draft',
-        short_name: 'Chase 500',
-        description: 'Draft an XI from legendary squads and chase 500 in 50 overs. New wheel every day.',
+        name: 'Chase 300 — Daily Draft',
+        short_name: 'Chase 300',
+        description: 'Draft an XI from legendary squads and chase 300 in 20 overs. New wheel every day.',
         theme_color: '#070a1c',
         background_color: '#070a1c',
         display: 'standalone',

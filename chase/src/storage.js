@@ -1,5 +1,5 @@
 import { todayKey } from './rng'
-const KEY = 'chase500.v1'
+const KEY = 'chase300.v1'
 const empty = { streak: 0, best: 0, lastPlayed: null, history: {}, played: 0, wins: 0 }
 
 export function load() {

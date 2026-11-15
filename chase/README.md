@@ -1,6 +1,6 @@
-# Chase 500
+# Chase 300
 
-Daily cricket draft game (PWA). Draft an XI from spun squads, chase 500 in 50 overs.
+Daily cricket draft game (PWA). Draft an XI from spun squads, chase 300 in 20 overs.
 
 ## Dev
 ```

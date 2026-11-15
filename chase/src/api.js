@@ -1,4 +1,4 @@
-const KEY = 'chase500.device'
+const KEY = 'chase300.device'
 export function deviceId() {
   try {
     let d = localStorage.getItem(KEY)
@@ -6,8 +6,8 @@ export function deviceId() {
     return d
   } catch { return 'anon-' + Math.random().toString(36).slice(2, 12) }
 }
-export const getName = () => { try { return localStorage.getItem('chase500.name') || '' } catch { return '' } }
-export const setName = (n) => { try { localStorage.setItem('chase500.name', n) } catch {} }
+export const getName = () => { try { return localStorage.getItem('chase300.name') || '' } catch { return '' } }
+export const setName = (n) => { try { localStorage.setItem('chase300.name', n) } catch {} }
 
 async function j(path, opts) {
   const r = await fetch('/api' + path, { headers: { 'content-type': 'application/json' }, ...opts })

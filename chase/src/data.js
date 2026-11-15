@@ -1,50 +1,55 @@
-// Fan-made, approximate ratings (0-100). Not official stats.
+// Fan-made T20 squads, approximate ratings (0-100). Not official stats.
 // P(name, minSlot, maxSlot, bat, pow, bwl, keeper?)
 const P = (name, lo, hi, bat, pow, bwl, k = false) => ({ name, lo, hi, bat, pow, bwl, k })
 
 export const SQUADS = [
-  { id: 'wi79', name: 'West Indies', year: 1979, players: [
-    P('Greenidge', 1, 2, 82, 78, 0), P('Haynes', 1, 2, 80, 66, 0), P('Richards', 3, 4, 92, 95, 30),
-    P('Lloyd', 4, 5, 78, 76, 25), P('Kallicharran', 3, 5, 70, 66, 0), P('Murray', 6, 7, 55, 55, 0, true),
-    P('King', 5, 7, 60, 82, 50), P('Roberts', 8, 9, 30, 55, 90), P('Holding', 9, 11, 20, 35, 92),
-    P('Garner', 9, 11, 28, 40, 93), P('Croft', 10, 11, 15, 30, 88)] },
-  { id: 'pak92', name: 'Pakistan', year: 1992, players: [
-    P('Aamer Sohail', 1, 2, 66, 74, 25), P('Ramiz Raja', 1, 2, 72, 62, 0), P('Inzamam', 3, 4, 78, 80, 0),
-    P('Javed Miandad', 3, 5, 80, 66, 10), P('Salim Malik', 4, 5, 70, 66, 15), P('Moin Khan', 6, 7, 55, 78, 0, true),
-    P('Imran Khan', 5, 7, 75, 66, 85), P('Wasim Akram', 7, 8, 58, 80, 94), P('Mushtaq Ahmed', 8, 10, 25, 42, 82),
-    P('Aaqib Javed', 9, 11, 15, 30, 80), P('Ijaz Ahmed', 4, 6, 60, 72, 0)] },
-  { id: 'sl96', name: 'Sri Lanka', year: 1996, players: [
-    P('Jayasuriya', 1, 2, 68, 96, 62), P('Kaluwitharana', 1, 2, 52, 92, 0, true), P('Mahanama', 3, 4, 72, 62, 0),
-    P('de Silva', 3, 4, 82, 78, 55), P('Ranatunga', 4, 6, 76, 82, 20), P('Gurusinha', 3, 5, 74, 62, 30),
-    P('Tillakaratne', 5, 7, 66, 55, 0), P('Dharmasena', 7, 8, 38, 50, 72), P('Vaas', 8, 10, 28, 55, 86),
-    P('Muralitharan', 9, 11, 15, 40, 96), P('Wickramasinghe', 8, 10, 22, 42, 70)] },
-  { id: 'aus03', name: 'Australia', year: 2003, players: [
-    P('Gilchrist', 1, 2, 80, 94, 0, true), P('Hayden', 1, 2, 82, 80, 0), P('Ponting', 3, 3, 92, 85, 0),
-    P('Martyn', 4, 5, 74, 68, 0), P('Lehmann', 4, 6, 72, 74, 10), P('Bevan', 5, 6, 90, 64, 5),
-    P('Symonds', 5, 7, 76, 88, 55), P('Bichel', 7, 8, 42, 62, 78), P('Lee', 8, 9, 22, 52, 93),
-    P('McGrath', 10, 11, 6, 20, 96), P('Gillespie', 9, 11, 14, 32, 90)] },
-  { id: 'ind11', name: 'India', year: 2011, players: [
-    P('Sehwag', 1, 2, 70, 97, 20), P('Tendulkar', 1, 2, 90, 86, 28), P('Gambhir', 2, 3, 80, 66, 0),
-    P('Kohli', 3, 4, 90, 76, 12), P('Yuvraj', 4, 5, 70, 82, 62), P('Dhoni', 5, 6, 82, 88, 0, true),
-    P('Raina', 5, 7, 66, 82, 40), P('Harbhajan', 7, 8, 32, 60, 78), P('Zaheer Khan', 8, 10, 22, 40, 90),
-    P('Munaf Patel', 9, 11, 12, 32, 78), P('Ashwin', 7, 9, 36, 56, 82)] },
-  { id: 'eng19', name: 'England', year: 2019, players: [
-    P('Roy', 1, 2, 76, 94, 0), P('Bairstow', 1, 3, 78, 90, 0, true), P('Root', 3, 4, 92, 74, 30),
-    P('Morgan', 4, 5, 80, 92, 0), P('Stokes', 5, 6, 74, 86, 70), P('Buttler', 5, 6, 80, 96, 0, true),
-    P('Moeen Ali', 6, 7, 50, 84, 62), P('Woakes', 7, 8, 48, 66, 80), P('Plunkett', 8, 10, 28, 70, 80),
-    P('Archer', 9, 10, 20, 52, 92), P('Wood', 10, 11, 10, 25, 88)] },
-  { id: 'nz15', name: 'New Zealand', year: 2015, players: [
-    P('McCullum', 1, 2, 60, 99, 0), P('Guptill', 1, 2, 76, 84, 0), P('Williamson', 3, 4, 86, 68, 20),
-    P('Taylor', 3, 5, 82, 72, 5), P('Elliott', 4, 5, 76, 76, 40), P('Anderson', 5, 6, 56, 90, 50),
-    P('Ronchi', 6, 7, 52, 86, 0, true), P('Vettori', 7, 8, 42, 58, 78), P('Southee', 8, 9, 24, 60, 86),
-    P('Boult', 9, 11, 14, 30, 92), P('Henry', 9, 11, 16, 32, 86)] },
-  { id: 'sa15', name: 'South Africa', year: 2015, players: [
-    P('Amla', 1, 2, 90, 74, 0), P('de Kock', 1, 2, 76, 84, 0, true), P('du Plessis', 2, 3, 82, 70, 0),
-    P('de Villiers', 3, 5, 94, 99, 5), P('Duminy', 4, 6, 76, 72, 55), P('Miller', 5, 6, 68, 92, 0),
-    P('Rossouw', 3, 5, 64, 82, 0), P('Steyn', 8, 10, 14, 40, 97), P('Morkel', 9, 11, 18, 38, 90),
-    P('Tahir', 10, 11, 10, 25, 88), P('Philander', 7, 9, 38, 48, 84)] },
+  { id: 'ind07', name: 'India', year: 2007, players: [
+    P('Gambhir', 1, 2, 72, 76, 0), P('Sehwag', 1, 2, 66, 92, 10), P('Yuvraj', 3, 5, 78, 96, 40),
+    P('Uthappa', 3, 5, 60, 80, 0), P('Rohit', 4, 6, 62, 78, 10), P('Dhoni', 5, 6, 80, 88, 0, true),
+    P('I. Pathan', 6, 8, 50, 70, 85), P('Harbhajan', 7, 9, 30, 55, 80), P('RP Singh', 9, 10, 10, 30, 82),
+    P('Sreesanth', 10, 11, 10, 25, 76), P('J. Sharma', 9, 11, 10, 30, 70)] },
+  { id: 'ind24', name: 'India', year: 2024, players: [
+    P('Rohit', 1, 2, 80, 94, 0), P('Kohli', 1, 3, 90, 84, 0), P('Pant', 3, 5, 70, 88, 0, true),
+    P('SKY', 3, 4, 82, 98, 0), P('Dube', 4, 6, 60, 90, 30), P('Hardik', 5, 6, 66, 90, 82),
+    P('Jadeja', 6, 7, 50, 72, 85), P('Axar', 7, 8, 40, 76, 84), P('Kuldeep', 8, 10, 10, 30, 88),
+    P('Bumrah', 10, 11, 8, 20, 98), P('Arshdeep', 10, 11, 8, 25, 90)] },
+  { id: 'wi16', name: 'West Indies', year: 2016, players: [
+    P('Gayle', 1, 2, 80, 98, 20), P('Charles', 1, 3, 60, 84, 0), P('Simmons', 2, 3, 66, 78, 0),
+    P('Samuels', 3, 4, 70, 70, 30), P('Bravo', 4, 6, 66, 84, 80), P('Russell', 5, 6, 60, 99, 86),
+    P('Sammy', 6, 7, 38, 86, 55), P('Ramdin', 6, 7, 40, 72, 0, true), P('Brathwaite', 7, 8, 36, 92, 75),
+    P('Narine', 8, 9, 28, 70, 95), P('Badree', 10, 11, 8, 20, 88)] },
+  { id: 'aus21', name: 'Australia', year: 2021, players: [
+    P('Warner', 1, 2, 88, 88, 0), P('Finch', 1, 2, 78, 90, 0), P('Marsh', 3, 3, 82, 86, 40),
+    P('Smith', 3, 4, 74, 74, 10), P('Maxwell', 4, 5, 72, 96, 60), P('Stoinis', 5, 6, 60, 90, 62),
+    P('Wade', 6, 7, 62, 90, 0, true), P('Cummins', 8, 9, 30, 60, 88), P('Starc', 9, 10, 10, 40, 90),
+    P('Zampa', 10, 11, 8, 20, 94), P('Hazlewood', 10, 11, 8, 20, 92)] },
+  { id: 'eng22', name: 'England', year: 2022, players: [
+    P('Hales', 1, 2, 74, 92, 0), P('Buttler', 1, 3, 82, 96, 0, true), P('Malan', 2, 3, 86, 82, 0),
+    P('Brook', 3, 4, 70, 88, 0), P('Livingstone', 4, 5, 62, 96, 50), P('Stokes', 4, 6, 60, 80, 70),
+    P('Moeen', 5, 7, 50, 86, 70), P('S. Curran', 7, 8, 36, 80, 90), P('Woakes', 8, 9, 24, 50, 82),
+    P('Rashid', 9, 10, 14, 48, 92), P('Jordan', 9, 11, 12, 40, 86)] },
+  { id: 'pak12', name: 'Pakistan', year: 2012, players: [
+    P('Hafeez', 1, 2, 66, 74, 60), P('N. Jamshed', 1, 2, 56, 78, 0), P('K. Akmal', 1, 3, 56, 86, 0, true),
+    P('Misbah', 3, 5, 68, 74, 0), P('U. Akmal', 4, 6, 52, 84, 0), P('Malik', 5, 6, 58, 74, 60),
+    P('Afridi', 5, 7, 36, 98, 85), P('Razzaq', 7, 8, 34, 86, 70), P('Gul', 9, 10, 10, 38, 92),
+    P('Ajmal', 10, 11, 6, 20, 96), P('Junaid', 10, 11, 6, 20, 80)] },
+  { id: 'sl14', name: 'Sri Lanka', year: 2014, players: [
+    P('Dilshan', 1, 2, 72, 90, 20), P('Perera', 1, 2, 56, 92, 0), P('Sangakkara', 3, 3, 88, 84, 0, true),
+    P('Jayawardene', 3, 4, 80, 78, 0), P('Chandimal', 4, 5, 60, 76, 0), P('Mathews', 5, 6, 62, 82, 72),
+    P('Kapugedera', 5, 6, 46, 84, 0), P('T. Perera', 7, 8, 36, 90, 72), P('Kulasekara', 8, 9, 22, 50, 82),
+    P('Malinga', 9, 11, 10, 40, 96), P('Mendis', 10, 11, 8, 20, 92)] },
+  { id: 'sa14', name: 'South Africa', year: 2014, players: [
+    P('de Kock', 1, 2, 68, 88, 0, true), P('Amla', 1, 3, 76, 78, 0), P('du Plessis', 2, 3, 72, 82, 0),
+    P('de Villiers', 3, 5, 84, 100, 5), P('Duminy', 4, 5, 70, 82, 50), P('Miller', 5, 6, 60, 94, 0),
+    P('Parnell', 6, 8, 30, 70, 76), P('Abbott', 8, 9, 10, 40, 86), P('Morkel', 8, 9, 20, 50, 84),
+    P('Steyn', 9, 10, 10, 30, 95), P('Tahir', 10, 11, 6, 20, 94)] },
+  { id: 'nz21', name: 'New Zealand', year: 2021, players: [
+    P('Guptill', 1, 2, 62, 92, 0), P('Conway', 1, 3, 88, 84, 0, true), P('Williamson', 3, 4, 80, 76, 10),
+    P('Mitchell', 3, 5, 66, 86, 30), P('Phillips', 4, 5, 58, 92, 20), P('Neesham', 5, 6, 46, 95, 66),
+    P('Santner', 7, 8, 30, 70, 88), P('Southee', 8, 9, 14, 50, 88), P('Boult', 9, 11, 8, 26, 94),
+    P('Sodhi', 10, 11, 6, 20, 82), P('Ferguson', 9, 11, 8, 28, 90)] },
 ]
 
 export const SLOT_LABELS = ['Opener', 'Opener', 'No. 3', 'No. 4', 'No. 5', 'No. 6', 'No. 7', 'No. 8', 'No. 9', 'No. 10', 'No. 11']
-export const TARGET = 500
-export const BALLS = 300
+export const TARGET = 300
+export const BALLS = 120 // 20 overs

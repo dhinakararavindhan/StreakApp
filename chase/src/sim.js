@@ -14,14 +14,14 @@ export function teamRatings(xi) {
 
 function ballOutcome(r, bat, pow, morale, pressure) {
   const p = Math.min(100, pow * morale)
-  const surviveBalls = 8 + Math.pow(bat / 100, 2) * 80
+  const surviveBalls = 5 + Math.pow(bat / 100, 2) * 40
   const pW = Math.min(0.2, (1 / surviveBalls) * (1 + pressure * 0.35 * (p / 100)))
   const x = r()
   if (x < pW) return 'W'
   const q = p / 100
-  const mean = 0.40 + p * 0.0112
-  const p6 = 0.01 + 0.09 * q * q
-  const p4 = 0.05 + 0.1 * q
+  const mean = 0.58 + p * 0.0158
+  const p6 = 0.02 + 0.16 * q * q
+  const p4 = 0.08 + 0.1 * q
   const rest = 1 - p4 - p6
   const mu = Math.max(0.1, Math.min(1.5, (mean - 4 * p4 - 6 * p6) / rest))
   const y = r()
@@ -33,7 +33,7 @@ function ballOutcome(r, bat, pow, morale, pressure) {
 }
 
 // Simulates a whole chase. Returns events + summary. `rand` is a seeded rng.
-export function simulate(xi, rand, target = 500) {
+export function simulate(xi, rand, target = 300) {
   const { pow: tp, bwl, hasKeeper } = teamRatings(xi)
   const morale = 1 + (bwl - 70) / 500 - (hasKeeper ? 0 : 0.04)
   const events = []
@@ -43,7 +43,7 @@ export function simulate(xi, rand, target = 500) {
   for (let ball = 0; ball < BALLS && wickets < 10; ball++) {
     const need = target - score
     const ballsLeft = BALLS - ball
-    const pressure = Math.max(0, Math.min(2, need / ballsLeft - 1.5))
+    const pressure = Math.max(0, Math.min(2, need / ballsLeft - 2.2))
     const b = xi[striker]
     const o = ballOutcome(rand, b.bat, b.pow, morale, pressure)
     card[striker].balls++
@@ -76,15 +76,15 @@ export function simulate(xi, rand, target = 500) {
   }
 }
 
-export function verdict(res, target = 500) {
+export function verdict(res, target = 300) {
   if (res.won) {
     const o = res.ballsUsed
-    return o < 270 ? 'IMMORTAL — the impossible, done early.' : 'LEGENDARY — 500 chased down!'
+    return o < 105 ? 'IMMORTAL — the impossible, done early.' : 'LEGENDARY — 300 chased down!'
   }
   const d = target - res.score
-  if (d <= 10) return `Heartbreak — ${d} short!`
-  if (d <= 50) return 'So close. A real shot at history.'
-  if (d <= 120) return 'Respectable, but 500 is still a mountain.'
-  if (d <= 200) return 'A decent ODI total. Nowhere near 500.'
+  if (d <= 5) return `Heartbreak — ${d} short!`
+  if (d <= 30) return 'So close. A real shot at history.'
+  if (d <= 70) return 'Respectable, but 300 is still a mountain.'
+  if (d <= 110) return 'A strong T20 total. Nowhere near 300.'
   return 'Collapse. Back to the drawing board.'
 }
