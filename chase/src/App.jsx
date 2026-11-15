@@ -27,7 +27,7 @@ export default function App() {
     setMode(m); setSeedStr(key); setXi(Array(11).fill(null)); setResult(null); setScreen('draft')
   }
   const finish = (finalXi) => {
-    const rand = rng(hashStr(seedStr + finalXi.map((p) => p.name).join('|')))
+    const rand = rng(hashStr(seedStr + finalXi.map((p) => p.id).join('|')))
     const res = simulate(finalXi, rand, TARGET)
     setXi(finalXi); setResult(res); setScreen('chase')
   }
@@ -69,7 +69,7 @@ function Home({ stats, onStart, onBoard }) {
       <button className="ghost" onClick={() => onStart('practice')}>Practice (random wheel)</button>
       <button className="ghost" onClick={onBoard}>🏆 Leaderboard</button>
       <Reminders />
-      <p className="fine">Fan-made. Ratings are approximate and unofficial; not affiliated with any cricket board or player.</p>
+      <p className="fine">Fan-made. Ratings are approximate and unofficial. Not affiliated with or endorsed by the IPL, the BCCI, any franchise or any player.</p>
     </main>
   )
 }
@@ -82,7 +82,7 @@ function Draft({ seedStr, mode, xi, setXi, onDone, onExit }) {
   const [ticker, setTicker] = useState('')
   const [sel, setSel] = useState(null)
   const picked = xi.filter(Boolean).length
-  const usedNames = new Set(xi.filter(Boolean).map((p) => p.name))
+  const usedNames = new Set(xi.filter(Boolean).map((p) => p.name)) // same real player can't be picked twice
   const squad = spins[spinIdx]
   const freeSlots = xi.map((p, i) => (p ? -1 : i)).filter((i) => i >= 0)
   const eligible = (p) => !usedNames.has(p.name) && freeSlots.some((s) => fits(p, s))
@@ -94,7 +94,8 @@ function Draft({ seedStr, mode, xi, setXi, onDone, onExit }) {
     setRolling(true); setSel(null); window.scrollTo(0, 0)
     let n = 0
     const t = setInterval(() => {
-      setTicker(SQUADS[n++ % SQUADS.length].name + ' ' + SQUADS[(n) % SQUADS.length].year)
+      n++
+      setTicker(SQUADS[Math.floor(Math.random() * SQUADS.length)].short + ' ' + (2008 + Math.floor(Math.random() * 17)))
       if (n > 12) { clearInterval(t); setRolling(false) }
     }, 70)
     return () => clearInterval(t)
@@ -126,8 +127,8 @@ function Draft({ seedStr, mode, xi, setXi, onDone, onExit }) {
 
       {picked < 11 ? (
         <>
-          <div className={'wheel' + (rolling ? ' spinning' : '')}>
-            {rolling ? ticker : `${squad.name} ${squad.year}`}
+          <div className={'wheel' + (rolling ? ' spinning' : '')} style={rolling ? undefined : { borderColor: squad.color }}>
+            {rolling ? ticker : <>{squad.name} <small>{squad.year}</small></>}
           </div>
           {!rolling && (
             <>
@@ -158,7 +159,7 @@ function Draft({ seedStr, mode, xi, setXi, onDone, onExit }) {
           return (
             <li key={i} className={(can ? 'can ' : '') + (p ? 'filled' : '')} onClick={() => can && place(i)}>
               <span className="sn">{i + 1}</span>
-              <span className="sl">{p ? p.name : SLOT_LABELS[i]}</span>
+              <span className="sl">{p ? <>{p.name} <small className="tm">{p.team} {String(p.year).slice(2)}</small></> : SLOT_LABELS[i]}</span>
               {p && <span className="pr"><i>B</i>{p.bat} <i>P</i>{p.pow} <i>W</i>{p.bwl}</span>}
             </li>
           )
@@ -240,7 +241,7 @@ function Result({ xi, result, mode, stats, seedStr, onHome, onPractice, onBoard 
   }
   const streak = liveStreak(stats)
   const text = [
-    `Chase 300 ${mode === 'daily' ? seedStr : '(practice)'}`,
+    `IPL Chase 300 ${mode === 'daily' ? seedStr : '(practice)'}`,
     `${result.score}/${result.wickets} in ${oversStr(result.ballsUsed)} ov ${result.won ? '🏆' : ''}`,
     xi.map((p) => p.name).join(' · '),
     mode === 'daily' ? `🔥 ${streak}-day streak` : '',

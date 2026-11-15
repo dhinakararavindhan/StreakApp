@@ -51,3 +51,5 @@ input{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--l
 .rows{list-style:none;margin:0;padding:0;display:grid;gap:6px}
 .rows li{display:flex;gap:10px;background:var(--card);border-radius:10px;padding:10px 12px}
 .rows li.you{border:1px solid var(--gold)}.rk{width:28px;color:var(--gold);font-weight:800}.nm{flex:1}.sc{font-variant-numeric:tabular-nums;font-weight:700}
+.wheel small{color:var(--mut);font-weight:600;margin-left:6px}
+.tm{color:var(--mut);font-size:.72rem;margin-left:4px}

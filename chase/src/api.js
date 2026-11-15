@@ -16,7 +16,7 @@ async function j(path, opts) {
   return body
 }
 export const submitScore = (name, day, xi) =>
-  j('/score', { method: 'POST', body: JSON.stringify({ device: deviceId(), name, day, xi: xi.map((p) => p.name) }) })
+  j('/score', { method: 'POST', body: JSON.stringify({ device: deviceId(), name, day, xi: xi.map((p) => p.id) }) })
 export const fetchBoard = (scope, day) =>
   j(`/leaderboard?scope=${scope}&day=${encodeURIComponent(day)}&device=${encodeURIComponent(deviceId())}`)
 

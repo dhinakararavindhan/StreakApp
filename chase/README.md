@@ -1,6 +1,6 @@
-# Chase 300
+# Chase 300 — IPL Edition
 
-Daily cricket draft game (PWA). Draft an XI from spun squads, chase 300 in 20 overs.
+Daily IPL draft game (PWA). Draft an XI from spun IPL franchise-season squads, chase 300 in 20 overs.
 
 ## Dev
 ```

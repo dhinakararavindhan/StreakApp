@@ -61,12 +61,13 @@ async function sendReminders() {
 setInterval(sendReminders, 10 * 60 * 1000).unref()
 
 // ---------- score verification ----------
-const byName = new Map(SQUADS.flatMap((s) => s.players.map((p) => [p.name, p])))
-function verify(xiNames, day) {
-  if (!Array.isArray(xiNames) || xiNames.length !== 11 || new Set(xiNames).size !== 11) return null
-  const xi = xiNames.map((n) => byName.get(n))
+const byId = new Map(SQUADS.flatMap((s) => s.players.map((p) => [p.id, p])))
+function verify(xiIds, day) {
+  if (!Array.isArray(xiIds) || xiIds.length !== 11) return null
+  const xi = xiIds.map((id) => byId.get(id))
   if (xi.some((p, i) => !p || i + 1 < p.lo || i + 1 > p.hi)) return null
-  const res = simulate(xi, rng(hashStr(day + xi.map((p) => p.name).join('|'))), TARGET)
+  if (new Set(xi.map((p) => p.name)).size !== 11) return null // a real player only once
+  const res = simulate(xi, rng(hashStr(day + xi.map((p) => p.id).join('|'))), TARGET)
   return res
 }
 const cleanName = (n) => String(n || 'Anon').replace(/[^\p{L}\p{N} _.-]/gu, '').trim().slice(0, 16) || 'Anon'

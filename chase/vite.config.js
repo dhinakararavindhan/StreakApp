@@ -14,9 +14,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg'],
       manifest: {
-        name: 'Chase 300 — Daily Draft',
-        short_name: 'Chase 300',
-        description: 'Draft an XI from legendary squads and chase 300 in 20 overs. New wheel every day.',
+        name: 'Chase 300 — IPL Edition',
+        short_name: 'IPL Chase 300',
+        description: 'Draft an XI from iconic IPL franchise seasons and chase 300 in 20 overs. New wheel every day.',
         theme_color: '#070a1c',
         background_color: '#070a1c',
         display: 'standalone',
