@@ -188,7 +188,7 @@ export const BALLS = 120 // 20 overs
 
 // ---- Bowling challenge: draft 5 bowlers (4 overs each) and defend against a daily opponent ----
 export const BOWL_SLOTS = ['New ball', 'New ball', 'Middle overs', 'Middle overs', 'Death overs']
-export const BOWL_TARGET = 60 // hold the opposition under this
+export const BOWL_TARGET = 50 // hold the opposition under this
 export const BOWL_MIN = 50 // minimum bowling rating to be draftable as a bowler
 // over -> bowler slot index (each bowler gets exactly 4 overs)
 export const BOWL_SCHEDULE = [0, 1, 0, 1, 0, 1, 2, 3, 2, 3, 2, 3, 2, 3, 4, 0, 4, 1, 4, 4]
