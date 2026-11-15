@@ -85,8 +85,8 @@ export default function App() {
       {screen === 'chase' && kind === 'bat' && <Chase xi={xi} result={result} onDone={done} />}
       {screen === 'chase' && kind === 'bowl' && <BowlInnings result={result} onDone={done} />}
       {screen === 'chase' && kind === 'super' && <SuperInnings result={result} onDone={done} />}
-      {screen === 'result' && kind === 'bat' && <Result vs={vs} level={level} cap={cap} xi={xi} result={result} mode={mode} stats={stats} seedStr={seedStr} onHome={home} onPractice={() => start('practice', 'bat', level)} onBoard={() => setScreen('board')} />}
-      {screen === 'result' && kind === 'bowl' && <BowlResult vs={vs} level={level} cap={cap} attack={attack} result={result} mode={mode} stats={stats} seedStr={seedStr} onHome={home} onPractice={() => start('practice', 'bowl', level)} onBoard={() => setScreen('board')} />}
+      {screen === 'result' && kind === 'bat' && <Result vs={vs} level={level} cap={cap} xi={xi} result={result} mode={mode} stats={stats} seedStr={seedStr} onHome={home} onPractice={() => start('practice', 'bat', level)} onNext={() => start('practice', 'bat', Math.min(BAT_LEVELS, level + 1))} onBoard={() => setScreen('board')} />}
+      {screen === 'result' && kind === 'bowl' && <BowlResult vs={vs} level={level} cap={cap} attack={attack} result={result} mode={mode} stats={stats} seedStr={seedStr} onHome={home} onPractice={() => start('practice', 'bowl', level)} onNext={() => start('practice', 'bowl', Math.min(BOWL_LEVELS, level + 1))} onBoard={() => setScreen('board')} />}
       {navOn && (
         <div className="nav"><nav>
           {[['home', '🏠', 'Home'], ['board', '🏆', 'Boards'], ['stats', '📊', 'Stats'], ['recap', '📰', 'Recap']].map(([s, i, l]) => (
@@ -141,22 +141,25 @@ function Home({ stats, onStart, onBoard, onStats, onHelp, onRecap }) {
         <section className="mode sm">
           <h2>🏏 Batting</h2>
           <Stepper levels={BAT_LEVELS} unlocked={batUnlocked} cleared={stats.batCleared || 0} value={bl} onChange={setBl} text={`chase ${batTarget(bl)}`} />
-          {batDone ? <Done d={batDone} /> : <button className="primary" onClick={() => onStart('daily', 'bat', bl)}>Play today</button>}
-          <button className="link" onClick={() => onStart('practice', 'bat', bl)}>Practice</button>
+          {batDone && <Done d={batDone} />}
+          <button className="primary" onClick={() => onStart(batDone ? 'practice' : 'daily', 'bat', bl)}>{batDone ? `Play level ${bl}` : 'Play today'}</button>
+          {!batDone && <button className="link" onClick={() => onStart('practice', 'bat', bl)}>Free play</button>}
         </section>
 
         <section className="mode sm">
           <h2>🎯 Bowling</h2>
           <Stepper levels={BOWL_LEVELS} unlocked={unlocked} cleared={stats.bowlCleared || 0} value={lv} onChange={setLv} text={`under ${bowlTarget(lv)}`} />
-          {bowlDone ? <Done d={bowlDone} /> : <button className="primary" onClick={() => onStart('daily', 'bowl', lv)}>Play today</button>}
-          <button className="link" onClick={() => onStart('practice', 'bowl', lv)}>Practice · vs {opp.name} {String(opp.year).slice(2)}</button>
+          {bowlDone && <Done d={bowlDone} />}
+          <button className="primary" onClick={() => onStart(bowlDone ? 'practice' : 'daily', 'bowl', lv)}>{bowlDone ? `Play level ${lv}` : 'Play today'}</button>
+          {!bowlDone && <button className="link" onClick={() => onStart('practice', 'bowl', lv)}>Free play</button>}
         </section>
 
         <section className="mode sm">
           <h2>⚡ Super Over</h2>
           <p>3 hitters + 1 bowler. Bat one over, then defend it.</p>
-          {superDone ? <Done d={superDone} /> : <button className="primary" onClick={() => onStart('daily', 'super')}>Play today</button>}
-          <button className="link" onClick={() => onStart('practice', 'super')}>Practice</button>
+          {superDone && <Done d={superDone} />}
+          <button className="primary" onClick={() => onStart(superDone ? 'practice' : 'daily', 'super')}>{superDone ? 'Play another' : 'Play today'}</button>
+          {!superDone && <button className="link" onClick={() => onStart('practice', 'super')}>Free play</button>}
         </section>
 
         <section className="mode sm">
@@ -342,7 +345,7 @@ function Chase({ xi, result, onDone }) {
   )
 }
 
-function Result({ vs, level, cap, xi, result, mode, stats, seedStr, onHome, onPractice, onBoard }) {
+function Result({ vs, level, cap, xi, result, mode, stats, seedStr, onHome, onPractice, onNext, onBoard }) {
   const [copied, setCopied] = useState(false)
   const [name, setNameState] = useState(getName())
   const [sub, setSub] = useState(mode === 'daily' ? 'ask' : 'none') // ask | sending | done | error
@@ -368,7 +371,7 @@ function Result({ vs, level, cap, xi, result, mode, stats, seedStr, onHome, onPr
     } catch {}
   }
   return (
-    <main className="result">
+    <main className={'result' + (mode !== 'vs' ? ' has-cta' : '')}>
       <div className={'big' + (result.won ? ' win' : '')}>{result.score}<small>/{result.wickets}</small></div>
       {mode === 'vs' && vs ? <VsSummary vs={vs} result={result} kind="bat" /> : <p className="verdict">{verdict(result)}</p>}
       {mode !== 'vs' && (() => { const m = unlockMsg({ won: result.won, level, levels: BAT_LEVELS, frontier: stats.batLevel, nextText: `chase ${batTarget(level + 1)}` }); return m ? <p className="unlock">{m}</p> : null })()}
@@ -395,9 +398,10 @@ function Result({ vs, level, cap, xi, result, mode, stats, seedStr, onHome, onPr
       {sub === 'done' && (
         <button className="ghost" onClick={onBoard}>{rank ? `🏆 You're #${rank.rank} today — view leaderboard` : '🏆 View leaderboard'}</button>
       )}
-      <button className="primary" onClick={share}>{copied ? 'Copied!' : 'Share result'}</button>
+      {mode !== 'vs' && <div className="hcta"><button className="primary" onClick={onNext}>{level < BAT_LEVELS ? `Next level ▶ Level ${level + 1} (chase ${batTarget(level + 1)})` : `Play level ${level} again`}</button></div>}
+      <button className={mode === 'vs' ? 'primary' : 'ghost'} onClick={share}>{copied ? 'Copied!' : 'Share result'}</button>
       <button className="ghost" onClick={() => shareCard({ mode: mode === 'vs' ? 'Challenge · Batting' : 'Batting', level: mode === 'vs' ? null : level, score: result.score, wickets: result.wickets, won: result.won, line: verdict(result), names: xi.map((p) => p.name), footer: window.location.host })}>🖼️ Share as image</button>
-      <button className="ghost" onClick={onPractice}>Practice again</button>
+      {(mode === 'vs' || level < BAT_LEVELS) && <button className="ghost" onClick={onPractice}>{mode === 'vs' ? 'Play a practice game' : `Play level ${level} again`}</button>}
       <button className="link" onClick={onHome}>Home</button>
     </main>
   )
@@ -590,7 +594,7 @@ function BowlInnings({ result, onDone }) {
   )
 }
 
-function BowlResult({ vs, level, cap, attack, result, mode, stats, seedStr, onHome, onPractice, onBoard }) {
+function BowlResult({ vs, level, cap, attack, result, mode, stats, seedStr, onHome, onPractice, onNext, onBoard }) {
   const [copied, setCopied] = useState(false)
   const [name, setNameState] = useState(getName())
   const [sub, setSub] = useState(mode === 'daily' ? 'ask' : 'none')
@@ -611,7 +615,7 @@ function BowlResult({ vs, level, cap, attack, result, mode, stats, seedStr, onHo
     try { if (navigator.share) await navigator.share({ text }); else { await navigator.clipboard.writeText(text); setCopied(true) } } catch {}
   }
   return (
-    <main className="result">
+    <main className={'result' + (mode !== 'vs' ? ' has-cta' : '')}>
       <div className={'big' + (result.won ? ' win' : '')}>{result.score}<small>/{result.wickets}</small></div>
       {mode === 'vs' && vs ? <VsSummary vs={vs} result={result} kind="bowl" /> : <p className="verdict">{bowlVerdict(result)}</p>}
       {mode !== 'vs' && (() => { const m = unlockMsg({ won: result.won, level, levels: BOWL_LEVELS, frontier: stats.bowlLevel, nextText: `under ${bowlTarget(level + 1)}` }); return m ? <p className="unlock">{m}</p> : null })()}
@@ -634,9 +638,10 @@ function BowlResult({ vs, level, cap, attack, result, mode, stats, seedStr, onHo
       {sub === 'sending' && <p className="line">Posting…</p>}
       {sub === 'error' && <p className="warn">Couldn't reach the leaderboard. <button className="link" onClick={submit}>Retry</button></p>}
       {sub === 'done' && <button className="ghost" onClick={onBoard}>{rank ? `🏆 You're #${rank.rank} today — view leaderboard` : '🏆 View leaderboard'}</button>}
-      <button className="primary" onClick={share}>{copied ? 'Copied!' : 'Share result'}</button>
+      {mode !== 'vs' && <div className="hcta"><button className="primary" onClick={onNext}>{level < BOWL_LEVELS ? `Next level ▶ Level ${level + 1} (under ${bowlTarget(level + 1)})` : `Play level ${level} again`}</button></div>}
+      <button className={mode === 'vs' ? 'primary' : 'ghost'} onClick={share}>{copied ? 'Copied!' : 'Share result'}</button>
       <button className="ghost" onClick={() => shareCard({ mode: mode === 'vs' ? 'Challenge · Bowling' : 'Bowling', level: mode === 'vs' ? null : level, score: result.score, wickets: result.wickets, won: result.won, line: bowlVerdict(result), names: attack.map((p) => p.name), footer: window.location.host })}>🖼️ Share as image</button>
-      <button className="ghost" onClick={onPractice}>Practice again</button>
+      {(mode === 'vs' || level < BOWL_LEVELS) && <button className="ghost" onClick={onPractice}>{mode === 'vs' ? 'Play a practice game' : `Play level ${level} again`}</button>}
       <button className="link" onClick={onHome}>Home</button>
     </main>
   )
@@ -764,7 +769,7 @@ function HowTo({ onClose }) {
     ['🧢', 'Draft your side', 'One player per spin. No undos, one re-roll. Batters keep their usual spots.'],
     ['🏏', 'Batting', 'Chase the target in 20 overs. Level 1 is 200, level 13 is 320.'],
     ['🎯', 'Bowling', 'Draft 5 bowlers and hold them under the target: 60 down to 15.'],
-    ['⬆️', 'Levels', 'Finish a level to open the next. Win it to earn a ✓. Daily games build a 🔥 streak and weekly points.'],
+    ['⬆️', 'Keep playing', 'Play as many levels as you like. Finish one to open the next, win it for a ✓. The first game of the day is your scored daily.'],
     ['🌦️', 'Conditions', 'Every day has a pitch and a draft twist. Pick players who suit them.'],
     ['⭐', 'Tactics', 'Pick a captain, tweak the batting order, and fit bowlers to the right phase.'],
     ['⚡', 'Super Over', '3 hitters and 1 bowler: bat one over, then defend it.'],

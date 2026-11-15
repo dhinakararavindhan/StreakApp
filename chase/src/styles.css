@@ -692,3 +692,7 @@ body::before {
 .cap.on { background: var(--gold-soft); border-color: var(--gold); color: #a16207; }
 
 .stephint { display: block; text-align: center; color: var(--mut); font-size: 0.66rem; font-weight: 600; margin-top: -2px; }
+
+/* pinned "next level" bar on result screens */
+.result.has-cta { padding-bottom: 92px; }
+.result .hcta button { width: 100%; }

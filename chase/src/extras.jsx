@@ -271,7 +271,7 @@ export function SuperResult({ picks, cap, result, mode, stats, seedStr, onHome, 
   const [copied, setCopied] = useState(false)
   const share = async () => { try { if (navigator.share) await navigator.share({ text }); else { await navigator.clipboard.writeText(text); setCopied(true) } } catch {} }
   return (
-    <main className="result">
+    <main className="result has-cta">
       <div className={'big' + (result.won ? ' win' : '')} style={{ fontSize: '3rem' }}>{headline}</div>
       <div className="so-board" style={{ width: '100%' }}>
         <div><small>You</small><b>{result.score}<em>/{result.wickets}</em></b></div>
@@ -286,9 +286,9 @@ export function SuperResult({ picks, cap, result, mode, stats, seedStr, onHome, 
       )}
       {sub === 'sending' && <p className="line">Posting…</p>}
       {sub === 'error' && <p className="warn">Couldn't reach the server. <button className="link" onClick={submit}>Retry</button></p>}
-      <button className="primary" onClick={share}>{copied ? 'Copied!' : 'Share result'}</button>
+      <div className="hcta"><button className="primary" onClick={onPractice}>⚡ Play another Super Over</button></div>
+      <button className="ghost" onClick={share}>{copied ? 'Copied!' : 'Share result'}</button>
       <button className="ghost" onClick={() => shareCard({ mode: 'Super Over', level: 1, score: result.score, wickets: result.wickets, won: result.won, line: `${result.score}/${result.wickets} vs ${result.oppScore}`, names: picks.map((p) => p.name), footer: window.location.host })}>🖼️ Share as image</button>
-      <button className="ghost" onClick={onPractice}>Another Super Over</button>
       <button className="link" onClick={onHome}>Home</button>
     </main>
   )
