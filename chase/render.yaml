@@ -1,0 +1,20 @@
+# Render blueprint (alternative to Fly.io). Add VAPID_PUBLIC / VAPID_PRIVATE in the dashboard.
+services:
+  - type: web
+    name: chase-300
+    runtime: docker
+    plan: starter        # persistent disks need a paid plan
+    healthCheckPath: /healthz
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: DB_FILE
+        value: /data/db.json
+      - key: VAPID_SUBJECT
+        value: mailto:you@example.com
+      - key: VAPID_PUBLIC
+        sync: false
+      - key: VAPID_PRIVATE
+        sync: false

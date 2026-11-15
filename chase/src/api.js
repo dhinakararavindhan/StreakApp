@@ -44,3 +44,8 @@ export async function disablePush() {
   if (sub) await sub.unsubscribe()
   await j('/push/unsubscribe', { method: 'POST', body: JSON.stringify({ device: deviceId() }) })
 }
+
+// ---- friend challenges ----
+export const getVs = (code) => j(`/vs/${code}?device=${encodeURIComponent(deviceId())}`)
+export const submitVs = (code, kind, name, picks, level) =>
+  j(`/vs/${code}`, { method: 'POST', body: JSON.stringify({ device: deviceId(), kind, level, name, xi: picks.map((p) => p.id) }) })

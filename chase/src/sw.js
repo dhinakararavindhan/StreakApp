@@ -5,7 +5,7 @@ self.skipWaiting()
 self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()))
 cleanupOutdatedCaches()
 precacheAndRoute(self.__WB_MANIFEST)
-registerRoute(new NavigationRoute(createHandlerBoundToURL('index.html'), { denylist: [/^\/api\//] }))
+registerRoute(new NavigationRoute(createHandlerBoundToURL('index.html'), { denylist: [/^\/api\//, /^\/privacy/, /^\/healthz/] }))
 
 self.addEventListener('push', (event) => {
   let d = { title: 'Chase 300', body: "Today's wheel is ready!", url: '/' }

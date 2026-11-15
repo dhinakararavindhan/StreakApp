@@ -3,7 +3,7 @@ import { SQUADS, SLOT_LABELS, TARGET, BALLS, BOWL_SLOTS, BOWL_LEVELS, bowlTarget
 import { hashStr, rng, todayKey } from './rng.js'
 import { simulate, teamRatings, verdict, simulateBowl, opponentFor, bowlRatings, bowlVerdict } from './sim.js'
 import { load, liveStreak, recordDaily, recordPractice, histKey } from './storage.js'
-import { submitScore, fetchBoard, getName, setName, pushSupported, pushEnabled, enablePush, disablePush } from './api.js'
+import { getVs, submitVs, submitScore, fetchBoard, getName, setName, pushSupported, pushEnabled, enablePush, disablePush } from './api.js'
 
 const fits = (p, s) => s + 1 >= p.lo && s + 1 <= p.hi
 const oversStr = (b) => `${Math.floor(b / 6)}.${b % 6}`
@@ -25,8 +25,19 @@ export default function App() {
   const [result, setResult] = useState(null)
   const [stats, setStats] = useState(load())
 
-  const start = (m, k = 'bat', lv = 1) => {
-    const key = m === 'daily' ? todayKey() : String(Date.now())
+  const [vsInfo, setVsInfo] = useState(null)
+
+  // open a friend's challenge link (?vs=CODE)
+  useEffect(() => {
+    const c = (new URLSearchParams(window.location.search).get('vs') || '').toUpperCase()
+    if (!/^[A-Z0-9]{6}$/.test(c)) return
+    getVs(c).then((info) => setVsInfo(info)).catch(() => setVsInfo({ code: c, missing: true })).finally(() => setScreen('vs'))
+  }, [])
+  const leaveVs = () => { try { window.history.replaceState(null, '', '/') } catch {}; setScreen('home') }
+  const newCode = () => Array.from({ length: 6 }, () => 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 31)]).join('')
+
+  const start = (m, k = 'bat', lv = 1, code) => {
+    const key = m === 'daily' ? todayKey() : m === 'vs' ? 'vs-' + (code || newCode()) : String(Date.now())
     setLevel(lv); setKind(k); setMode(m); setSeedStr(key); setXi(Array(11).fill(null)); setAttack(Array(5).fill(null)); setResult(null); setScreen('draft')
   }
   const finish = (finalXi) => {
@@ -39,6 +50,7 @@ export default function App() {
     setAttack(final); setResult(simulateBowl(final, opponentFor(seedStr).players, rand, bowlTarget(level))); setScreen('chase')
   }
   const done = () => {
+    if (mode === 'vs') { setScreen('result'); return }
     setStats(mode === 'daily' ? recordDaily(kind, result.score, result.won, level) : recordPractice(kind, result.score, result.won, level))
     setScreen('result')
   }
@@ -47,6 +59,7 @@ export default function App() {
   return (
     <div className="app">
       {screen === 'home' && <Home stats={stats} onStart={start} onBoard={() => setScreen('board')} />}
+      {screen === 'vs' && <VsIntro info={vsInfo} onPlay={() => start('vs', vsInfo.kind, vsInfo.level, vsInfo.code)} onHome={leaveVs} />}
       {screen === 'board' && <Board onBack={() => setScreen('home')} initialKind={kind} />}
       {screen === 'draft' && !bowl && <Draft key={seedStr} level={level} seedStr={seedStr} mode={mode} xi={xi} setXi={setXi} onDone={finish} onExit={() => setScreen('home')} />}
       {screen === 'draft' && bowl && <BowlDraft key={seedStr} level={level} seedStr={seedStr} mode={mode} attack={attack} setAttack={setAttack} onDone={finishBowl} onExit={() => setScreen('home')} />}
@@ -97,9 +110,18 @@ function Home({ stats, onStart, onBoard }) {
         <button className="link" onClick={() => onStart('practice', 'bowl', lv)}>Practice</button>
       </section>
 
+      <section className="mode">
+        <h2>⚔️ Challenge a friend</h2>
+        <p>Same wheel, same opponent. Play, then send your link. Whoever scores better wins.</p>
+        <div className="row">
+          <button className="ghost" onClick={() => onStart('vs', 'bat', bl)}>🏏 Batting (L{bl})</button>
+          <button className="ghost" onClick={() => onStart('vs', 'bowl', lv)}>🎯 Bowling (L{lv})</button>
+        </div>
+      </section>
+
       <button className="ghost" onClick={onBoard}>🏆 Leaderboards</button>
       <Reminders />
-      <p className="fine">Fan-made, free and unofficial. Ratings are approximate. Not affiliated with or endorsed by any league, board, team or player. Team and player names are used for identification only.</p>
+      <p className="fine">Fan-made, free and unofficial. Ratings are approximate. Not affiliated with or endorsed by any league, board, team or player. Team and player names are used for identification only. <a href="/privacy.html">Privacy</a></p>
     </main>
   )
 }
@@ -162,7 +184,7 @@ function Draft({ level, seedStr, mode, xi, setXi, onDone, onExit }) {
     <main className="draft">
       <header>
         <button className="link" onClick={onExit}>✕</button>
-        <b>{mode === 'daily' ? 'Daily draft' : 'Practice'} · L{level}</b>
+        <b>{mode === 'daily' ? 'Daily draft' : mode === 'vs' ? 'Challenge' : 'Practice'} · L{level}</b>
         <span>{picked}/11</span>
       </header>
 
@@ -314,6 +336,7 @@ function Result({ level, xi, result, mode, stats, seedStr, onHome, onPractice, o
           ))}
         </tbody>
       </table>
+      {mode === 'vs' && <VsPanel kind="bat" seedStr={seedStr} level={level} picks={xi} />}
       {sub === 'ask' && (
         <div className="card submit">
           <input value={name} maxLength={16} placeholder="Your name" onChange={(e) => setNameState(e.target.value)} />
@@ -427,7 +450,7 @@ function BowlDraft({ level, seedStr, mode, attack, setAttack, onDone, onExit }) 
     <main className="draft">
       <header>
         <button className="link" onClick={onExit}>✕</button>
-        <b>{mode === 'daily' ? 'Daily bowling' : 'Practice bowling'}</b>
+        <b>{mode === 'daily' ? 'Daily bowling' : mode === 'vs' ? 'Challenge · bowling' : 'Practice bowling'} · L{level}</b>
         <span>{picked}/5</span>
       </header>
       <div className="card opp">
@@ -555,6 +578,7 @@ function BowlResult({ level, attack, result, mode, stats, seedStr, onHome, onPra
           ))}
         </tbody>
       </table>
+      {mode === 'vs' && <VsPanel kind="bowl" seedStr={seedStr} level={level} picks={attack} />}
       {sub === 'ask' && (
         <div className="card submit">
           <input value={name} maxLength={16} placeholder="Your name" onChange={(e) => setNameState(e.target.value)} />
@@ -568,5 +592,79 @@ function BowlResult({ level, attack, result, mode, stats, seedStr, onHome, onPra
       <button className="ghost" onClick={onPractice}>Practice again</button>
       <button className="link" onClick={onHome}>Home</button>
     </main>
+  )
+}
+
+function VsIntro({ info, onPlay, onHome }) {
+  if (!info) return <main className="home"><p className="line">Loading challenge…</p></main>
+  if (info.missing) {
+    return (
+      <main className="home">
+        <h1>Challenge not found</h1>
+        <p className="sub">This link may have expired (challenges last 14 days).</p>
+        <button className="primary" onClick={onHome}>Home</button>
+      </main>
+    )
+  }
+  const bowl = info.kind === 'bowl'
+  const me = info.entries.find((e) => e.you)
+  return (
+    <main className="home">
+      <div className="logo">⚔️</div>
+      <h1>You've been challenged</h1>
+      <p className="sub">{bowl
+        ? <>Draft 5 bowlers and hold <b>{opponentFor('vs-' + info.code).name} {opponentFor('vs-' + info.code).year}</b> under <b>{info.target}</b>.</>
+        : <>Draft an XI and chase <b>{info.target}</b> in 20 overs.</>} Same wheel as your friend.</p>
+      <VsTable entries={info.entries} bowl={bowl} />
+      {me ? <p className="line">You've already played this challenge.</p> : <button className="primary" onClick={onPlay}>Accept the challenge</button>}
+      <button className="link" onClick={onHome}>Home</button>
+    </main>
+  )
+}
+
+function VsTable({ entries, bowl }) {
+  return (
+    <ol className="rows" style={{ width: '100%' }}>
+      {entries.map((r) => (
+        <li key={r.rank} className={r.you ? 'you' : ''}>
+          <span className="rk">{r.rank}</span><span className="nm">{r.name}{r.won ? ' 🏆' : ''}</span>
+          <span className="sc">{r.score}/{r.wickets}</span>
+        </li>
+      ))}
+    </ol>
+  )
+}
+
+function VsPanel({ kind, seedStr, level, picks }) {
+  const code = seedStr.slice(3)
+  const [name, setNameState] = useState(getName())
+  const [phase, setPhase] = useState('ask') // ask | sending | done | error
+  const [data, setData] = useState(null)
+  const [copied, setCopied] = useState(false)
+  const link = `${window.location.origin}/?vs=${code}`
+  const submit = async () => {
+    setName(name.trim()); setPhase('sending')
+    try { setData(await submitVs(code, kind, name.trim() || 'Anon', picks, level)); setPhase('done') }
+    catch (e) { setPhase(e.status === 409 ? 'done' : 'error'); if (e.status === 409) getVs(code).then(setData).catch(() => {}) }
+  }
+  const share = async () => {
+    const text = `⚔️ I challenge you on Chase 300 (${kind === 'bowl' ? 'bowling' : 'batting'}, level ${level}). Beat my score:`
+    try { if (navigator.share) await navigator.share({ text, url: link }); else { await navigator.clipboard.writeText(`${text} ${link}`); setCopied(true) } } catch {}
+  }
+  return (
+    <div className="card submit">
+      <b>⚔️ Friend challenge</b>
+      {phase === 'ask' && <>
+        <input value={name} maxLength={16} placeholder="Your name" onChange={(e) => setNameState(e.target.value)} />
+        <button className="primary" onClick={submit}>Submit to challenge</button>
+      </>}
+      {phase === 'sending' && <p className="line">Submitting…</p>}
+      {phase === 'error' && <p className="warn">Couldn't reach the server. <button className="link" onClick={submit}>Retry</button></p>}
+      {phase === 'done' && data && <>
+        <VsTable entries={data.entries} bowl={kind === 'bowl'} />
+        <button className="primary" onClick={share}>{copied ? 'Link copied!' : 'Send challenge link'}</button>
+        <small className="lvl">Anyone with the link plays the same wheel{kind === 'bowl' ? ' and opponent' : ''}.</small>
+      </>}
+    </div>
   )
 }

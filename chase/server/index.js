@@ -17,7 +17,7 @@ const PORT = Number(process.env.PORT || 8787)
 const REMINDER_HOUR = Number(process.env.REMINDER_HOUR || 18) // local hour of the player
 
 // ---------- storage (atomic JSON file) ----------
-let db = { scores: [], subs: {} } // scores: {device,name,day,score,wickets,won,balls,xi}; subs: device -> {sub,tz,lastReminded}
+let db = { scores: [], subs: {}, vs: {} } // scores: {device,name,day,score,wickets,won,balls,xi}; subs: device -> {sub,tz,lastReminded}
 try { db = { ...db, ...JSON.parse(fs.readFileSync(DB_FILE, 'utf8')) } } catch {}
 let dirty = false
 const save = () => { dirty = true }
@@ -99,9 +99,24 @@ function board(kind, scope, device, day) {
   return { top: ranked.slice(0, 50), me: ranked.find((r) => r.you) || null, total: ranked.length }
 }
 
+// ---------- friend challenges ----------
+const VS_TTL = 14 * 86400000
+const VS_MAX = 20
+const validCode = (c) => typeof c === 'string' && /^[A-Z0-9]{6}$/.test(c)
+function vsView(code, device) {
+  const ch = db.vs[code]
+  if (!ch) return null
+  const better = ch.kind === 'bowl' ? (a, b) => a.score - b.score || b.wickets - a.wickets || a.balls - b.balls : (a, b) => (b.won - a.won) || b.score - a.score || a.balls - b.balls
+  const entries = [...ch.entries].sort(better).map((e, i) => ({ rank: i + 1, name: e.name, score: e.score, wickets: e.wickets, won: e.won, balls: e.balls, you: e.device === device }))
+  return { code, kind: ch.kind, level: ch.level, target: ch.kind === 'bowl' ? bowlTarget(ch.level) : batTarget(ch.level), entries }
+}
+setInterval(() => { for (const [c, ch] of Object.entries(db.vs)) if (Date.now() - ch.created > VS_TTL) { delete db.vs[c]; save() } }, 3600000).unref()
+
 // ---------- http ----------
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json', '.json': 'application/json' }
 const rate = new Map()
+// behind a hosting proxy the socket address is the proxy: use the forwarded client IP
+const clientIp = (req) => req.headers['fly-client-ip'] || String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress
 const limited = (ip) => { const n = (rate.get(ip) || 0) + 1; rate.set(ip, n); return n > 120 }
 setInterval(() => rate.clear(), 60000).unref()
 
@@ -115,10 +130,36 @@ const send = (res, code, obj) => { res.writeHead(code, { 'content-type': 'applic
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x')
   try {
+    if (url.pathname === '/healthz') return send(res, 200, { ok: true })
     if (url.pathname.startsWith('/api/')) {
-      if (limited(req.socket.remoteAddress)) return send(res, 429, { error: 'slow down' })
+      if (limited(clientIp(req))) return send(res, 429, { error: 'slow down' })
       if (req.method === 'GET' && url.pathname === '/api/leaderboard') {
         return send(res, 200, board(url.searchParams.get('kind') === 'bowl' ? 'bowl' : 'bat', url.searchParams.get('scope') === 'all' ? 'all' : 'today', url.searchParams.get('device'), url.searchParams.get('day')))
+      }
+      const vm = url.pathname.match(/^\/api\/vs\/([A-Za-z0-9]{6})$/)
+      if (vm) {
+        const code = vm[1].toUpperCase()
+        if (req.method === 'GET') {
+          const view = vsView(code, url.searchParams.get('device'))
+          return view ? send(res, 200, view) : send(res, 404, { error: 'not found' })
+        }
+        if (req.method === 'POST') {
+          const body = await readJson(req)
+          const { device, name, xi } = body
+          if (typeof device !== 'string' || device.length < 8 || device.length > 64) return send(res, 400, { error: 'bad device' })
+          let ch = db.vs[code]
+          const kind = ch ? ch.kind : body.kind === 'bowl' ? 'bowl' : 'bat'
+          const max = kind === 'bowl' ? BOWL_LEVELS : BAT_LEVELS
+          const level = ch ? ch.level : Math.min(max, Math.max(1, Number(body.level) | 0 || 1))
+          const r = verify(kind, xi, 'vs-' + code, level)
+          if (!r) return send(res, 400, { error: 'invalid picks' })
+          if (!ch) { ch = db.vs[code] = { kind, level, created: Date.now(), entries: [] } }
+          if (ch.entries.some((e) => e.device === device)) return send(res, 409, { error: 'already played' })
+          if (ch.entries.length >= VS_MAX) return send(res, 409, { error: 'challenge full' })
+          ch.entries.push({ device, name: cleanName(name), score: r.score, wickets: r.wickets, won: r.won, balls: r.ballsUsed })
+          save()
+          return send(res, 200, vsView(code, device))
+        }
       }
       if (req.method === 'GET' && url.pathname === '/api/push/key') return send(res, 200, { key: pushOn ? process.env.VAPID_PUBLIC : null })
       if (req.method === 'POST' && url.pathname === '/api/score') {

@@ -62,3 +62,5 @@ input{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--l
 .levels .on{border-color:var(--gold);color:var(--gold);font-weight:800}.levels .cleared{color:var(--grn)}
 .lvl{color:var(--mut)}.unlock{margin:0;color:var(--grn);font-weight:700}
 .lv{color:var(--mut);font-size:.75rem;align-self:center}
+.fine a{color:var(--gold)}
+.row button.ghost{flex:1}
