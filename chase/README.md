@@ -6,7 +6,17 @@ Daily franchise-T20 draft game (PWA). Draft an XI from spun franchise-season squ
 - **Batting challenge:** draft an XI (11 spins) and chase a target set by your **level**: level 1 = chase **200**, level 2 = 210 ... level 13 = **320** in 20 overs. Winning a level unlocks the next.
 - **Bowling challenge:** draft 5 bowlers (4 overs each: 2 new-ball, 2 middle, 1 death) and hold the day's opponent (a squad from the pool, same for everyone) under **50**. Fewest runs conceded ranks first.
 - Either daily challenge keeps the shared day streak alive. Leaderboards are separate per mode.
+- `node scripts/tune-super.mjs` checks the Super Over (about 10-11 runs each side, win about 40-50%).
 - `npm run tune` (batting, win% per level; `N=200000 npm run tune` for tail precision) and `node scripts/tune-bowl.mjs` check balance. Batting has a per-innings "form" factor so very big totals are rare but possible: level 13 (320) is about 0.1% for a strong draft.
+
+## Depth features
+- **Daily conditions:** every day (and every friend challenge / practice game) has a pitch (flat deck, spinning, green seamer, heavy dew, slow & low) and a draft twist (region lock, era lock, underdog day, one per city, or free). Both come from the seed, so everyone gets the same ones, and the server enforces the twist.
+- **Pitch hints:** cards show POWER / ANCHOR / bowler tags (spin, new ball, death) and "suits pitch" chips. Tags are fan heuristics in `src/rules.js`.
+- **Tactics:** after the draft, pick a **captain** (required) and tweak order. Batting: up to 2 players one place out of position. Bowling: swap slots; specialists get +8 in their phase (new ball slots 1-2, middle 3-4, death 5) and a small penalty out of phase.
+- **Super Over:** 3 hitters + 1 bowler, bat one over, then defend it vs the day's opponent trio. Daily counts for streak and weekly points.
+- **Weekly tournament:** points from every daily game (batting, bowling, Super Over), Monday to Sunday, server-computed (`dailyPoints` in `src/rules.js`).
+- **Yesterday's best XIs:** top 3 per mode with their drafted players and captain.
+- **Streak freeze:** each daily win earns a freeze (max 3) that covers one missed day.
 
 ## Dev
 ```

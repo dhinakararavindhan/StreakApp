@@ -286,7 +286,10 @@ const RAW = [
     P('M. de Lange', 9, 10, 6, 14, 86), P('M. Carter', 10, 11, 6, 14, 78)] },
 ]
 // Unique id per player-in-squad (same real player can appear in several seasons).
-export const SQUADS = RAW.map((s) => ({ ...s, players: s.players.map((p) => ({ ...p, id: `${s.id}:${p.name}`, team: s.short, year: s.year })) }))
+export const REGION = { che: 'IN', mum: 'IN', kol: 'IN', blr: 'IN', hyd: 'IN', jai: 'IN', amd: 'IN', pun: 'IN', del: 'IN', lko: 'IN',
+  syd: 'AU', per: 'AU', hob: 'AU', mel: 'AU', ade: 'AU', bri: 'AU', tri: 'WI', jam: 'WI',
+  gqe: 'SA', paa: 'SA', joh: 'SA', pre: 'SA', kar: 'PK', isl: 'PK', mul: 'PK', que: 'PK', pes: 'PK', lah: 'PK', lon: 'EN', not: 'EN' }
+export const SQUADS = RAW.map((s) => ({ ...s, region: REGION[s.id.slice(0, 3)], players: s.players.map((p) => ({ ...p, id: `${s.id}:${p.name}`, sid: s.id, region: REGION[s.id.slice(0, 3)], team: s.short, year: s.year })) }))
 
 export const SLOT_LABELS = ['Opener', 'Opener', 'No. 3', 'No. 4', 'No. 5', 'No. 6', 'No. 7', 'No. 8', 'No. 9', 'No. 10', 'No. 11']
 export const TARGET = 300 // brand name; the top batting level is 320

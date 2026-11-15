@@ -1,7 +1,7 @@
 import { todayKey } from './rng'
 import { BAT_LEVELS, BOWL_LEVELS } from './data'
 const KEY = 'chase300.v1'
-const empty = { streak: 0, bestStreak: 0, vsPlayed: 0, best: 0, bestBowl: null, bowlLevel: 1, bowlCleared: 0, batLevel: 1, batCleared: 0, lastPlayed: null, history: {}, played: 0, wins: 0 }
+const empty = { freezes: 0, freezeUsedOn: null, superWins: 0, streak: 0, bestStreak: 0, vsPlayed: 0, best: 0, bestBowl: null, bowlLevel: 1, bowlCleared: 0, batLevel: 1, batCleared: 0, lastPlayed: null, history: {}, played: 0, wins: 0 }
 
 export function load() {
   try { return { ...empty, ...JSON.parse(localStorage.getItem(KEY) || '{}') } } catch { return { ...empty } }
@@ -9,15 +9,18 @@ export function load() {
 function save(s) { try { localStorage.setItem(KEY, JSON.stringify(s)) } catch {} }
 
 const dayDiff = (a, b) => Math.round((new Date(b) - new Date(a)) / 86400000)
-export const histKey = (kind, day) => (kind === 'bowl' ? 'bowl:' + day : day)
+export const histKey = (kind, day) => (kind === 'bowl' ? 'bowl:' + day : kind === 'super' ? 'super:' + day : day)
 
 // Effective streak: shows 0 if the player missed yesterday and hasn't played today.
 export function liveStreak(s, today = todayKey()) {
   if (!s.lastPlayed) return 0
-  return dayDiff(s.lastPlayed, today) <= 1 ? s.streak : 0
+  const d = dayDiff(s.lastPlayed, today)
+  if (d <= 1) return s.streak
+  return d === 2 && (s.freezes || 0) > 0 ? s.streak : 0 // a freeze token covers one missed day
 }
 
 function bump(s, kind, score, won, level) {
+  if (kind === 'super') { s.played += 1; if (won) { s.wins += 1; s.superWins = (s.superWins || 0) + 1 } return }
   if (kind === 'bowl') {
     s.bestBowl = s.bestBowl == null ? score : Math.min(s.bestBowl, score)
     // winning a level unlocks the next one
@@ -44,11 +47,14 @@ export function recordDaily(kind, score, won, level = 1, today = todayKey()) {
   if (s.history[k]) return s
   if (s.lastPlayed !== today) {
     const d = s.lastPlayed ? dayDiff(s.lastPlayed, today) : null
-    s.streak = d === 1 ? s.streak + 1 : 1
+    if (d === 1) s.streak += 1
+    else if (d === 2 && (s.freezes || 0) > 0) { s.freezes -= 1; s.freezeUsedOn = today; s.streak += 1 } // freeze saves the streak
+    else s.streak = 1
     s.bestStreak = Math.max(s.bestStreak || 0, s.streak)
     s.lastPlayed = today
   }
   bump(s, kind, score, won, level)
+  if (won) s.freezes = Math.min(3, (s.freezes || 0) + 1) // earn a streak freeze for each daily win
   s.history[k] = { score, won, level }
   save(s)
   return s
@@ -82,5 +88,7 @@ export const BADGES = [
   { id: 'bowl5', icon: '🎯', name: 'Strangler', desc: 'Clear bowling level 5', test: (s) => (s.bowlCleared || 0) >= 5 },
   { id: 'bowl10', icon: '🧨', name: 'Untouchable', desc: 'Clear bowling level 10', test: (s) => (s.bowlCleared || 0) >= 10 },
   { id: 'vs1', icon: '⚔️', name: 'Challenger', desc: 'Play a friend challenge', test: (s) => (s.vsPlayed || 0) >= 1 },
+  { id: 'so1', icon: '⚡', name: 'Super!', desc: 'Win a Super Over', test: (s) => (s.superWins || 0) >= 1 },
+  { id: 'frz', icon: '🧊', name: 'Ice cold', desc: 'Earn a streak freeze', test: (s) => (s.freezes || 0) >= 1 || !!s.freezeUsedOn },
   { id: 'p50', icon: '💯', name: 'Veteran', desc: 'Play 50 games', test: (s) => s.played >= 50 },
 ]

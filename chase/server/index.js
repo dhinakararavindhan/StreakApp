@@ -7,7 +7,8 @@ import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 const webpush = createRequire(import.meta.url)('web-push')
 import { SQUADS, batTarget, bowlTarget, BOWL_MIN, BAT_LEVELS, BOWL_LEVELS } from '../src/data.js'
-import { simulate, simulateBowl, opponentFor } from '../src/sim.js'
+import { simulate, simulateBowl, simulateSuper, superOpponent, opponentFor } from '../src/sim.js'
+import { conditionFor, modifierFor, pickAllowed, orderOK, dailyPoints, mondayOf } from '../src/rules.js'
 import { rng, hashStr, todayKey } from '../src/rng.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -67,20 +68,33 @@ setInterval(sendReminders, 10 * 60 * 1000).unref()
 
 // ---------- score verification ----------
 const byId = new Map(SQUADS.flatMap((s) => s.players.map((p) => [p.id, p])))
-function verify(kind, ids, day, level) {
+function verify(kind, ids, seed, level, cap = -1) {
+  const cond = conditionFor(seed), mod = modifierFor(seed)
+  const capOK = (n) => Number.isInteger(cap) && cap >= -1 && cap < n
+  if (kind === 'super') {
+    if (!Array.isArray(ids) || ids.length !== 4 || !capOK(3)) return null
+    const picks = ids.map((id) => byId.get(id))
+    if (picks.some((p) => !p) || picks[3].bwl < BOWL_MIN) return null
+    if (new Set(picks.map((p) => p.name)).size !== 4) return null
+    if (picks.some((p) => !pickAllowed(mod, p, picks))) return null
+    const res = simulateSuper(picks, superOpponent(seed), rng(hashStr(seed + 'super' + picks.map((p) => p.id).join('|'))), { cap, cond })
+    return { ...res, target: 0 }
+  }
   if (kind === 'bowl') {
-    if (!Array.isArray(ids) || ids.length !== 5) return null
+    if (!Array.isArray(ids) || ids.length !== 5 || !capOK(5)) return null
     const attack = ids.map((id) => byId.get(id))
     if (attack.some((p) => !p || p.bwl < BOWL_MIN)) return null
     if (new Set(attack.map((p) => p.name)).size !== 5) return null
-    const rand = rng(hashStr(day + 'bowl' + attack.map((p) => p.id).join('|')))
-    return simulateBowl(attack, opponentFor(day).players, rand, bowlTarget(level))
+    if (attack.some((p) => !pickAllowed(mod, p, attack))) return null
+    const rand = rng(hashStr(seed + 'bowl' + attack.map((p) => p.id).join('|')))
+    return simulateBowl(attack, opponentFor(seed).players, rand, bowlTarget(level), { cap, cond })
   }
-  if (!Array.isArray(ids) || ids.length !== 11) return null
+  if (!Array.isArray(ids) || ids.length !== 11 || !capOK(11)) return null
   const xi = ids.map((id) => byId.get(id))
-  if (xi.some((p, i) => !p || i + 1 < p.lo || i + 1 > p.hi)) return null
+  if (xi.some((p) => !p) || !orderOK(xi)) return null
   if (new Set(xi.map((p) => p.name)).size !== 11) return null // a real player only once
-  return simulate(xi, rng(hashStr(day + xi.map((p) => p.id).join('|'))), batTarget(level))
+  if (xi.some((p) => !pickAllowed(mod, p, xi))) return null
+  return simulate(xi, rng(hashStr(seed + xi.map((p) => p.id).join('|'))), batTarget(level), { cap, cond })
 }
 const cleanName = (n) => String(n || 'Anon').replace(/[^\p{L}\p{N} _.-]/gu, '').trim().slice(0, 16) || 'Anon'
 const validDay = (d) => {
@@ -102,6 +116,35 @@ function board(kind, scope, device, day) {
   rows.sort(better)
   const ranked = rows.map((s, i) => ({ rank: i + 1, name: s.name, score: s.score, wickets: s.wickets, won: s.won, balls: s.balls, level: s.level || 1, you: s.device === device }))
   return { top: ranked.slice(0, 50), me: ranked.find((r) => r.you) || null, total: ranked.length }
+}
+
+// ---------- weekly tournament & daily recap ----------
+function weekly(day, device) {
+  const start = mondayOf(day)
+  const endD = new Date(start + 'T00:00:00Z'); endD.setUTCDate(endD.getUTCDate() + 6)
+  const end = endD.toISOString().slice(0, 10)
+  const by = new Map()
+  for (const s of db.scores) {
+    if (s.day < start || s.day > end) continue
+    const e = by.get(s.device) || { name: s.name, pts: 0, games: 0 }
+    e.pts += s.pts || 0; e.games += 1; e.name = s.name
+    by.set(s.device, e)
+  }
+  const rows = [...by.entries()].map(([d, e]) => ({ ...e, you: d === device })).sort((a, b) => b.pts - a.pts || a.games - b.games)
+  const ranked = rows.map((r, i) => ({ rank: i + 1, ...r }))
+  return { start, end, top: ranked.slice(0, 50), me: ranked.find((r) => r.you) || null, total: ranked.length }
+}
+const pubPlayer = (id) => { const p = byId.get(id); return p ? { name: p.name, team: p.team, year: p.year } : { name: '?', team: '', year: 0 } }
+function recap(day) {
+  const out = {}
+  for (const kind of ['bat', 'bowl', 'super']) {
+    const rows = db.scores.filter((s) => (s.kind || 'bat') === kind && s.day === day && Array.isArray(s.xi))
+    rows.sort(kind === 'bowl' ? (a, b) => a.score - b.score || b.wickets - a.wickets
+      : kind === 'super' ? (a, b) => (b.score - (b.opp || 0)) - (a.score - (a.opp || 0)) || b.score - a.score
+        : (a, b) => (b.level || 1) - (a.level || 1) || b.score - a.score || a.balls - b.balls)
+    out[kind] = rows.slice(0, 3).map((s, i) => ({ rank: i + 1, name: s.name, score: s.score, wickets: s.wickets, opp: s.opp, won: s.won, level: s.level || 1, cap: s.cap, xi: s.xi.map(pubPlayer) }))
+  }
+  return { day, ...out }
 }
 
 // ---------- friend challenges ----------
@@ -156,7 +199,7 @@ const server = http.createServer(async (req, res) => {
           const kind = ch ? ch.kind : body.kind === 'bowl' ? 'bowl' : 'bat'
           const max = kind === 'bowl' ? BOWL_LEVELS : BAT_LEVELS
           const level = ch ? ch.level : Math.min(max, Math.max(1, Number(body.level) | 0 || 1))
-          const r = verify(kind, xi, 'vs-' + code, level)
+          const r = verify(kind, xi, 'vs-' + code, level, body.cap === undefined ? -1 : Number(body.cap))
           if (!r) return send(res, 400, { error: 'invalid picks' })
           if (!ch) { ch = db.vs[code] = { kind, level, created: Date.now(), entries: [] } }
           if (ch.entries.some((e) => e.device === device)) return send(res, 409, { error: 'already played' })
@@ -166,20 +209,31 @@ const server = http.createServer(async (req, res) => {
           return send(res, 200, vsView(code, device))
         }
       }
+      if (req.method === 'GET' && url.pathname === '/api/weekly') {
+        const day = url.searchParams.get('day') || ''
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return send(res, 400, { error: 'bad day' })
+        return send(res, 200, weekly(day, url.searchParams.get('device')))
+      }
+      if (req.method === 'GET' && url.pathname === '/api/recap') {
+        const day = url.searchParams.get('day') || ''
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return send(res, 400, { error: 'bad day' })
+        return send(res, 200, recap(day))
+      }
       if (req.method === 'GET' && url.pathname === '/api/push/key') return send(res, 200, { key: vapidPublic })
       if (req.method === 'POST' && url.pathname === '/api/score') {
         const body = await readJson(req)
         const { device, name, day, xi } = body
-        const kind = body.kind === 'bowl' ? 'bowl' : 'bat'
+        const kind = body.kind === 'bowl' ? 'bowl' : body.kind === 'super' ? 'super' : 'bat'
         if (typeof device !== 'string' || device.length < 8 || device.length > 64) return send(res, 400, { error: 'bad device' })
         if (!validDay(day)) return send(res, 400, { error: 'bad day' })
-        const level = Math.min(kind === 'bowl' ? BOWL_LEVELS : BAT_LEVELS, Math.max(1, Number(body.level) | 0 || 1))
-        const r = verify(kind, xi, day, level)
+        const level = kind === 'super' ? 1 : Math.min(kind === 'bowl' ? BOWL_LEVELS : BAT_LEVELS, Math.max(1, Number(body.level) | 0 || 1))
+        const cap = body.cap === undefined ? -1 : Number(body.cap)
+        const r = verify(kind, xi, day, level, cap)
         if (!r) return send(res, 400, { error: 'invalid XI' })
         if (db.scores.some((s) => s.device === device && s.day === day && (s.kind || 'bat') === kind)) return send(res, 409, { error: 'already submitted' })
-        db.scores.push({ device, kind, level, name: cleanName(name), day, score: r.score, wickets: r.wickets, won: r.won, balls: r.ballsUsed })
+        db.scores.push({ device, kind, level, name: cleanName(name), day, score: r.score, wickets: r.wickets, won: r.won, balls: r.ballsUsed, pts: dailyPoints(kind, level, r), opp: r.oppScore, xi, cap })
         save()
-        return send(res, 200, { score: r.score, ...board(kind, 'today', device, day) })
+        return send(res, 200, { score: r.score, pts: dailyPoints(kind, level, r), ...(kind === 'super' ? {} : board(kind, 'today', device, day)) })
       }
       if (req.method === 'POST' && url.pathname === '/api/push/subscribe') {
         if (!pushOn) return send(res, 503, { error: 'push disabled' })

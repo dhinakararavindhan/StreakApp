@@ -15,8 +15,8 @@ async function j(path, opts) {
   if (!r.ok) throw Object.assign(new Error(body.error || 'request failed'), { status: r.status })
   return body
 }
-export const submitScore = (kind, name, day, picks, level = 1) =>
-  j('/score', { method: 'POST', body: JSON.stringify({ device: deviceId(), kind, name, day, level, xi: picks.map((p) => p.id) }) })
+export const submitScore = (kind, name, day, picks, level = 1, cap = -1) =>
+  j('/score', { method: 'POST', body: JSON.stringify({ device: deviceId(), kind, name, day, level, cap, xi: picks.map((p) => p.id) }) })
 export const fetchBoard = (kind, scope, day) =>
   j(`/leaderboard?kind=${kind}&scope=${scope}&day=${encodeURIComponent(day)}&device=${encodeURIComponent(deviceId())}`)
 
@@ -47,5 +47,7 @@ export async function disablePush() {
 
 // ---- friend challenges ----
 export const getVs = (code) => j(`/vs/${code}?device=${encodeURIComponent(deviceId())}`)
-export const submitVs = (code, kind, name, picks, level) =>
-  j(`/vs/${code}`, { method: 'POST', body: JSON.stringify({ device: deviceId(), kind, level, name, xi: picks.map((p) => p.id) }) })
+export const submitVs = (code, kind, name, picks, level, cap = -1) =>
+  j(`/vs/${code}`, { method: 'POST', body: JSON.stringify({ device: deviceId(), kind, level, name, cap, xi: picks.map((p) => p.id) }) })
+export const fetchWeekly = (day) => j(`/weekly?day=${encodeURIComponent(day)}&device=${encodeURIComponent(deviceId())}`)
+export const fetchRecap = (day) => j(`/recap?day=${encodeURIComponent(day)}`)

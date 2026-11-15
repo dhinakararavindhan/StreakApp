@@ -1,4 +1,5 @@
 import { SQUADS, batTarget, BAT_LEVELS } from '../src/data.js'
+import { CONDITIONS } from '../src/rules.js'
 import { simulate } from '../src/sim.js'
 import { rng } from '../src/rng.js'
 
@@ -28,7 +29,7 @@ for (const skill of [1, 3, 6]) {
   const row = []
   for (let l = 1; l <= BAT_LEVELS; l++) {
     let w = 0, n = 0
-    for (let k = 0; k < N / 10; k++) { const xi = xis[k % xis.length]; if (simulate(xi, r, batTarget(l)).won) w++; n++ }
+    for (let k = 0; k < N / 10; k++) { const xi = xis[k % xis.length]; const cap = xi.reduce((b, p, i) => (p.bat + p.pow > xi[b].bat + xi[b].pow ? i : b), 0); if (simulate(xi, r, batTarget(l), { cap, cond: CONDITIONS[Math.floor(r() * CONDITIONS.length)] }).won) w++; n++ }
     row.push(`L${l}(${batTarget(l)}) ${(w / n * 100).toFixed(2)}`)
   }
   console.log(`skill ${skill}:`, row.join('  '))

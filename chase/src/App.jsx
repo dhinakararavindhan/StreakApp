@@ -1,31 +1,26 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { SQUADS, SLOT_LABELS, TARGET, BALLS, BOWL_SLOTS, BOWL_LEVELS, bowlTarget, BOWL_MIN, BAT_LEVELS, batTarget } from './data.js'
 import { hashStr, rng, todayKey } from './rng.js'
-import { simulate, teamRatings, verdict, simulateBowl, opponentFor, bowlRatings, bowlVerdict } from './sim.js'
+import { simulate, teamRatings, verdict, simulateBowl, simulateSuper, superOpponent, opponentFor, bowlRatings, bowlVerdict } from './sim.js'
 import { load, liveStreak, recordDaily, recordPractice, recordVs, histKey, seenIntro, markIntroSeen, BADGES } from './storage.js'
 import { shareCard } from './card.js'
+import { fits, oversStr, makeSpins } from './util.js'
+import { conditionFor, modifierFor, squadsFor, pickAllowed, tagOf, TAG_LABEL, phaseBonus } from './rules.js'
+import { Brief, Tactics, SuperDraft, SuperInnings, SuperResult, Weekly, Recap, ratingChips } from './extras.jsx'
 import { getVs, submitVs, submitScore, fetchBoard, getName, setName, pushSupported, pushEnabled, enablePush, disablePush } from './api.js'
-
-const fits = (p, s) => s + 1 >= p.lo && s + 1 <= p.hi
-const oversStr = (b) => `${Math.floor(b / 6)}.${b % 6}`
-
-// Deterministic list of squads for a draft: 11 spins + spare spins for the re-roll.
-function makeSpins(seed) {
-  const r = rng(seed)
-  return Array.from({ length: 40 }, () => SQUADS[Math.floor(r() * SQUADS.length)])
-}
 
 export default function App() {
   const [screen, setScreen] = useState(() => (seenIntro() ? 'home' : 'howto'))
-  const [kind, setKind] = useState('bat') // 'bat' | 'bowl'
-  const [level, setLevel] = useState(1) // level being played (either mode)
+  const [kind, setKind] = useState('bat') // 'bat' | 'bowl' | 'super'
+  const [level, setLevel] = useState(1) // level being played (batting / bowling)
   const [mode, setMode] = useState('daily')
   const [seedStr, setSeedStr] = useState('')
   const [xi, setXi] = useState(Array(11).fill(null))
   const [attack, setAttack] = useState(Array(5).fill(null))
+  const [soPicks, setSoPicks] = useState(Array(4).fill(null))
+  const [cap, setCap] = useState(-1)
   const [result, setResult] = useState(null)
   const [stats, setStats] = useState(load())
-
   const [vsInfo, setVsInfo] = useState(null)
 
   // open a friend's challenge link (?vs=CODE)
@@ -39,46 +34,67 @@ export default function App() {
 
   const start = (m, k = 'bat', lv = 1, code) => {
     const key = m === 'daily' ? todayKey() : m === 'vs' ? 'vs-' + (code || newCode()) : String(Date.now())
-    setLevel(lv); setKind(k); setMode(m); setSeedStr(key); setXi(Array(11).fill(null)); setAttack(Array(5).fill(null)); setResult(null); setScreen('draft')
+    setLevel(lv); setKind(k); setMode(m); setSeedStr(key); setCap(-1)
+    setXi(Array(11).fill(null)); setAttack(Array(5).fill(null)); setSoPicks(Array(4).fill(null)); setResult(null); setScreen('draft')
   }
-  const finish = (finalXi) => {
-    const rand = rng(hashStr(seedStr + finalXi.map((p) => p.id).join('|')))
-    const res = simulate(finalXi, rand, batTarget(level))
-    setXi(finalXi); setResult(res); setScreen('chase')
+  // draft finished -> tactics screen (captain, order)
+  const toTactics = (picks) => {
+    if (kind === 'bat') setXi(picks); else if (kind === 'bowl') setAttack(picks); else setSoPicks(picks)
+    setScreen('tactics')
   }
-  const finishBowl = (final) => {
-    const rand = rng(hashStr(seedStr + 'bowl' + final.map((p) => p.id).join('|')))
-    setAttack(final); setResult(simulateBowl(final, opponentFor(seedStr).players, rand, bowlTarget(level))); setScreen('chase')
+  // tactics confirmed -> run the simulation (the server re-runs the exact same thing)
+  const confirmTactics = (order, capIdx) => {
+    const cond = conditionFor(seedStr)
+    setCap(capIdx)
+    if (kind === 'bat') {
+      const rand = rng(hashStr(seedStr + order.map((p) => p.id).join('|')))
+      setXi(order); setResult(simulate(order, rand, batTarget(level), { cap: capIdx, cond }))
+    } else if (kind === 'bowl') {
+      const rand = rng(hashStr(seedStr + 'bowl' + order.map((p) => p.id).join('|')))
+      setAttack(order); setResult(simulateBowl(order, opponentFor(seedStr).players, rand, bowlTarget(level), { cap: capIdx, cond }))
+    } else {
+      const rand = rng(hashStr(seedStr + 'super' + order.map((p) => p.id).join('|')))
+      setSoPicks(order); setResult(simulateSuper(order, superOpponent(seedStr), rand, { cap: capIdx, cond }))
+    }
+    setScreen('chase')
   }
   const done = () => {
     if (mode === 'vs') { setStats(recordVs()); setScreen('result'); return }
-    setStats(mode === 'daily' ? recordDaily(kind, result.score, result.won, level) : recordPractice(kind, result.score, result.won, level))
+    const lv = kind === 'super' ? 1 : level
+    setStats(mode === 'daily' ? recordDaily(kind, result.score, result.won, lv) : recordPractice(kind, result.score, result.won, lv))
     setScreen('result')
   }
-  const bowl = kind === 'bowl'
+  const home = () => setScreen('home')
+  const picks = kind === 'bat' ? xi : kind === 'bowl' ? attack : soPicks
 
   return (
     <div className="app">
-      {screen === 'home' && <Home stats={stats} onStart={start} onBoard={() => setScreen('board')} onStats={() => setScreen('stats')} onHelp={() => setScreen('howto')} />}
+      {screen === 'home' && <Home stats={stats} onStart={start} onBoard={() => setScreen('board')} onStats={() => setScreen('stats')} onHelp={() => setScreen('howto')} onRecap={() => setScreen('recap')} />}
       {screen === 'howto' && <HowTo onClose={() => { markIntroSeen(); setScreen('home') }} />}
-      {screen === 'stats' && <Stats stats={stats} onBack={() => setScreen('home')} />}
+      {screen === 'stats' && <Stats stats={stats} onBack={home} />}
+      {screen === 'recap' && <Recap onBack={home} />}
       {screen === 'vs' && <VsIntro info={vsInfo} onPlay={() => start('vs', vsInfo.kind, vsInfo.level, vsInfo.code)} onHome={leaveVs} />}
-      {screen === 'board' && <Board onBack={() => setScreen('home')} initialKind={kind} />}
-      {screen === 'draft' && !bowl && <Draft key={seedStr} level={level} seedStr={seedStr} mode={mode} xi={xi} setXi={setXi} onDone={finish} onExit={() => setScreen('home')} />}
-      {screen === 'draft' && bowl && <BowlDraft key={seedStr} level={level} seedStr={seedStr} mode={mode} attack={attack} setAttack={setAttack} onDone={finishBowl} onExit={() => setScreen('home')} />}
-      {screen === 'chase' && !bowl && <Chase xi={xi} result={result} onDone={done} />}
-      {screen === 'chase' && bowl && <BowlInnings result={result} onDone={done} />}
-      {screen === 'result' && !bowl && <Result level={level} xi={xi} result={result} mode={mode} stats={stats} seedStr={seedStr} onHome={() => setScreen('home')} onPractice={() => start('practice', 'bat', level)} onBoard={() => setScreen('board')} />}
-      {screen === 'result' && bowl && <BowlResult level={level} attack={attack} result={result} mode={mode} stats={stats} seedStr={seedStr} onHome={() => setScreen('home')} onPractice={() => start('practice', 'bowl', level)} onBoard={() => setScreen('board')} />}
+      {screen === 'board' && <Board onBack={home} initialKind={kind === 'super' ? 'bat' : kind} />}
+      {screen === 'draft' && kind === 'bat' && <Draft key={seedStr} level={level} seedStr={seedStr} mode={mode} xi={xi} setXi={setXi} onDone={toTactics} onExit={home} />}
+      {screen === 'draft' && kind === 'bowl' && <BowlDraft key={seedStr} level={level} seedStr={seedStr} mode={mode} attack={attack} setAttack={setAttack} onDone={toTactics} onExit={home} />}
+      {screen === 'draft' && kind === 'super' && <SuperDraft key={seedStr} seedStr={seedStr} mode={mode} picks={soPicks} setPicks={setSoPicks} onDone={toTactics} onExit={home} />}
+      {screen === 'tactics' && <Tactics key={seedStr + kind} kind={kind} picks={picks} seedStr={seedStr} onConfirm={confirmTactics} />}
+      {screen === 'chase' && kind === 'bat' && <Chase xi={xi} result={result} onDone={done} />}
+      {screen === 'chase' && kind === 'bowl' && <BowlInnings result={result} onDone={done} />}
+      {screen === 'chase' && kind === 'super' && <SuperInnings result={result} onDone={done} />}
+      {screen === 'result' && kind === 'bat' && <Result level={level} cap={cap} xi={xi} result={result} mode={mode} stats={stats} seedStr={seedStr} onHome={home} onPractice={() => start('practice', 'bat', level)} onBoard={() => setScreen('board')} />}
+      {screen === 'result' && kind === 'bowl' && <BowlResult level={level} cap={cap} attack={attack} result={result} mode={mode} stats={stats} seedStr={seedStr} onHome={home} onPractice={() => start('practice', 'bowl', level)} onBoard={() => setScreen('board')} />}
+      {screen === 'result' && kind === 'super' && <SuperResult picks={soPicks} cap={cap} result={result} mode={mode} stats={stats} seedStr={seedStr} onHome={home} onPractice={() => start('practice', 'super')} />}
     </div>
   )
 }
 
-function Home({ stats, onStart, onBoard, onStats, onHelp }) {
+function Home({ stats, onStart, onBoard, onStats, onHelp, onRecap }) {
   const today = todayKey()
   const streak = liveStreak(stats)
   const batDone = stats.history[histKey('bat', today)]
   const bowlDone = stats.history[histKey('bowl', today)]
+  const superDone = stats.history[histKey('super', today)]
   const opp = opponentFor(today)
   const unlocked = stats.bowlLevel || 1
   const batUnlocked = stats.batLevel || 1
@@ -91,8 +107,13 @@ function Home({ stats, onStart, onBoard, onStats, onHelp }) {
       <p className="sub">Draft from iconic franchise T20 seasons. A new wheel every day.</p>
       <div className="stats">
         <div><b>🔥 {streak}</b><span>day streak</span></div>
+        <div><b>🧊 {stats.freezes || 0}</b><span>streak freezes</span></div>
         <div><b>{stats.best || '–'}</b><span>best chase</span></div>
-        <div><b>{stats.bestBowl ?? '–'}</b><span>best defence</span></div>
+      </div>
+      {stats.freezeUsedOn === today && <p className="line">🧊 A streak freeze saved your streak today.</p>}
+      <div className="card" style={{ width: '100%', textAlign: 'left' }}>
+        <b>Today's conditions</b>
+        <Brief seedStr={today} />
       </div>
 
       <section className="mode">
@@ -122,10 +143,19 @@ function Home({ stats, onStart, onBoard, onStats, onHelp }) {
         </div>
       </section>
 
+      <section className="mode">
+        <h2>⚡ Super Over</h2>
+        <p>Draft 3 hitters and 1 bowler. Bat one over, then defend it. Fast, and the pitch matters.</p>
+        {superDone ? <div className="done">Today: <b>{superDone.score}</b>{superDone.won ? ' 🏆' : ''}</div>
+          : <button className="primary" onClick={() => onStart('daily', 'super')}>Play today's Super Over</button>}
+        <button className="link" onClick={() => onStart('practice', 'super')}>Practice</button>
+      </section>
+
       <div className="row" style={{ width: '100%' }}>
         <button className="ghost" onClick={onBoard}>🏆 Leaderboards</button>
         <button className="ghost" onClick={onStats}>📊 Stats &amp; badges</button>
       </div>
+      <button className="ghost" onClick={onRecap} style={{ width: '100%' }}>📰 Yesterday's best XIs</button>
       <button className="link" onClick={onHelp}>❓ How to play</button>
       <Reminders />
       <p className="fine">Fan-made, free and unofficial. Ratings are approximate. Not affiliated with or endorsed by any league, board, team or player. Team and player names are used for identification only. <a href="/privacy.html">Privacy</a></p>
@@ -149,7 +179,8 @@ function LevelPicker({ levels, unlocked, cleared, value, onChange, text }) {
 }
 
 function Draft({ level, seedStr, mode, xi, setXi, onDone, onExit }) {
-  const spins = useMemo(() => makeSpins(hashStr('spin' + seedStr)), [seedStr])
+  const mod = useMemo(() => modifierFor(seedStr), [seedStr])
+  const spins = useMemo(() => makeSpins(hashStr('spin' + seedStr), squadsFor(mod)), [seedStr, mod])
   const [spinIdx, setSpinIdx] = useState(0)
   const [rerolls, setRerolls] = useState(1)
   const [rolling, setRolling] = useState(true)
@@ -157,9 +188,10 @@ function Draft({ level, seedStr, mode, xi, setXi, onDone, onExit }) {
   const [sel, setSel] = useState(null)
   const picked = xi.filter(Boolean).length
   const usedNames = new Set(xi.filter(Boolean).map((p) => p.name)) // same real player can't be picked twice
-  const squad = spins[spinIdx]
+  const squad = spins[spinIdx % spins.length]
   const freeSlots = xi.map((p, i) => (p ? -1 : i)).filter((i) => i >= 0)
-  const eligible = (p) => !usedNames.has(p.name) && freeSlots.some((s) => fits(p, s))
+  const chosen = xi.filter(Boolean)
+  const eligible = (p) => !usedNames.has(p.name) && freeSlots.some((s) => fits(p, s)) && pickAllowed(mod, p, chosen)
   const hasOption = squad.players.some(eligible)
 
   // wheel animation whenever the spin changes
@@ -196,6 +228,7 @@ function Draft({ level, seedStr, mode, xi, setXi, onDone, onExit }) {
       </header>
 
       <p className="hint">Level {level}: chase <b>{batTarget(level)}</b> in 20 overs</p>
+      <Brief seedStr={seedStr} compact />
       <div className="ratings">
         <Meter label="BAT" v={r.bat} /><Meter label="POW" v={r.pow} /><Meter label="BWL" v={r.bwl} />
       </div>
@@ -215,6 +248,7 @@ function Draft({ level, seedStr, mode, xi, setXi, onDone, onExit }) {
                       <span className="pn">{p.name}{p.k ? ' 🧤' : ''}</span>
                       <span className="pp">{p.lo === p.hi ? `#${p.lo}` : `#${p.lo}–${p.hi}`}</span>
                       <span className="pr"><i>B</i>{p.bat} <i>P</i>{p.pow} <i>W</i>{p.bwl}</span>
+                      <span className="chips">{ratingChips(p, conditionFor(seedStr), 'bat')}</span>
                     </button>
                   )
                 })}
@@ -225,7 +259,7 @@ function Draft({ level, seedStr, mode, xi, setXi, onDone, onExit }) {
           )}
         </>
       ) : (
-        <button className="primary" onClick={() => onDone(xi)}>Start the chase</button>
+        <button className="primary" onClick={() => onDone(xi)}>Next: tactics</button>
       )}
 
       <ol className="slots">
@@ -302,7 +336,7 @@ function Chase({ xi, result, onDone }) {
   )
 }
 
-function Result({ level, xi, result, mode, stats, seedStr, onHome, onPractice, onBoard }) {
+function Result({ level, cap, xi, result, mode, stats, seedStr, onHome, onPractice, onBoard }) {
   const [copied, setCopied] = useState(false)
   const [name, setNameState] = useState(getName())
   const [sub, setSub] = useState(mode === 'daily' ? 'ask' : 'none') // ask | sending | done | error
@@ -310,7 +344,7 @@ function Result({ level, xi, result, mode, stats, seedStr, onHome, onPractice, o
   const submit = async () => {
     setName(name.trim()); setSub('sending')
     try {
-      const r = await submitScore('bat', name.trim() || 'Anon', seedStr, xi, level)
+      const r = await submitScore('bat', name.trim() || 'Anon', seedStr, xi, level, cap)
       setRank(r.me); setSub('done')
     } catch (e) { setSub(e.status === 409 ? 'done' : 'error') }
   }
@@ -343,7 +377,7 @@ function Result({ level, xi, result, mode, stats, seedStr, onHome, onPractice, o
           ))}
         </tbody>
       </table>
-      {mode === 'vs' && <VsPanel kind="bat" seedStr={seedStr} level={level} picks={xi} />}
+      {mode === 'vs' && <VsPanel kind="bat" seedStr={seedStr} level={level} cap={cap} picks={xi} />}
       {sub === 'ask' && (
         <div className="card submit">
           <input value={name} maxLength={16} placeholder="Your name" onChange={(e) => setNameState(e.target.value)} />
@@ -370,22 +404,24 @@ function Board({ onBack, initialKind = 'bat' }) {
   const [err, setErr] = useState(false)
   useEffect(() => {
     setData(null); setErr(false)
+    if (kind === 'week') return
     fetchBoard(kind, scope, todayKey()).then(setData).catch(() => setErr(true))
   }, [kind, scope])
   return (
     <main className="board">
       <header><button className="link" onClick={onBack}>← Back</button><b>Leaderboards</b><span /></header>
       <div className="tabs">
-        {[['bat', '🏏 Batting'], ['bowl', '🎯 Bowling']].map(([k, l]) => <button key={k} className={kind === k ? 'on' : ''} onClick={() => setKind(k)}>{l}</button>)}
+        {[['bat', '🏏 Batting'], ['bowl', '🎯 Bowling'], ['week', '🗓️ Weekly']].map(([k, l]) => <button key={k} className={kind === k ? 'on' : ''} onClick={() => setKind(k)}>{l}</button>)}
       </div>
-      <div className="tabs">
+      {kind === 'week' && <Weekly />}
+      {kind !== 'week' && <div className="tabs">
         {['today', 'all'].map((t) => <button key={t} className={scope === t ? 'on' : ''} onClick={() => setScope(t)}>{t === 'today' ? 'Today' : 'All-time'}</button>)}
-      </div>
-      <p className="hint">{kind === 'bat' ? 'Ranked by level, then runs. Higher level is harder.' : 'Fewest runs conceded wins.'}</p>
-      {err && <p className="warn">Couldn't load the leaderboard.</p>}
-      {!data && !err && <p className="line">Loading…</p>}
-      {data && data.top.length === 0 && <p className="line">No scores yet. Be the first!</p>}
-      {data && (
+      </div>}
+      {kind !== 'week' && <p className="hint">{kind === 'bat' ? 'Ranked by level, then runs. Higher level is harder.' : 'Fewest runs conceded wins.'}</p>}
+      {kind !== 'week' && err && <p className="warn">Couldn't load the leaderboard.</p>}
+      {kind !== 'week' && !data && !err && <p className="line">Loading…</p>}
+      {kind !== 'week' && data && data.top.length === 0 && <p className="line">No scores yet. Be the first!</p>}
+      {kind !== 'week' && data && (
         <ol className="rows">
           {data.top.map((r) => (
             <li key={r.rank} className={r.you ? 'you' : ''}>
@@ -421,7 +457,8 @@ function Reminders() {
 }
 
 function BowlDraft({ level, seedStr, mode, attack, setAttack, onDone, onExit }) {
-  const spins = useMemo(() => makeSpins(hashStr('bspin' + seedStr)), [seedStr])
+  const mod = useMemo(() => modifierFor(seedStr), [seedStr])
+  const spins = useMemo(() => makeSpins(hashStr('bspin' + seedStr), squadsFor(mod)), [seedStr, mod])
   const opp = useMemo(() => opponentFor(seedStr), [seedStr])
   const [spinIdx, setSpinIdx] = useState(0)
   const [rerolls, setRerolls] = useState(1)
@@ -430,8 +467,9 @@ function BowlDraft({ level, seedStr, mode, attack, setAttack, onDone, onExit }) 
   const [sel, setSel] = useState(null)
   const picked = attack.filter(Boolean).length
   const used = new Set(attack.filter(Boolean).map((p) => p.name))
-  const squad = spins[spinIdx]
-  const eligible = (p) => p.bwl >= BOWL_MIN && !used.has(p.name)
+  const squad = spins[spinIdx % spins.length]
+  const chosen = attack.filter(Boolean)
+  const eligible = (p) => p.bwl >= BOWL_MIN && !used.has(p.name) && pickAllowed(mod, p, chosen)
   const hasOption = squad.players.some(eligible)
 
   useEffect(() => {
@@ -466,6 +504,7 @@ function BowlDraft({ level, seedStr, mode, attack, setAttack, onDone, onExit }) 
         <b>{opp.name} {opp.year}</b>
         <span>Batting power {oppPow} · Level {level}: hold them under {bowlTarget(level)}</span>
       </div>
+      <Brief seedStr={seedStr} compact />
       <div className="ratings"><Meter label="ATTACK" v={r.bwl} /></div>
 
       {picked < 5 ? (
@@ -482,6 +521,7 @@ function BowlDraft({ level, seedStr, mode, attack, setAttack, onDone, onExit }) 
                     <button key={p.name} disabled={!ok} className={'player' + (sel === p ? ' sel' : '')} onClick={() => setSel(p)}>
                       <span className="pn">{p.name}</span>
                       <span className="pr"><i>W</i>{p.bwl} <i>B</i>{p.bat}</span>
+                      <span className="chips">{ratingChips(p, conditionFor(seedStr), 'bowl')}</span>
                     </button>
                   )
                 })}
@@ -492,7 +532,7 @@ function BowlDraft({ level, seedStr, mode, attack, setAttack, onDone, onExit }) 
           )}
         </>
       ) : (
-        <button className="primary" onClick={() => onDone(attack)}>Bowl!</button>
+        <button className="primary" onClick={() => onDone(attack)}>Next: tactics</button>
       )}
 
       <ol className="slots">
@@ -501,7 +541,7 @@ function BowlDraft({ level, seedStr, mode, attack, setAttack, onDone, onExit }) 
           return (
             <li key={i} className={(can ? 'can ' : '') + (p ? 'filled' : '')} onClick={() => can && place(i)}>
               <span className="sn">{i + 1}</span>
-              <span className="sl">{p ? <>{p.name} <small className="tm">{p.team} {String(p.year).slice(2)}</small></> : BOWL_SLOTS[i]}</span>
+              <span className="sl">{p ? <>{p.name} <small className="tm">{p.team} {String(p.year).slice(2)}</small></> : BOWL_SLOTS[i]}{!p && sel && phaseBonus(i, sel) !== 0 ? <small className="tm"> {phaseBonus(i, sel) > 0 ? `+${phaseBonus(i, sel)} fit` : `${phaseBonus(i, sel)} fit`}</small> : null}</span>
               {p && <span className="pr"><i>W</i>{p.bwl}</span>}
             </li>
           )
@@ -552,7 +592,7 @@ function BowlInnings({ result, onDone }) {
   )
 }
 
-function BowlResult({ level, attack, result, mode, stats, seedStr, onHome, onPractice, onBoard }) {
+function BowlResult({ level, cap, attack, result, mode, stats, seedStr, onHome, onPractice, onBoard }) {
   const [copied, setCopied] = useState(false)
   const [name, setNameState] = useState(getName())
   const [sub, setSub] = useState(mode === 'daily' ? 'ask' : 'none')
@@ -560,7 +600,7 @@ function BowlResult({ level, attack, result, mode, stats, seedStr, onHome, onPra
   const streak = liveStreak(stats)
   const submit = async () => {
     setName(name.trim()); setSub('sending')
-    try { const r = await submitScore('bowl', name.trim() || 'Anon', seedStr, attack, level); setRank(r.me); setSub('done') }
+    try { const r = await submitScore('bowl', name.trim() || 'Anon', seedStr, attack, level, cap); setRank(r.me); setSub('done') }
     catch (e) { setSub(e.status === 409 ? 'done' : 'error') }
   }
   const text = [
@@ -586,7 +626,7 @@ function BowlResult({ level, attack, result, mode, stats, seedStr, onHome, onPra
           ))}
         </tbody>
       </table>
-      {mode === 'vs' && <VsPanel kind="bowl" seedStr={seedStr} level={level} picks={attack} />}
+      {mode === 'vs' && <VsPanel kind="bowl" seedStr={seedStr} level={level} cap={cap} picks={attack} />}
       {sub === 'ask' && (
         <div className="card submit">
           <input value={name} maxLength={16} placeholder="Your name" onChange={(e) => setNameState(e.target.value)} />
@@ -624,6 +664,7 @@ function VsIntro({ info, onPlay, onHome }) {
       <p className="sub">{bowl
         ? <>Draft 5 bowlers and hold <b>{opponentFor('vs-' + info.code).name} {opponentFor('vs-' + info.code).year}</b> under <b>{info.target}</b>.</>
         : <>Draft an XI and chase <b>{info.target}</b> in 20 overs.</>} Same wheel as your friend.</p>
+      <Brief seedStr={'vs-' + info.code} />
       <VsTable entries={info.entries} bowl={bowl} />
       {me ? <p className="line">You've already played this challenge.</p> : <button className="primary" onClick={onPlay}>Accept the challenge</button>}
       <button className="link" onClick={onHome}>Home</button>
@@ -644,7 +685,7 @@ function VsTable({ entries, bowl }) {
   )
 }
 
-function VsPanel({ kind, seedStr, level, picks }) {
+function VsPanel({ kind, seedStr, level, cap, picks }) {
   const code = seedStr.slice(3)
   const [name, setNameState] = useState(getName())
   const [phase, setPhase] = useState('ask') // ask | sending | done | error
@@ -653,7 +694,7 @@ function VsPanel({ kind, seedStr, level, picks }) {
   const link = `${window.location.origin}/?vs=${code}`
   const submit = async () => {
     setName(name.trim()); setPhase('sending')
-    try { setData(await submitVs(code, kind, name.trim() || 'Anon', picks, level)); setPhase('done') }
+    try { setData(await submitVs(code, kind, name.trim() || 'Anon', picks, level, cap)); setPhase('done') }
     catch (e) { setPhase(e.status === 409 ? 'done' : 'error'); if (e.status === 409) getVs(code).then(setData).catch(() => {}) }
   }
   const share = async () => {
@@ -685,6 +726,10 @@ function HowTo({ onClose }) {
     ['🏏', 'Batting challenge', 'Draft an XI and chase the target in 20 overs. Level 1 is 200. Level 13 is 320: almost impossible.'],
     ['🎯', 'Bowling challenge', 'Draft 5 bowlers and hold the opposition under the target. Level 1 is under 60, level 10 is under 15.'],
     ['⬆️', 'Climb the levels', 'Win a level to unlock the next. A new wheel every day, and playing daily builds your streak 🔥.'],
+    ['🌦️', 'Read the conditions', 'Every day has a pitch (spinning, green, flat, dew, slow) and a draft twist. Pick players who suit them.'],
+    ['⭐', 'Tactics', 'Choose a captain for a rating boost. Swap batting order a little, and put bowlers in the phase they suit.'],
+    ['⚡', 'Super Over', 'Draft 3 hitters and a bowler, bat one over, then defend it. Quick, and every pick matters.'],
+    ['🧊', 'Streak freeze', 'Win a daily game to earn a freeze that saves your streak if you miss a day.'],
     ['⚔️', 'Challenge a friend', 'Play, then send your link. They get the same wheel. Higher score wins.'],
   ]
   return (
@@ -708,11 +753,11 @@ function Stats({ stats, onBack }) {
   const days = Array.from({ length: 28 }, (_, i) => {
     const d = new Date(today); d.setDate(d.getDate() - (27 - i))
     const k = key(d)
-    const hit = [stats.history[k], stats.history['bowl:' + k]].filter(Boolean)
+    const hit = [stats.history[k], stats.history['bowl:' + k], stats.history['super:' + k]].filter(Boolean)
     return { k, n: d.getDate(), played: hit.length > 0, won: hit.some((h) => h.won), today: i === 27 }
   })
   const recent = Object.entries(stats.history)
-    .map(([k, v]) => ({ kind: k.startsWith('bowl:') ? 'bowl' : 'bat', day: k.replace('bowl:', ''), ...v }))
+    .map(([k, v]) => ({ kind: k.startsWith('bowl:') ? 'bowl' : k.startsWith('super:') ? 'super' : 'bat', day: k.replace(/^(bowl|super):/, ''), ...v }))
     .sort((x, y) => (y.day + y.kind).localeCompare(x.day + x.kind)).slice(0, 8)
   const earned = BADGES.filter((b) => b.test(stats))
   return (
@@ -721,7 +766,7 @@ function Stats({ stats, onBack }) {
       <div className="stats">
         <div><b>🔥 {liveStreak(stats)}</b><span>current streak</span></div>
         <div><b>{Math.max(stats.bestStreak || 0, liveStreak(stats))}</b><span>best streak</span></div>
-        <div><b>{stats.played}</b><span>games</span></div>
+        <div><b>🧊 {stats.freezes || 0}</b><span>streak freezes</span></div>
       </div>
       <div className="stats">
         <div><b>{stats.wins}</b><span>levels won</span></div>
@@ -743,7 +788,7 @@ function Stats({ stats, onBack }) {
       {recent.length === 0 && <p className="line">Nothing yet. Play today's challenge!</p>}
       <ul className="recent">
         {recent.map((r) => (
-          <li key={r.day + r.kind}><span>{r.day}</span><span>{r.kind === 'bowl' ? '🎯' : '🏏'} L{r.level || 1}</span><b>{r.score}{r.won ? ' 🏆' : ''}</b></li>
+          <li key={r.day + r.kind}><span>{r.day}</span><span>{r.kind === 'bowl' ? '🎯' : r.kind === 'super' ? '⚡' : '🏏'}{r.kind === 'super' ? '' : ` L${r.level || 1}`}</span><b>{r.score}{r.won ? ' 🏆' : ''}</b></li>
         ))}
       </ul>
     </main>
