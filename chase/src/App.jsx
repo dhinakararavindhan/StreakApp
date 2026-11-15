@@ -4,6 +4,7 @@ import { hashStr, rng, todayKey } from './rng.js'
 import { simulate, teamRatings, verdict, simulateBowl, simulateSuper, superOpponent, opponentFor, bowlRatings, bowlVerdict } from './sim.js'
 import { load, liveStreak, recordDaily, recordPractice, recordVs, histKey, seenIntro, markIntroSeen, BADGES } from './storage.js'
 import { shareCard } from './card.js'
+import { BatCard, BowlCard } from './scorecard.jsx'
 import { fits, oversStr, makeSpins, getTheme, applyTheme } from './util.js'
 import { conditionFor, modifierFor, squadsFor, pickAllowed, tagOf, TAG_LABEL, phaseBonus } from './rules.js'
 import { Brief, Tactics, SuperDraft, SuperInnings, SuperResult, Weekly, Recap, ratingChips, Av, PlaceSheet, BriefPills, Progress, WheelRow, MyList } from './extras.jsx'
@@ -53,7 +54,7 @@ export default function App() {
       setXi(order); setResult(simulate(order, rand, vs ? vs.target : batTarget(level), { cap: capIdx, cond }))
     } else if (kind === 'bowl') {
       const rand = rng(hashStr(seedStr + 'bowl' + order.map((p) => p.id).join('|')))
-      setAttack(order); setResult(simulateBowl(order, opponentFor(seedStr).players, rand, vs ? vs.target : bowlTarget(level), { cap: capIdx, cond }))
+      setAttack(order); setResult({ ...simulateBowl(order, opponentFor(seedStr).players, rand, vs ? vs.target : bowlTarget(level), { cap: capIdx, cond }), opp: opponentFor(seedStr) }) // opp = team info (name, year) for the screens
     } else {
       const rand = rng(hashStr(seedStr + 'super' + order.map((p) => p.id).join('|')))
       setSoPicks(order); setResult(simulateSuper(order, superOpponent(seedStr), rand, { cap: capIdx, cond }))
@@ -376,16 +377,7 @@ function Result({ vs, level, cap, xi, result, mode, stats, seedStr, onHome, onPr
       {mode === 'vs' && vs ? <VsSummary vs={vs} result={result} kind="bat" /> : <p className="verdict">{verdict(result)}</p>}
       {mode !== 'vs' && (() => { const m = unlockMsg({ won: result.won, level, levels: BAT_LEVELS, frontier: stats.batLevel, nextText: `chase ${batTarget(level + 1)}` }); return m ? <p className="unlock">{m}</p> : null })()}
       <p className="line">{mode === 'vs' ? '' : `Level ${level} · `}{oversStr(result.ballsUsed)} overs{mode === 'daily' ? ` · 🔥 ${streak}-day streak` : ''}</p>
-      <table className="card-table">
-        <thead><tr><th>Batter</th><th>R</th><th>B</th><th>4s</th><th>6s</th></tr></thead>
-        <tbody>
-          {result.card.map((c, i) => (
-            <tr key={i} className={c.balls === 0 ? 'dnb' : ''}>
-              <td>{c.name}{c.balls > 0 && !c.out ? '*' : ''}</td><td>{c.balls ? c.runs : '–'}</td><td>{c.balls || ''}</td><td>{c.balls ? c.fours : ''}</td><td>{c.balls ? c.sixes : ''}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <BatCard result={result} />
       {mode === 'vs' && <VsPanel kind="bat" seedStr={seedStr} vs={vs} result={result} cap={cap} picks={xi} />}
       {sub === 'ask' && (
         <div className="card submit">
@@ -620,14 +612,7 @@ function BowlResult({ vs, level, cap, attack, result, mode, stats, seedStr, onHo
       {mode === 'vs' && vs ? <VsSummary vs={vs} result={result} kind="bowl" /> : <p className="verdict">{bowlVerdict(result)}</p>}
       {mode !== 'vs' && (() => { const m = unlockMsg({ won: result.won, level, levels: BOWL_LEVELS, frontier: stats.bowlLevel, nextText: `under ${bowlTarget(level + 1)}` }); return m ? <p className="unlock">{m}</p> : null })()}
       <p className="line">{mode === 'vs' ? '' : `Level ${level} · `}{result.opp.name} {result.opp.year} · {oversStr(result.ballsUsed)} overs{mode === 'daily' ? ` · 🔥 ${streak}-day streak` : ''}</p>
-      <table className="card-table">
-        <thead><tr><th>Bowler</th><th>O</th><th>R</th><th>W</th></tr></thead>
-        <tbody>
-          {result.figs.map((f, i) => (
-            <tr key={i}><td>{f.name}</td><td>{oversStr(f.balls)}</td><td>{f.runs}</td><td>{f.wkts}</td></tr>
-          ))}
-        </tbody>
-      </table>
+      <BowlCard result={result} />
       {mode === 'vs' && <VsPanel kind="bowl" seedStr={seedStr} vs={vs} result={result} cap={cap} picks={attack} />}
       {sub === 'ask' && (
         <div className="card submit">

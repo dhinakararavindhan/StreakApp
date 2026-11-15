@@ -696,3 +696,27 @@ body::before {
 /* pinned "next level" bar on result screens */
 .result.has-cta { padding-bottom: 92px; }
 .result .hcta button { width: 100%; }
+
+/* ---------- scorecards: proper bordered tables + stat tiles ---------- */
+.sc { width: 100%; display: flex; flex-direction: column; gap: 10px; text-align: left; }
+.sc-wrap { border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background: var(--sheen), var(--glass); box-shadow: var(--glass-hi), var(--depth-sm); }
+.sc-table { width: 100%; border-collapse: collapse; border-style: hidden; font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+.sc-table th, .sc-table td { border: 1px solid var(--line); padding: 7px 6px; text-align: center; vertical-align: middle; }
+.sc-table th { background: rgba(var(--ink-rgb), 0.05); color: var(--mut); font-size: 0.7rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
+.sc-table .l { text-align: left; padding-left: 10px; width: 38%; }
+.sc-table td.l b { display: block; font-size: 0.84rem; line-height: 1.2; }
+.sc-table td.l small { display: block; color: var(--mut); font-size: 0.66rem; font-weight: 600; }
+.sc-table td.r { font-weight: 800; }
+.sc-table tbody tr:nth-child(even) td { background: rgba(var(--ink-rgb), 0.025); }
+.sc-table tr.best td { background: rgba(var(--a1), 0.08); }
+.sc-table tr.dnb td { color: var(--mut); background: transparent; }
+.sc-table tr.dnb td.l b { font-weight: 600; }
+.sc-table tfoot td { background: rgba(var(--ink-rgb), 0.06); font-weight: 800; border-top: 2px solid var(--line); }
+.sc-table tfoot td.l small { font-weight: 600; }
+.fow { margin: 0; font-size: 0.72rem; color: var(--mut); line-height: 1.55; }
+.fow b { color: var(--ink); margin-right: 4px; }
+.tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.tile { background: var(--sheen), var(--glass); border: 1px solid var(--glass-edge); border-radius: 14px; box-shadow: var(--glass-hi), var(--depth-sm); padding: 9px 11px; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.tile small { color: var(--mut); font-size: 0.64rem; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; }
+.tile b { font-size: 1.05rem; letter-spacing: -0.02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tile span { color: var(--mut); font-size: 0.66rem; font-weight: 600; }
