@@ -194,7 +194,7 @@ export function SuperDraft({ seedStr, mode, picks, setPicks, onDone, onExit }) {
                 <button key={p.id} disabled={!eligible(p)} className={'player' + (sel === p ? ' sel' : '')} onClick={() => setSel(p)}>
                   <Av p={p} />
                   <span className="pn">{p.name}</span>
-                  <span className="meta"><i>B</i>{p.bat} <i>P</i>{p.pow} <i>W</i>{p.bwl}</span>
+                  <span className="meta"><i>B</i>{p.bat} <i>P</i>{p.pow}{p.bwl >= 30 ? <> <i>W</i>{p.bwl}</> : null}</span>
                   <span className="chips">{ratingChips(p, conditionFor(seedStr), 'both')}</span>
                 </button>
               ))}

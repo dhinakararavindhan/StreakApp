@@ -112,77 +112,70 @@ function Home({ stats, onStart, onBoard, onStats, onHelp, onRecap }) {
   const batUnlocked = stats.batLevel || 1
   const [lv, setLv] = useState(unlocked)
   const [bl, setBl] = useState(batUnlocked)
+  const Done = ({ d }) => <div className="done">Today <b>{d.score}</b>{d.won ? ' 🏆' : ''}</div>
   return (
-    <main className="home">
-      <div className="topbar"><button className="theme" onClick={flip} aria-label="Toggle theme">{theme === 'dark' ? '☀️' : '🌙'}</button></div>
-      <div className="logo">300</div>
-      <h1>Chase 300</h1>
-      <p className="sub">Draft from iconic franchise T20 seasons. A new wheel every day.</p>
+    <main className="home compact">
+      <div className="hbar">
+        <div className="brand"><span className="logo sm">300</span><div><h1>Chase 300</h1><small>Daily franchise T20 draft</small></div></div>
+        <button className="theme" onClick={flip} aria-label="Toggle theme">{theme === 'dark' ? '☀️' : '🌙'}</button>
+      </div>
       <div className="stats">
-        <div><b>🔥 {streak}</b><span>day streak</span></div>
-        <div><b>🧊 {stats.freezes || 0}</b><span>streak freezes</span></div>
+        <div><b>🔥 {streak}</b><span>streak</span></div>
+        <div><b>🧊 {stats.freezes || 0}</b><span>freezes</span></div>
         <div><b>{stats.best || '–'}</b><span>best chase</span></div>
       </div>
       {stats.freezeUsedOn === today && <p className="line">🧊 A streak freeze saved your streak today.</p>}
-      <div className="card" style={{ width: '100%', textAlign: 'left' }}>
-        <b>Today's conditions</b>
-        <Brief seedStr={today} />
+      <BriefPills seedStr={today} />
+
+      <div className="mgrid">
+        <section className="mode sm">
+          <h2>🏏 Batting</h2>
+          <Stepper levels={BAT_LEVELS} unlocked={batUnlocked} cleared={stats.batCleared || 0} value={bl} onChange={setBl} text={`chase ${batTarget(bl)}`} />
+          {batDone ? <Done d={batDone} /> : <button className="primary" onClick={() => onStart('daily', 'bat', bl)}>Play today</button>}
+          <button className="link" onClick={() => onStart('practice', 'bat', bl)}>Practice</button>
+        </section>
+
+        <section className="mode sm">
+          <h2>🎯 Bowling</h2>
+          <Stepper levels={BOWL_LEVELS} unlocked={unlocked} cleared={stats.bowlCleared || 0} value={lv} onChange={setLv} text={`under ${bowlTarget(lv)}`} />
+          {bowlDone ? <Done d={bowlDone} /> : <button className="primary" onClick={() => onStart('daily', 'bowl', lv)}>Play today</button>}
+          <button className="link" onClick={() => onStart('practice', 'bowl', lv)}>Practice · vs {opp.name} {String(opp.year).slice(2)}</button>
+        </section>
+
+        <section className="mode sm">
+          <h2>⚡ Super Over</h2>
+          <p>3 hitters + 1 bowler. Bat one over, then defend it.</p>
+          {superDone ? <Done d={superDone} /> : <button className="primary" onClick={() => onStart('daily', 'super')}>Play today</button>}
+          <button className="link" onClick={() => onStart('practice', 'super')}>Practice</button>
+        </section>
+
+        <section className="mode sm">
+          <h2>⚔️ Vs a friend</h2>
+          <p>You set a score. They must beat it.</p>
+          <div className="duo">
+            <button className="ghost small" onClick={() => onStart('vs', 'bat')}>🏏 Bat</button>
+            <button className="ghost small" onClick={() => onStart('vs', 'bowl')}>🎯 Bowl</button>
+          </div>
+        </section>
       </div>
 
-      <section className="mode">
-        <h2>🏏 Batting challenge</h2>
-        <p>Draft an XI and chase <b>{batTarget(bl)}</b> in 20 overs.</p>
-        <LevelPicker levels={BAT_LEVELS} unlocked={batUnlocked} cleared={stats.batCleared || 0} value={bl} onChange={setBl} text={`Level ${bl} · chase ${batTarget(bl)}`} />
-        {batDone ? <div className="done">Today: <b>{batDone.score}</b>{batDone.won ? ' 🏆' : ''}</div>
-          : <button className="primary" onClick={() => onStart('daily', 'bat', bl)}>Play today's chase</button>}
-        <button className="link" onClick={() => onStart('practice', 'bat', bl)}>Practice</button>
-      </section>
-
-      <section className="mode">
-        <h2>🎯 Bowling challenge</h2>
-        <p>Draft 5 bowlers and hold <b>{opp.name} {opp.year}</b> under <b>{bowlTarget(lv)}</b>.</p>
-        <LevelPicker levels={BOWL_LEVELS} unlocked={unlocked} cleared={stats.bowlCleared || 0} value={lv} onChange={setLv} text={`Level ${lv} · under ${bowlTarget(lv)} runs`} />
-        {bowlDone ? <div className="done">Today: <b>{bowlDone.score}</b>{bowlDone.won ? ' 🏆' : ''}</div>
-          : <button className="primary" onClick={() => onStart('daily', 'bowl', lv)}>Play today's defence</button>}
-        <button className="link" onClick={() => onStart('practice', 'bowl', lv)}>Practice</button>
-      </section>
-
-      <section className="mode">
-        <h2>⚔️ Challenge a friend</h2>
-        <p>You play first and set a score. Your friend gets the same wheel and must beat it: score 159 and they chase 160.</p>
-        <div className="row">
-          <button className="ghost" onClick={() => onStart('vs', 'bat')}>🏏 Batting</button>
-          <button className="ghost" onClick={() => onStart('vs', 'bowl')}>🎯 Bowling</button>
-        </div>
-      </section>
-
-      <section className="mode">
-        <h2>⚡ Super Over</h2>
-        <p>Draft 3 hitters and 1 bowler. Bat one over, then defend it. Fast, and the pitch matters.</p>
-        {superDone ? <div className="done">Today: <b>{superDone.score}</b>{superDone.won ? ' 🏆' : ''}</div>
-          : <button className="primary" onClick={() => onStart('daily', 'super')}>Play today's Super Over</button>}
-        <button className="link" onClick={() => onStart('practice', 'super')}>Practice</button>
-      </section>
-
-      <button className="link" onClick={onHelp}>❓ How to play</button>
-      <Reminders />
-      <p className="fine">Fan-made, free and unofficial. Ratings are approximate. Not affiliated with or endorsed by any league, board, team or player. Team and player names are used for identification only. <a href="/privacy.html">Privacy</a></p>
+      <div className="hfoot">
+        <button className="link" onClick={onHelp}>❓ How to play</button>
+        <Reminders />
+      </div>
+      <p className="fine">Fan-made, free and unofficial. Ratings are approximate. Not affiliated with or endorsed by any league, board, team or player. Names are used for identification only. <a href="/privacy.html">Privacy</a></p>
     </main>
   )
 }
 
-function LevelPicker({ levels, unlocked, cleared, value, onChange, text }) {
+// compact level control: ‹ L3 · chase 220 ›
+function Stepper({ levels, unlocked, cleared, value, onChange, text }) {
   return (
-    <>
-      <div className="levels" style={{ gridTemplateColumns: `repeat(${levels > 10 ? 7 : levels}, 1fr)` }}>
-        {Array.from({ length: levels }, (_, i) => i + 1).map((n) => (
-          <button key={n} disabled={n > unlocked} className={(n === value ? 'on ' : '') + (n <= cleared ? 'cleared' : '')} onClick={() => onChange(n)}>
-            {n <= cleared ? '✓' : n > unlocked ? '🔒' : n}
-          </button>
-        ))}
-      </div>
-      <small className="lvl">{text}{value === unlocked && unlocked > cleared ? ' · win to unlock the next' : ''}</small>
-    </>
+    <div className="step">
+      <button disabled={value <= 1} onClick={() => onChange(value - 1)} aria-label="Easier level">‹</button>
+      <div className="stepv"><b>Level {value}{value <= cleared ? ' ✓' : ''}</b><small>{text}</small></div>
+      <button disabled={value >= unlocked} onClick={() => onChange(value + 1)} aria-label="Harder level">{value >= unlocked && unlocked < levels ? '🔒' : '›'}</button>
+    </div>
   )
 }
 
@@ -248,7 +241,7 @@ function Draft({ vs, level, seedStr, mode, xi, setXi, onDone, onExit }) {
                   <button key={p.name} disabled={!ok} className={'player' + (sel === p ? ' sel' : '')} onClick={() => setSel(p)}>
                     <Av p={p} />
                     <span className="pn">{p.name}{p.k ? ' 🧤' : ''}</span>
-                    <span className="meta">{p.lo === p.hi ? `#${p.lo}` : `#${p.lo}–${p.hi}`} · <i>B</i>{p.bat} <i>P</i>{p.pow} <i>W</i>{p.bwl}</span>
+                    <span className="meta">{p.lo === p.hi ? `#${p.lo}` : `#${p.lo}–${p.hi}`} · <i>B</i>{p.bat} <i>P</i>{p.pow}{p.bwl >= 30 ? <> <i>W</i>{p.bwl}</> : null}</span>
                     <span className="chips">{ratingChips(p, conditionFor(seedStr), 'bat')}</span>
                   </button>
                 )
@@ -449,8 +442,8 @@ function Reminders() {
   }
   return (
     <>
-      <button className="ghost" onClick={toggle}>{on ? '🔔 Streak reminders on' : '🔕 Remind me before my streak ends'}</button>
-      {msg && <p className="warn">{msg}</p>}
+      <button className="link" onClick={toggle}>{on ? '🔔 Reminders on' : '🔕 Remind me'}</button>
+      {msg && <p className="warn" style={{ flexBasis: '100%', textAlign: 'center' }}>{msg}</p>}
     </>
   )
 }

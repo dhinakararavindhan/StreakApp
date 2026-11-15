@@ -15,12 +15,12 @@ const THEME_KEY = 'chase300.theme'
 export const getTheme = () => { try { return localStorage.getItem(THEME_KEY) === 'dark' ? 'dark' : 'light' } catch { return 'light' } }
 export function applyTheme(t) {
   document.documentElement.setAttribute('data-theme', t)
-  const m = document.querySelector('meta[name="theme-color"]'); if (m) m.setAttribute('content', t === 'dark' ? '#0c1124' : '#f3f5fb')
+  const m = document.querySelector('meta[name="theme-color"]'); if (m) m.setAttribute('content', t === 'dark' ? '#06181c' : '#eef8f7')
   try { localStorage.setItem(THEME_KEY, t) } catch {}
 }
 
 // ---- player avatars: initials on a team-coloured tile ----
-const PAL = ['#5b5bf0', '#e5484d', '#12a66a', '#f59e0b', '#0ea5e9', '#d946ef', '#14b8a6', '#f97316']
+const PAL = ['#0b8f84', '#f43f5e', '#10b981', '#f59e0b', '#0ea5e9', '#f97316', '#475569', '#e11d48']
 export function initials(name) {
   const parts = name.replace(/\./g, ' ').split(/\s+/).filter(Boolean)
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
