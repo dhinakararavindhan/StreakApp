@@ -41,6 +41,11 @@ export const CONDITIONS = [
   { id: 'green', icon: '🌿', name: 'Green seamer', desc: 'Pace bowlers shine. Anchors with a high BAT rating thrive.' },
   { id: 'dew', icon: '💧', name: 'Heavy dew', desc: 'Slippery ball. Everyone bats better, bowlers lose grip.' },
   { id: 'slow', icon: '🐢', name: 'Slow & low', desc: 'Hard to hit. Big hitters lose out, anchors and spinners win.' },
+  { id: 'bounce', icon: '⛰️', name: 'Bouncy track', desc: 'Pace and bounce. Fast bowlers thrive, spinners struggle, big hitters still swing.' },
+  { id: 'crumble', icon: '🏜️', name: 'Dry & crumbling', desc: 'Uneven turn. Spinners get big help, pace bowlers get little, anchors stay in.' },
+  { id: 'night', icon: '🌙', name: 'Floodlit night', desc: 'Ball swings under lights. New-ball and death bowlers excel, steady batters cope.' },
+  { id: 'small', icon: '🏟️', name: 'Short boundaries', desc: 'Tiny ground. Power hitters have a ball, every bowler leaks runs.' },
+  { id: 'humid', icon: '🌫️', name: 'Humid & overcast', desc: 'Swing and seam. New-ball bowlers love it, low-rated batters struggle.' },
 ]
 export const conditionFor = (seedStr) => CONDITIONS[hashStr('cond' + seedStr) % CONDITIONS.length]
 
@@ -53,6 +58,11 @@ export function batAdjust(cond, p) {
     case 'green': return { pow: 0.95, bat: p.bat >= 72 ? 4 : 0 }
     case 'dew': return { pow: 1.04, bat: 0 }
     case 'slow': return { pow: isPower(p) ? 0.9 : 0.97, bat: isAnchor(p) ? 4 : 0 }
+    case 'bounce': return { pow: isPower(p) ? 1.03 : 0.97, bat: 0 }
+    case 'crumble': return { pow: 0.95, bat: isAnchor(p) ? 4 : p.bat < 60 ? -5 : 0 }
+    case 'night': return { pow: 0.97, bat: p.bat >= 72 ? 3 : 0 }
+    case 'small': return { pow: isPower(p) ? 1.07 : 1.03, bat: 0 }
+    case 'humid': return { pow: 0.98, bat: p.bat < 60 ? -5 : 0 }
     default: return { pow: 1, bat: 0 }
   }
 }
@@ -66,6 +76,11 @@ export function bowlAdjust(cond, p) {
     case 'green': return spin ? -6 : 8
     case 'dew': return -6
     case 'slow': return spin ? 4 : 0
+    case 'bounce': return spin ? -4 : 7
+    case 'crumble': return spin ? 9 : -2
+    case 'night': return tagOf(p) === 'new' || tagOf(p) === 'death' ? 8 : 0
+    case 'small': return tagOf(p) === 'death' ? -3 : -5
+    case 'humid': return tagOf(p) === 'new' ? 8 : spin ? 0 : 3
     default: return 0
   }
 }
@@ -78,12 +93,17 @@ export function pitchFitBat(cond, p) {
     case 'spin': return isAnchor(p) ? 1 : isPower(p) || p.bat < 60 ? -1 : 0
     case 'green': return p.bat >= 72 ? 1 : isPower(p) ? -1 : 0
     case 'slow': return isAnchor(p) ? 1 : isPower(p) ? -1 : 0
+    case 'bounce': return isPower(p) ? 1 : 0
+    case 'crumble': return isAnchor(p) ? 1 : p.bat < 60 ? -1 : 0
+    case 'night': return p.bat >= 72 ? 1 : 0
+    case 'small': return isPower(p) ? 1 : 0
+    case 'humid': return p.bat < 60 ? -1 : 0
     default: return 0 // dew lifts everyone equally
   }
 }
 export function pitchFitBowl(cond, p) {
   const a = bowlAdjust(cond, p)
-  return a >= 6 ? 1 : a <= -4 && cond && cond.id !== 'dew' && cond.id !== 'flat' ? -1 : 0
+  return a >= 6 ? 1 : a <= -4 && cond && cond.id !== 'dew' && cond.id !== 'flat' && cond.id !== 'small' ? -1 : 0
 }
 
 // ---------- daily draft twists ----------
