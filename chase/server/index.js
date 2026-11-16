@@ -440,8 +440,9 @@ const server = http.createServer(async (req, res) => {
     // static files (built PWA)
     let f = path.normalize(path.join(DIST, url.pathname === '/' ? 'index.html' : url.pathname))
     if (!f.startsWith(DIST) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) f = path.join(DIST, 'index.html')
+    // only fingerprinted /assets files are cached long; manifest, icons, sw.js and index.html always revalidate
     const type = MIME[path.extname(f)] || 'application/octet-stream'
-    res.writeHead(200, { 'content-type': type, 'cache-control': f.startsWith(path.join(DIST, 'assets') + path.sep) ? 'public, max-age=31536000, immutable' : 'no-cache' // only fingerprinted /assets files are cached long; manifest, icons, sw.js and index.html always revalidate })
+    res.writeHead(200, { 'content-type': type, 'cache-control': f.startsWith(path.join(DIST, 'assets') + path.sep) ? 'public, max-age=31536000, immutable' : 'no-cache' })
     fs.createReadStream(f).pipe(res)
   } catch (e) { send(res, 400, { error: 'bad request' }) }
 })
