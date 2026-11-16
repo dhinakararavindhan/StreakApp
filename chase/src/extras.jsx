@@ -51,11 +51,12 @@ export function Progress({ items, total, text }) {
     </div>
   )
 }
-export function WheelRow({ rolling, ticker, squad, rerolls, canReroll, onReroll }) {
+export function WheelRow({ rolling, ticker, squad, rerolls, canReroll, onReroll, skips, canSkip, onSkip }) {
   return (
     <div className="wheelrow">
       <div className={'wheel' + (rolling ? ' spinning' : '')}>{rolling ? ticker : <>{squad.name} <small>{squad.year}</small></>}</div>
       <button className="ghost reroll" disabled={!canReroll} onClick={onReroll} aria-label="Re-roll wheel">🔄<small>{rerolls}</small></button>
+      {onSkip && <button className="ghost reroll" disabled={!canSkip} onClick={onSkip} aria-label="Skip a pick">✂️<small>{skips}</small></button>}
     </div>
   )
 }
@@ -369,13 +370,26 @@ export function Recap({ onBack }) {
 
 
 // ---------- Full match: choose your five bowlers from the XI ----------
-export function AttackPicker({ xi, cap, seedStr, onConfirm }) {
+export function AttackPicker({ xi, cap, seedStr, first = 'bat', impactP = null, onConfirm }) {
   const cond = conditionFor(seedStr)
   const opp = useMemo(() => opponentFor(seedStr), [seedStr])
-  const [slots, setSlots] = useState(() => autoAttack(xi))
+  // Impact Player: replaces xi[out] from the 2nd innings. Bat first -> he can bowl in the defence;
+  // bowl first -> he bats in the chase (so the attack is picked from the original XI).
+  const swapped = (o) => xi.map((q, i) => (i === o ? impactP : q))
+  const outOK = (o) => first === 'bat' || orderOK(swapped(o))
+  const defOut = () => {
+    if (!impactP) return -1
+    if (first === 'bat') { const a = autoAttack(xi); const w = xi.map((p, i) => ({ p, i })).filter(({ p }) => !a.includes(p)).sort((x, y) => x.p.bwl - y.p.bwl)[0]; return w && impactP.bwl > w.p.bwl ? w.i : -1 }
+    const w = xi.map((p, i) => ({ p, i })).filter(({ i }) => outOK(i)).sort((x, y) => x.p.bat - y.p.bat)[0]
+    return w && impactP.bat > w.p.bat ? w.i : -1
+  }
+  const [out, setOut] = useState(defOut)
+  const pool = impactP && out >= 0 && first === 'bat' ? swapped(out) : xi
+  const [slots, setSlots] = useState(() => autoAttack(pool))
+  const changeOut = (o) => { setOut(o); setSlots(autoAttack(impactP && o >= 0 && first === 'bat' ? swapped(o) : xi)); setSelSlot(null); setSelBench(null) }
   const [selSlot, setSelSlot] = useState(null)
   const [selBench, setSelBench] = useState(null)
-  const bench = xi.filter((p) => !slots.includes(p)).sort((a, b) => b.bwl - a.bwl)
+  const bench = pool.filter((p) => !slots.includes(p)).sort((a, b) => b.bwl - a.bwl)
   const capPlayer = cap >= 0 ? xi[cap] : null
   const oppBat = Math.round(opp.players.reduce((s, p) => s + p.pow, 0) / opp.players.length)
   const tapSlot = (i) => {
@@ -394,6 +408,16 @@ export function AttackPicker({ xi, cap, seedStr, onConfirm }) {
       <h1>Pick your five bowlers</h1>
       <Brief seedStr={seedStr} compact />
       <div className="card opp tight"><small>vs</small><b>{opp.name} {opp.year}</b><span>their batting power {oppBat} · your attack {avg}</span></div>
+      {impactP && (
+        <div className="card impact">
+          <b>⚡ Impact player: {impactP.name}</b>
+          <small>{first === 'bat' ? `Comes on for the 2nd innings (bowling). B${impactP.bat} W${impactP.bwl}` : `Comes in for the chase in the replaced batter's slot. B${impactP.bat} P${impactP.pow}`}</small>
+          <label>Replaces <select value={out} onChange={(e) => changeOut(Number(e.target.value))}>
+            <option value={-1}>nobody (don't use)</option>
+            {xi.map((p, i) => (outOK(i) ? <option key={p.id} value={i}>{i + 1}. {p.name}</option> : null))}
+          </select></label>
+        </div>
+      )}
       <p className="hint">Four overs each: two with the new ball, two in the middle, one at the death. Tap two slots to swap, or tap a bench player then a slot to bring them in.</p>
       <ol className="slots tac">
         {slots.map((p, i) => {
@@ -421,7 +445,7 @@ export function AttackPicker({ xi, cap, seedStr, onConfirm }) {
           </button>
         ))}
       </div>
-      <button className="primary" onClick={() => onConfirm(slots)}>Start the match ▶</button>
+      <button className="primary" onClick={() => onConfirm(slots, impactP ? out : -1)}>Start the match ▶</button>
     </main>
   )
 }
@@ -456,16 +480,17 @@ export function FullResult({ res, xi, attack, cap, mode, stats, seedStr, onHome,
   const bat = res.myBatting, bowl = res.myBowling
   const submit = async () => {
     setName(name.trim()); setSub('sending')
-    try { const r = await submitScore('full', name.trim() || 'Anon', seedStr, xi, 1, cap, { attack: attack.map((p) => p.id), first: res.first }); setPts(r.pts); setSub('done') }
+    try { const r = await submitScore('full', name.trim() || 'Anon', seedStr, xi, 1, cap, { attack: attack.map((p) => p.id), first: res.first, ...(res.impact ? { impact: { id: res.impact.p.id, out: res.impact.out } } : {}) }); setPts(r.pts); setSub('done') }
     catch (e) { setSub(e.status === 409 ? 'done' : 'error') }
   }
   const headline = res.won ? '🏆 You win!' : res.tie ? '🤝 Match tied' : '💔 You lose'
-  const text = `🏟️ Chase 300 full match ${mode === 'daily' ? seedStr : ''}\n${res.text}\nYou ${bat.score}/${bat.wickets} · ${res.opp.name} ${res.opp.year} ${bowl.score}/${bowl.wickets}\n${xi.map((p) => p.name).join(' · ')}`
+  const text = `🏟️ Chase 300 full match ${mode === 'daily' ? seedStr : ''}\n${res.text}${res.impact ? `\n⚡ Impact: ${res.impact.p.name}` : ''}\nYou ${bat.score}/${bat.wickets} · ${res.opp.name} ${res.opp.year} ${bowl.score}/${bowl.wickets}\n${xi.map((p) => p.name).join(' · ')}`
   const share = async () => { track('share', { kind: 'full' }); try { if (navigator.share) await navigator.share({ text }); else { await navigator.clipboard.writeText(text); setCopied(true) } } catch {} }
   return (
     <main className="result has-cta">
       <div className={'big' + (res.won ? ' win' : '')} style={{ fontSize: '2.6rem' }}>{headline}</div>
       <p className="verdict">{res.text}</p>
+      {res.impact && <p className="line">⚡ Impact player {res.impact.p.name} replaced {xi[res.impact.out].name} in the 2nd innings</p>}
       <div className="so-board" style={{ width: '100%' }}>
         <div><small>You</small><b>{bat.score}<em>/{bat.wickets}</em></b><small>{oversStr(bat.ballsUsed)} ov</small></div>
         <div><small>{res.opp.name} {res.opp.year}</small><b>{bowl.score}<em>/{bowl.wickets}</em></b><small>{oversStr(bowl.ballsUsed)} ov</small></div>

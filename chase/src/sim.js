@@ -213,16 +213,21 @@ export function oppAttackGrit(players) {
 
 // xi: 11 players in batting order. attack: 5 bowlers (slots: 2 new ball, 2 middle, 1 death) picked from the XI.
 // first: 'bat' (set a score, then defend it) or 'bowl' (restrict them, then chase).
-export function simulateFull(xi, attack, { seedStr, cap = -1, first = 'bat', cond = null }) {
+// impact: { p, out } - an IPL-style Impact Player who replaces xi[out] from the start of the SECOND innings
+// (bat first: he can bowl in the defence; bowl first: he bats in the chase in the replaced slot).
+export function simulateFull(xi, attack, { seedStr, cap = -1, first = 'bat', cond = null, impact = null }) {
   const opp = opponentFor(seedStr)
   const oppInfo = { name: opp.name, year: opp.year }
   const bowlCap = cap >= 0 && xi[cap] ? attack.findIndex((p) => p.name === xi[cap].name) : -1
-  const xiKey = xi.map((p) => p.id).join('|'), atKey = attack.map((p) => p.id).join('|')
+  const batXi = impact && first === 'bowl' ? xi.map((q, i) => (i === impact.out ? impact.p : q)) : xi
+  const batCap = impact && first === 'bowl' && cap === impact.out ? -1 : cap
+  const xiKey = batXi.map((p) => p.id).join('|'), atKey = attack.map((p) => p.id).join('|')
+  const impKey = impact ? '|imp' + impact.p.id + '@' + impact.out : ''
   const grit = oppAttackGrit(opp.players) * FULL_GRIT
   const boosted = opp.players.map((p) => ({ ...p, pow: Math.min(110, p.pow * FULL_BOOST) }))
-  const bat = (target) => simulate(xi, rng(hashStr(seedStr + 'fullbat' + xiKey)), target, { cap, cond, grit })
+  const bat = (target) => simulate(batXi, rng(hashStr(seedStr + 'fullbat' + xiKey)), target, { cap: batCap, cond, grit })
   const bowl = (target, stop) => ({
-    ...simulateBowl(attack, boosted, rng(hashStr(seedStr + 'fullbowl' + atKey + xiKey)), target, { cap: bowlCap, cond, stopAtTarget: stop }),
+    ...simulateBowl(attack, boosted, rng(hashStr(seedStr + 'fullbowl' + atKey + xiKey + impKey)), target, { cap: bowlCap, cond, stopAtTarget: stop }),
     opp: oppInfo,
   })
   let inn1, inn2, out
@@ -232,7 +237,7 @@ export function simulateFull(xi, attack, { seedStr, cap = -1, first = 'bat', con
     out = T >= S + 1 ? { won: false, tie: false, text: `Lost by ${10 - inn2.wickets} wicket${10 - inn2.wickets === 1 ? '' : 's'}` }
       : T === S ? { won: false, tie: true, text: 'Match tied' }
       : { won: true, tie: false, text: `Won by ${S - T} run${S - T === 1 ? '' : 's'}` }
-    return { first, opp: oppInfo, inn1, inn2, myBatting: inn1, myBowling: inn2, myScore: S, oppScore: T, ...out }
+    return { first, impact, batXi, opp: oppInfo, inn1, inn2, myBatting: inn1, myBowling: inn2, myScore: S, oppScore: T, ...out }
   }
   inn1 = bowl(OPEN_TARGET, false); const R = inn1.score
   inn2 = bat(R + 1); const T = inn2.score
@@ -240,7 +245,7 @@ export function simulateFull(xi, attack, { seedStr, cap = -1, first = 'bat', con
   out = T >= R + 1 ? { won: true, tie: false, text: `Won by ${10 - inn2.wickets} wicket${10 - inn2.wickets === 1 ? '' : 's'}${left > 0 ? ` (${left} ball${left === 1 ? '' : 's'} left)` : ''}` }
     : T === R ? { won: false, tie: true, text: 'Match tied' }
     : { won: false, tie: false, text: `Lost by ${R - T} run${R - T === 1 ? '' : 's'}` }
-  return { first, opp: oppInfo, inn1, inn2, myBatting: inn2, myBowling: inn1, myScore: T, oppScore: R, ...out }
+  return { first, impact, batXi, opp: oppInfo, inn1, inn2, myBatting: inn2, myBowling: inn1, myScore: T, oppScore: R, ...out }
 }
 
 // the five best bowlers of an XI (a sensible default attack), in slot order: strongest opens and closes

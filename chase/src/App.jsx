@@ -23,16 +23,19 @@ function readResume() {
   const r = loadResume()
   if (!r || r.v !== 1 || !['draft', 'tactics', 'attack', 'chase'].includes(r.screen) || !['bat', 'bowl', 'super', 'full'].includes(r.kind)) return null
   if (r.mode === 'daily' && r.seedStr !== todayKey()) { clearResume(); return null } // yesterday's daily is gone
-  const ids = [...(r.xi || []), ...(r.attack || []), ...(r.so || []), ...(r.fa || [])].filter(Boolean)
+  const ids = [...(r.xi || []), ...(r.attack || []), ...(r.so || []), ...(r.fa || []), r.ip].filter(Boolean)
   if (!ids.every((id) => BYID.has(id))) { clearResume(); return null }
   return r
 }
 
 // run a match exactly as the server will (same seed, same inputs)
-function simulateFor({ kind, order, capIdx, seedStr, level, vs, attack, first }) {
+const impactPref = () => { try { return localStorage.getItem('chase300.impact') === '1' } catch { return false } }
+const setImpactPref = (v) => { try { localStorage.setItem('chase300.impact', v ? '1' : '0') } catch {} }
+
+function simulateFor({ kind, order, capIdx, seedStr, level, vs, attack, first, impact }) {
   const cond = conditionFor(seedStr)
   if (kind === 'bat') return simulate(order, rng(hashStr(seedStr + order.map((p) => p.id).join('|'))), vs ? vs.target : batTarget(level), { cap: capIdx, cond })
-  if (kind === 'full') { const res = simulateFull(order, attack, { seedStr, cap: capIdx, first, cond }); return { ...res, score: res.myScore, wickets: res.myBatting.wickets, ballsUsed: res.myBatting.ballsUsed, target: 0 } }
+  if (kind === 'full') { const res = simulateFull(order, attack, { seedStr, cap: capIdx, first, cond, impact }); return { ...res, score: res.myScore, wickets: res.myBatting.wickets, ballsUsed: res.myBatting.ballsUsed, target: 0 } }
   if (kind === 'bowl') return { ...simulateBowl(order, opponentFor(seedStr).players, rng(hashStr(seedStr + 'bowl' + order.map((p) => p.id).join('|'))), vs ? vs.target : bowlTarget(level), { cap: capIdx, cond }), opp: opponentFor(seedStr) }
   return simulateSuper(order, superOpponent(seedStr), rng(hashStr(seedStr + 'super' + order.map((p) => p.id).join('|'))), { cap: capIdx, cond })
 }
@@ -59,13 +62,16 @@ export default function App() {
   const [fullAttack, setFullAttack] = useState([]) // full match: the five bowlers
   const [fullRes, setFullRes] = useState(null)
   const [stage, setStage] = useState('inn1')        // full match: inn1 | break | inn2
+  const [impactOn, setImpactOn] = useState(false)    // full match: draft a 12th Impact Player
+  const [impactP, setImpactP] = useState(null)       // the drafted Impact Player
+  const [impactOut, setImpactOut] = useState(-1)     // XI slot he replaces from the 2nd innings (-1 = not used)
 
   // keep the match in progress saved after every pick / step
   useEffect(() => {
     if (!['draft', 'tactics', 'attack', 'chase'].includes(screen)) return
     const ids = (arr) => arr.map((p) => (p ? p.id : null))
-    saveResume({ v: 1, t: Date.now(), screen, kind, mode, seedStr, level, vs, xi: ids(xi), attack: ids(attack), so: ids(soPicks), fa: ids(fullAttack), first, stage, cap, meta: draftMeta })
-  }, [screen, kind, mode, seedStr, level, vs, xi, attack, soPicks, fullAttack, first, stage, cap, draftMeta])
+    saveResume({ v: 1, t: Date.now(), screen, kind, mode, seedStr, level, vs, xi: ids(xi), attack: ids(attack), so: ids(soPicks), fa: ids(fullAttack), first, stage, cap, meta: draftMeta, io: impactOn, ip: impactP ? impactP.id : null, iout: impactOut })
+  }, [screen, kind, mode, seedStr, level, vs, xi, attack, soPicks, fullAttack, first, stage, cap, draftMeta, impactOn, impactP, impactOut])
 
   // anonymous usage stats (off for opt-outs and under-18s)
   useEffect(() => {
@@ -87,10 +93,11 @@ export default function App() {
   const newCode = () => Array.from({ length: 6 }, () => 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 31)]).join('')
 
   const start = (m, k = 'bat', lv = 1, code, info) => {
+    const imp = k === 'full' && impactPref()
     const key = m === 'daily' ? todayKey() : m === 'vs' ? 'vs-' + (code || newCode()) : String(Date.now())
-    track('game_start', { kind: k, mode: m, level: k === 'super' || k === 'full' || m === 'vs' ? 0 : lv })
+    track('game_start', { kind: k, mode: m, level: k === 'super' || k === 'full' || m === 'vs' ? 0 : lv, ...(imp ? { impact: 1 } : {}) })
     setVs(m === 'vs' ? (code ? { role: 'follower', target: info.target, firstScore: info.firstScore, creator: info.creator } : { role: 'first', target: OPEN_TARGET }) : null)
-    setSaved(null); setDraftMeta(null); setInitMeta(null); setFirst('bat'); setFullAttack([]); setFullRes(null); setStage('inn1')
+    setSaved(null); setDraftMeta(null); setInitMeta(null); setFirst('bat'); setFullAttack([]); setFullRes(null); setStage('inn1'); setImpactOn(imp); setImpactP(null); setImpactOut(-1)
     setLevel(lv); setKind(k); setMode(m); setSeedStr(key); setCap(-1)
     setXi(Array(11).fill(null)); setAttack(Array(5).fill(null)); setSoPicks(Array(4).fill(null)); setResult(null); setScreen('draft')
   }
@@ -108,9 +115,9 @@ export default function App() {
     setScreen('chase')
   }
   // full match: bowlers chosen -> play the whole match
-  const confirmAttack = (attackPicks) => {
-    setFullAttack(attackPicks)
-    const sim = simulateFor({ kind: 'full', order: xi, capIdx: cap, seedStr, level: 1, vs: null, attack: attackPicks, first })
+  const confirmAttack = (attackPicks, out = -1) => {
+    setFullAttack(attackPicks); setImpactOut(out)
+    const sim = simulateFor({ kind: 'full', order: xi, capIdx: cap, seedStr, level: 1, vs: null, attack: attackPicks, first, impact: impactP && out >= 0 ? { p: impactP, out } : null })
     setFullRes(sim); setResult(sim)
     setStage('inn1'); setScreen('chase')
   }
@@ -121,11 +128,12 @@ export default function App() {
     const xi2 = mk(r.xi), at2 = mk(r.attack), so2 = mk(r.so)
     setKind(r.kind); setMode(r.mode); setSeedStr(r.seedStr); setLevel(r.level); setVs(r.vs || null); setCap(r.cap ?? -1)
     const fa2 = mk(r.fa); setFirst(r.first || 'bat'); setFullAttack(fa2); setStage(r.stage || 'inn1'); setFullRes(null)
+    setImpactOn(!!r.io); setImpactP(r.ip ? BYID.get(r.ip) || null : null); setImpactOut(r.iout ?? -1)
     setXi(xi2.length ? xi2 : Array(11).fill(null)); setAttack(at2.length ? at2 : Array(5).fill(null)); setSoPicks(so2.length ? so2 : Array(4).fill(null))
     setInitMeta(r.meta || null); setDraftMeta(r.meta || null)
     if (r.screen === 'chase') {
       const order = r.kind === 'bat' || r.kind === 'full' ? xi2 : r.kind === 'bowl' ? at2 : so2
-      const sim = simulateFor({ kind: r.kind, order, capIdx: r.cap, seedStr: r.seedStr, level: r.level, vs: r.vs || null, attack: fa2, first: r.first || 'bat' })
+      const sim = simulateFor({ kind: r.kind, order, capIdx: r.cap, seedStr: r.seedStr, level: r.level, vs: r.vs || null, attack: fa2, first: r.first || 'bat', impact: r.ip && (r.iout ?? -1) >= 0 ? { p: BYID.get(r.ip), out: r.iout } : null })
       if (r.kind === 'full') { setFullRes(sim); setResult(sim) } else setResult(sim)
       setScreen('chase')
     }
@@ -142,7 +150,7 @@ export default function App() {
       addMatch({
         id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), t: Date.now(), day: todayKey(), kind: 'full', mode, level: 0, target: 0,
         first, score: res.myScore, oppScore: res.oppScore, wickets: res.myBatting.wickets, won: !!res.won, tie: !!res.tie, text: res.text, balls: res.myBatting.ballsUsed,
-        cap: cap >= 0 && xi[cap] ? xi[cap].name : null, picks: xi.map((p) => ({ n: p.name, t: p.team, y: p.year })), attackPicks: fullAttack.map((p) => ({ n: p.name, t: p.team, y: p.year })),
+        cap: cap >= 0 && xi[cap] ? xi[cap].name : null, picks: (res.batXi || xi).map((p) => ({ n: p.name, t: p.team, y: p.year })), impact: res.impact ? { n: res.impact.p.name, out: xi[res.impact.out].name } : null, attackPicks: fullAttack.map((p) => ({ n: p.name, t: p.team, y: p.year })),
         opp: { n: res.opp.name, y: res.opp.year }, evBat: compactEvents('bat', res.myBatting.events), evBowl: compactEvents('bowl', res.myBowling.events),
       })
       clearResume(); setSaved(null); autoBackup(); return
@@ -183,11 +191,11 @@ export default function App() {
       {screen === 'recap' && <Recap onBack={home} />}
       {screen === 'vs' && <VsIntro info={vsInfo} onPlay={() => start('vs', vsInfo.kind, 1, vsInfo.code, vsInfo)} onHome={leaveVs} />}
       {screen === 'board' && <Board onBack={home} initialKind={kind === 'super' ? 'bat' : kind} />}
-      {screen === 'draft' && (kind === 'bat' || kind === 'full') && <Draft key={seedStr} full={kind === 'full'} vs={vs} level={level} seedStr={seedStr} mode={mode} xi={xi} setXi={setXi} initMeta={initMeta} onMeta={setDraftMeta} onDone={toTactics} onExit={abandon} />}
+      {screen === 'draft' && (kind === 'bat' || kind === 'full') && <Draft key={seedStr} full={kind === 'full'} impactOn={kind === 'full' && impactOn} impactP={impactP} setImpactP={setImpactP} vs={vs} level={level} seedStr={seedStr} mode={mode} xi={xi} setXi={setXi} initMeta={initMeta} onMeta={setDraftMeta} onDone={toTactics} onExit={abandon} />}
       {screen === 'draft' && kind === 'bowl' && <BowlDraft key={seedStr} vs={vs} level={level} seedStr={seedStr} mode={mode} attack={attack} setAttack={setAttack} initMeta={initMeta} onMeta={setDraftMeta} onDone={toTactics} onExit={abandon} />}
       {screen === 'draft' && kind === 'super' && <SuperDraft key={seedStr} seedStr={seedStr} mode={mode} picks={soPicks} setPicks={setSoPicks} initMeta={initMeta} onMeta={setDraftMeta} onDone={toTactics} onExit={abandon} />}
       {screen === 'tactics' && <Tactics key={seedStr + kind} kind={kind === 'full' ? 'bat' : kind} full={kind === 'full'} picks={picks} seedStr={seedStr} onConfirm={confirmTactics} />}
-      {screen === 'attack' && kind === 'full' && <AttackPicker key={seedStr + 'atk'} xi={xi} cap={cap} seedStr={seedStr} onConfirm={confirmAttack} />}
+      {screen === 'attack' && kind === 'full' && <AttackPicker key={seedStr + 'atk'} xi={xi} cap={cap} seedStr={seedStr} first={first} impactP={impactOn ? impactP : null} onConfirm={confirmAttack} />}
       {screen === 'chase' && kind === 'full' && fullRes && (
         stage === 'inn1' ? (first === 'bat' ? <Chase xi={xi} result={fullRes.inn1} onDone={() => setStage('break')} openLabel="Your innings: set a target" doneLabel="Innings break" /> : <BowlInnings result={fullRes.inn1} onDone={() => setStage('break')} doneLabel="Innings break" />)
           : stage === 'break' ? <InningsBreak res={fullRes} onNext={() => setStage('inn2')} />
@@ -241,6 +249,7 @@ function resumeLabel(r) {
 }
 
 function Home({ stats, saved, onContinue, onDiscard, onBackup, onStart, onBoard, onStats, onHelp, onRecap, onPrivacy }) {
+  const [imp, setImp] = useState(impactPref)
   const today = todayKey()
   const streak = liveStreak(stats)
   const batDone = stats.history[histKey('bat', today)]
@@ -297,6 +306,7 @@ function Home({ stats, saved, onContinue, onDiscard, onBackup, onStart, onBoard,
           <h2>🏟️ Full match</h2>
           <p>Bat and bowl a whole T20 with one XI. Win the match.</p>
           {fullDone && <Done d={fullDone} kind="full" />}
+          <label className="optrow"><input type="checkbox" checked={imp} onChange={(e) => { setImp(e.target.checked); setImpactPref(e.target.checked) }} /> ⚡ Impact player <small>a 12th pick who subs in for the 2nd innings</small></label>
           <div className="wide-row">
             <button className="primary" onClick={() => onStart(fullDone ? 'practice' : 'daily', 'full')}>{fullDone ? 'Play another' : 'Play today'}</button>
             {!fullDone && <button className="link" onClick={() => onStart('practice', 'full')}>Free play</button>}
@@ -363,12 +373,15 @@ function Stepper({ levels, unlocked, cleared, value, onChange, text }) {
   )
 }
 
-function Draft({ full = false, vs, level, seedStr, mode, xi, setXi, initMeta, onMeta, onDone, onExit }) {
+function Draft({ full = false, impactOn = false, impactP = null, setImpactP = () => {}, vs, level, seedStr, mode, xi, setXi, initMeta, onMeta, onDone, onExit }) {
   const mod = useMemo(() => modifierFor(seedStr), [seedStr])
   const spins = useMemo(() => makeSpins(hashStr('spin' + seedStr), squadsFor(mod)), [seedStr, mod])
   const [spinIdx, setSpinIdx] = useState((initMeta && initMeta.spinIdx) || 0)
   const [rerolls, setRerolls] = useState(initMeta ? initMeta.rerolls : 1)
-  useEffect(() => { if (onMeta) onMeta({ spinIdx, rerolls }) }, [spinIdx, rerolls])
+  const [skips, setSkips] = useState(initMeta && initMeta.skips !== undefined ? initMeta.skips : 1)       // one "skip a pick" per draft
+  const [skipped, setSkipped] = useState((initMeta && initMeta.skipped) || [])                          // skipped players can't come back
+  const [releasing, setReleasing] = useState(false)
+  useEffect(() => { if (onMeta) onMeta({ spinIdx, rerolls, skips, skipped }) }, [spinIdx, rerolls, skips, skipped])
   const [rolling, setRolling] = useState(true)
   const [ticker, setTicker] = useState('')
   const [sel, setSel] = useState(null)
@@ -377,12 +390,15 @@ function Draft({ full = false, vs, level, seedStr, mode, xi, setXi, initMeta, on
   const squad = spins[spinIdx % spins.length]
   const freeSlots = xi.map((p, i) => (p ? -1 : i)).filter((i) => i >= 0)
   const chosen = xi.filter(Boolean)
-  const eligible = (p) => !usedNames.has(p.name) && freeSlots.some((s) => fits(p, s)) && pickAllowed(mod, p, chosen)
+  const impactPhase = picked >= 11 && impactOn && !impactP
+  const eligible = (p) => !usedNames.has(p.name) && !skipped.includes(p.name) && pickAllowed(mod, p, chosen)
+    && (impactPhase ? true : freeSlots.some((s) => fits(p, s)))
   const hasOption = squad.players.some(eligible)
+  const allDone = picked >= 11 && (!impactOn || impactP)
 
   // wheel animation whenever the spin changes
   useEffect(() => {
-    if (picked >= 11) return
+    if (allDone) return
     setRolling(true); setSel(null); window.scrollTo(0, 0)
     let n = 0
     const t = setInterval(() => {
@@ -395,14 +411,16 @@ function Draft({ full = false, vs, level, seedStr, mode, xi, setXi, initMeta, on
 
   // skip squads where nobody fits an open slot
   useEffect(() => {
-    if (!rolling && picked < 11 && !hasOption) setSpinIdx((i) => i + 1)
-  }, [rolling, hasOption, picked])
+    if (!rolling && !allDone && !hasOption) setSpinIdx((i) => i + 1)
+  }, [rolling, hasOption, picked, allDone])
 
   const place = (slot) => {
     const next = xi.slice(); next[slot] = sel
     setXi(next); setSel(null); setSpinIdx((i) => i + 1)
   }
   const reroll = () => { setRerolls(0); setSpinIdx((i) => i + 1) }
+  const skipPick = (i) => { const n = xi.slice(); setSkipped([...skipped, n[i].name]); n[i] = null; setXi(n); setSkips(0); setReleasing(false); setSpinIdx((x) => x + 1) }
+  const takeImpact = () => { setImpactP(sel); setSel(null) }
   const r = teamRatings(xi)
 
   return (
@@ -416,10 +434,23 @@ function Draft({ full = false, vs, level, seedStr, mode, xi, setXi, initMeta, on
       {full && (() => { const o = opponentFor(seedStr); const top = [...o.players].sort((x, y) => y.bwl - x.bwl).slice(0, 5); return <div className="card opp tight"><small>vs</small><b>{o.name} {o.year}</b><span>their attack {Math.round(top.reduce((s, p) => s + p.bwl, 0) / 5)} · their batting {Math.round(o.players.reduce((s, p) => s + p.pow, 0) / o.players.length)}</span></div> })()}
       <Progress items={xi} total={11} text={full ? `B${Math.round(r.bat)} P${Math.round(r.pow)} · ${xi.filter((p) => p && p.bwl >= 50).length}/5 bowlers` : `B${Math.round(r.bat)} P${Math.round(r.pow)} W${Math.round(r.bwl)}`} />
 
-      {picked < 11 ? (
+      {impactOn && picked >= 11 && !impactP && <p className="hint tight">⚡ Last pick: your Impact player. Anyone, any role. He subs in for the 2nd innings.</p>}
+      {impactOn && impactP && <p className="hint tight">⚡ Impact player: <b>{impactP.name}</b> (B{impactP.bat} P{impactP.pow} W{impactP.bwl})</p>}
+      {!allDone ? (
         <>
-          <WheelRow rolling={rolling} ticker={ticker} squad={squad} rerolls={rerolls} canReroll={rerolls > 0 && !sel && !rolling} onReroll={reroll} />
-          {!rolling && (
+          <WheelRow rolling={rolling} ticker={ticker} squad={squad} rerolls={rerolls} canReroll={rerolls > 0 && !sel && !rolling} onReroll={reroll} skips={skips} canSkip={skips > 0 && picked > 0 && !sel && !rolling && !impactPhase} onSkip={() => setReleasing(true)} />
+          {releasing && (
+            <div className="skipbox">
+              <b>Skip a pick</b><small>Tap the player you want to drop. He won't come back, and you get a fresh wheel spin.</small>
+              <div className="players">
+                {xi.map((p, i) => p && (
+                  <button key={p.name} className="player" onClick={() => skipPick(i)}><Av p={p} /><span className="pn">{p.name}</span><span className="meta">#{i + 1} · <i>B</i>{p.bat} <i>P</i>{p.pow}</span></button>
+                ))}
+              </div>
+              <button className="link" onClick={() => setReleasing(false)}>Cancel</button>
+            </div>
+          )}
+          {!rolling && !releasing && (
             <div className="players">
               {squad.players.map((p) => {
                 const ok = eligible(p)
@@ -451,7 +482,7 @@ function Draft({ full = false, vs, level, seedStr, mode, xi, setXi, initMeta, on
           ))}
         </ol>
       </MyList>
-      {sel && <PlaceSheet player={sel} onCancel={() => setSel(null)} options={freeSlots.filter((s) => fits(sel, s)).map((s) => ({ key: s, label: `#${s + 1} ${SLOT_LABELS[s]}`, onPick: () => place(s) }))} />}
+      {sel && <PlaceSheet player={sel} onCancel={() => setSel(null)} options={impactPhase ? [{ key: 'imp', label: '⚡ Impact player', onPick: takeImpact }] : freeSlots.filter((s) => fits(sel, s)).map((s) => ({ key: s, label: `#${s + 1} ${SLOT_LABELS[s]}`, onPick: () => place(s) }))} />}
     </main>
   )
 }
@@ -633,7 +664,10 @@ function BowlDraft({ vs, level, seedStr, mode, attack, setAttack, initMeta, onMe
   const opp = useMemo(() => opponentFor(seedStr), [seedStr])
   const [spinIdx, setSpinIdx] = useState((initMeta && initMeta.spinIdx) || 0)
   const [rerolls, setRerolls] = useState(initMeta ? initMeta.rerolls : 1)
-  useEffect(() => { if (onMeta) onMeta({ spinIdx, rerolls }) }, [spinIdx, rerolls])
+  const [skips, setSkips] = useState(initMeta && initMeta.skips !== undefined ? initMeta.skips : 1)
+  const [skipped, setSkipped] = useState((initMeta && initMeta.skipped) || [])
+  const [releasing, setReleasing] = useState(false)
+  useEffect(() => { if (onMeta) onMeta({ spinIdx, rerolls, skips, skipped }) }, [spinIdx, rerolls, skips, skipped])
   const [rolling, setRolling] = useState(true)
   const [ticker, setTicker] = useState('')
   const [sel, setSel] = useState(null)
@@ -641,7 +675,7 @@ function BowlDraft({ vs, level, seedStr, mode, attack, setAttack, initMeta, onMe
   const used = new Set(attack.filter(Boolean).map((p) => p.name))
   const squad = spins[spinIdx % spins.length]
   const chosen = attack.filter(Boolean)
-  const eligible = (p) => p.bwl >= BOWL_MIN && !used.has(p.name) && pickAllowed(mod, p, chosen)
+  const eligible = (p) => p.bwl >= BOWL_MIN && !used.has(p.name) && !skipped.includes(p.name) && pickAllowed(mod, p, chosen)
   const hasOption = squad.players.some(eligible)
 
   useEffect(() => {
@@ -661,6 +695,7 @@ function BowlDraft({ vs, level, seedStr, mode, attack, setAttack, initMeta, onMe
     const next = attack.slice(); next[slot] = sel
     setAttack(next); setSel(null); setSpinIdx((i) => i + 1)
   }
+  const skipPick = (i) => { const n = attack.slice(); setSkipped([...skipped, n[i].name]); n[i] = null; setAttack(n); setSkips(0); setReleasing(false); setSpinIdx((x) => x + 1) }
   const r = bowlRatings(attack)
   const oppPow = Math.round(opp.players.reduce((s, p) => s + p.pow, 0) / opp.players.length)
 
@@ -677,8 +712,19 @@ function BowlDraft({ vs, level, seedStr, mode, attack, setAttack, initMeta, onMe
 
       {picked < 5 ? (
         <>
-          <WheelRow rolling={rolling} ticker={ticker} squad={squad} rerolls={rerolls} canReroll={rerolls > 0 && !sel && !rolling} onReroll={() => { setRerolls(0); setSpinIdx((i) => i + 1) }} />
-          {!rolling && (
+          <WheelRow rolling={rolling} ticker={ticker} squad={squad} rerolls={rerolls} canReroll={rerolls > 0 && !sel && !rolling} onReroll={() => { setRerolls(0); setSpinIdx((i) => i + 1) }} skips={skips} canSkip={skips > 0 && picked > 0 && !sel && !rolling} onSkip={() => setReleasing(true)} />
+          {releasing && (
+            <div className="skipbox">
+              <b>Skip a pick</b><small>Tap the bowler you want to drop. He won't come back, and you get a fresh wheel spin.</small>
+              <div className="players">
+                {attack.map((p, i) => p && (
+                  <button key={p.name} className="player" onClick={() => skipPick(i)}><Av p={p} /><span className="pn">{p.name}</span><span className="meta">slot {i + 1} · <i>W</i>{p.bwl}</span></button>
+                ))}
+              </div>
+              <button className="link" onClick={() => setReleasing(false)}>Cancel</button>
+            </div>
+          )}
+          {!rolling && !releasing && (
             <div className="players">
               {squad.players.filter((p) => p.bwl >= BOWL_MIN).map((p) => {
                 const ok = eligible(p)

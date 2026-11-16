@@ -93,10 +93,23 @@ function verify(kind, ids, seed, level, cap = -1, target, extra = {}) {
     const xi = ids.map((id) => byId.get(id))
     if (xi.some((p) => !p) || !orderOK(xi) || new Set(xi.map((p) => p.name)).size !== 11 || !twistOK(mod, xi)) return null
     const at = extra.attack
-    if (!Array.isArray(at) || at.length !== 5 || new Set(at).size !== 5 || at.some((id) => !ids.includes(id))) return null
+    if (!Array.isArray(at) || at.length !== 5 || new Set(at).size !== 5) return null
     if (extra.first !== 'bat' && extra.first !== 'bowl') return null
     const attack = at.map((id) => byId.get(id))
-    const res = simulateFull(xi, attack, { seedStr: seed, cap, first: extra.first, cond })
+    if (attack.some((p) => !p)) return null
+    // optional Impact Player (needs a different real player, allowed by the twist, and a valid XI slot to replace)
+    let impact = null
+    if (extra.impact) {
+      const ip = byId.get(extra.impact.id), out = extra.impact.out
+      if (!ip || !Number.isInteger(out) || out < 0 || out > 10) return null
+      const all = [...xi, ip]
+      if (new Set(all.map((p) => p.name)).size !== 12 || !twistOK(mod, all)) return null
+      impact = { p: ip, out }
+      const pool = extra.first === 'bat' ? xi.map((q, i) => (i === out ? ip : q)) : xi
+      if (extra.first === 'bowl' && !orderOK(xi.map((q, i) => (i === out ? ip : q)))) return null
+      if (attack.some((p) => !pool.includes(p))) return null
+    } else if (attack.some((p) => !xi.includes(p))) return null
+    const res = simulateFull(xi, attack, { seedStr: seed, cap, first: extra.first, cond, impact })
     return { ...res, score: res.myScore, wickets: res.myBatting.wickets, ballsUsed: res.myBatting.ballsUsed, target: 0 }
   }
   if (kind === 'super') {
@@ -328,10 +341,10 @@ const server = http.createServer(async (req, res) => {
         if (!validDay(day)) return send(res, 400, { error: 'bad day' })
         const level = kind === 'super' || kind === 'full' ? 1 : Math.min(kind === 'bowl' ? BOWL_LEVELS : BAT_LEVELS, Math.max(1, Number(body.level) | 0 || 1))
         const cap = body.cap === undefined ? -1 : Number(body.cap)
-        const r = verify(kind, xi, day, level, cap, undefined, { attack: body.attack, first: body.first })
+        const r = verify(kind, xi, day, level, cap, undefined, { attack: body.attack, first: body.first, impact: body.impact })
         if (!r) return send(res, 400, { error: 'invalid XI' })
         if (db.scores.some((s) => s.device === device && s.day === day && (s.kind || 'bat') === kind)) return send(res, 409, { error: 'already submitted' })
-        db.scores.push({ device, kind, level, name: cleanName(name), day, score: r.score, wickets: r.wickets, won: r.won, balls: r.ballsUsed, pts: dailyPoints(kind, level, r), opp: r.oppScore, xi, cap, ...(kind === 'full' ? { attack: body.attack, first: body.first, text: r.text } : {}) })
+        db.scores.push({ device, kind, level, name: cleanName(name), day, score: r.score, wickets: r.wickets, won: r.won, balls: r.ballsUsed, pts: dailyPoints(kind, level, r), opp: r.oppScore, xi, cap, ...(kind === 'full' ? { attack: body.attack, first: body.first, impact: body.impact || null, text: r.text } : {}) })
         save()
         return send(res, 200, { score: r.score, pts: dailyPoints(kind, level, r), text: r.text, ...(kind === 'super' || kind === 'full' ? {} : board(kind, 'today', device, day)) })
       }

@@ -817,3 +817,15 @@ select { font: inherit; font-size: 0.9rem; color: var(--ink); background: var(--
 .player .chips .chip.up::before { content: '↑'; font-size: 0.8rem; font-weight: 800; color: var(--green, #1f9d6b); }
 .player .chips .chip.dn::before { content: '↓'; font-size: 0.8rem; font-weight: 800; color: var(--red, #d6455d); }
 .draft details.xi summary { padding: 8px 12px; }
+
+/* skip-a-pick + impact player */
+.wheelrow .reroll + .reroll { margin-left: 0; }
+.skipbox { display: grid; gap: 6px; padding: 8px 10px; border-radius: 16px; background: var(--sheen), var(--glass); border: 1px solid var(--glass-edge); }
+.skipbox small { color: var(--mut); font-size: 0.72rem; }
+.hint.tight { margin: 0; font-size: 0.74rem; text-align: center; }
+.optrow { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; font-weight: 700; margin: 2px 0 6px; }
+.optrow small { color: var(--mut); font-weight: 600; font-size: 0.68rem; }
+.optrow input { width: 18px; height: 18px; accent-color: var(--accent); }
+.card.impact { display: grid; gap: 4px; padding: 10px 12px; text-align: left; }
+.card.impact small { color: var(--mut); font-size: 0.74rem; }
+.card.impact select { font: inherit; font-weight: 700; margin-left: 6px; padding: 4px 8px; border-radius: 10px; border: 1px solid var(--glass-edge); background: var(--card); color: var(--ink); max-width: 60%; }
