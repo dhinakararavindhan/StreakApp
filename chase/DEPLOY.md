@@ -48,3 +48,8 @@ The disk needs the paid Starter plan (about $7/month). Do not use the free plan:
 - Analytics events are stored as daily files (`events-YYYY-MM-DD.ndjson`) next to the data file on the persistent disk and deleted after 180 days. They contain a hashed device id, never IPs or names.
 - Players control this in the app under **Privacy & data**: switch stats off, add or delete the optional profile (consent required, under-18s are never profiled), or delete all their data. `public/privacy.html` already describes all of this; keep it in sync if you change what is collected.
 - Before sharing audience numbers with sponsors or running ads, have a privacy lawyer check your set-up against India's DPDP Act and any other laws that apply.
+
+## Saved matches, resume and cloud backup
+- Matches in progress and the full scorecard of every finished match are saved on the player's device (`src/matches.js`). A match closed mid-draft, at tactics or mid-innings resumes from the home screen.
+- Optional cloud backup uses a private recovery code (no login). Backups are files in `saves/` next to the data file on the persistent disk, named by a one-way hash of the code. Back up the whole disk, not just `db.json`.
+- Restoring on a new phone merges the saved progress and keeps the same player identity, so leaderboard entries stay the player's.

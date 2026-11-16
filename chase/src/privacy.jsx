@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { AGE_BANDS, STATES, TEAM_CITIES } from './profile.js'
 import { saveProfile, deleteProfile, deleteMe } from './api.js'
 import { analyticsOn, setAnalytics, setMinor, isMinor, getProfile, setProfile, track } from './analytics.js'
+import { removeBackup } from './cloud.js'
 
 export default function Privacy({ onBack }) {
   const saved = getProfile() || {}
@@ -34,7 +35,7 @@ export default function Privacy({ onBack }) {
   const wipe = async () => {
     if (!window.confirm('Delete everything we hold about you on our servers? This removes your profile, leaderboard scores, challenge entries, reminder subscription and usage stats. Progress on this phone stays.')) return
     setBusy(true)
-    try { const r = await deleteMe(); setProfile(null); setAge(''); setState(''); setTeam(''); setMsg(`Done. Removed your server data (${r.removedScores} leaderboard scores).`) }
+    try { await removeBackup(); const r = await deleteMe(); setProfile(null); setAge(''); setState(''); setTeam(''); setMsg(`Done. Removed your server data (${r.removedScores} leaderboard scores).`) }
     catch { setMsg("Couldn't reach the server. Please try again.") }
     setBusy(false)
   }

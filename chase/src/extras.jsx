@@ -151,12 +151,13 @@ export function Tactics({ kind, picks, seedStr, onConfirm }) {
 
 // ---------- Super Over ----------
 const SO_SLOTS = ['Batter 1', 'Batter 2', 'Batter 3', 'Bowler']
-export function SuperDraft({ seedStr, mode, picks, setPicks, onDone, onExit }) {
+export function SuperDraft({ seedStr, mode, picks, setPicks, initMeta, onMeta, onDone, onExit }) {
   const mod = useMemo(() => modifierFor(seedStr), [seedStr])
   const spins = useMemo(() => makeSpins(hashStr('sspin' + seedStr), squadsFor(mod)), [seedStr, mod])
   const opp = useMemo(() => superOpponent(seedStr), [seedStr])
-  const [spinIdx, setSpinIdx] = useState(0)
-  const [rerolls, setRerolls] = useState(1)
+  const [spinIdx, setSpinIdx] = useState((initMeta && initMeta.spinIdx) || 0)
+  const [rerolls, setRerolls] = useState(initMeta ? initMeta.rerolls : 1)
+  useEffect(() => { if (onMeta) onMeta({ spinIdx, rerolls }) }, [spinIdx, rerolls])
   const [rolling, setRolling] = useState(true)
   const [ticker, setTicker] = useState('')
   const [sel, setSel] = useState(null)

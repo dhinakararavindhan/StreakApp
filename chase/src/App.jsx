@@ -5,12 +5,36 @@ import { simulate, teamRatings, verdict, simulateBowl, simulateSuper, superOppon
 import { load, liveStreak, recordDaily, recordPractice, recordVs, histKey, seenIntro, markIntroSeen, BADGES } from './storage.js'
 import { shareCard } from './card.js'
 import Privacy from './privacy.jsx'
+import Backup from './backup.jsx'
+import { MatchHistory, MatchView } from './history.jsx'
+import { addMatch, loadMatches, compactEvents, loadResume, saveResume, clearResume } from './matches.js'
+import { autoBackup, getCode } from './cloud.js'
 import { track, analyticsOn, isMinor, getProfile, nudgeDismissed, dismissNudge } from './analytics.js'
 import { BatCard, BowlCard } from './scorecard.jsx'
 import { fits, oversStr, makeSpins, getTheme, applyTheme } from './util.js'
 import { conditionFor, modifierFor, squadsFor, pickAllowed, tagOf, TAG_LABEL, phaseBonus } from './rules.js'
 import { Brief, Tactics, SuperDraft, SuperInnings, SuperResult, Weekly, Recap, ratingChips, Av, PlaceSheet, BriefPills, Progress, WheelRow, MyList } from './extras.jsx'
 import { getVs, submitVs, submitScore, fetchBoard, getName, setName, pushSupported, pushEnabled, enablePush, disablePush } from './api.js'
+
+const BYID = new Map(SQUADS.flatMap((s) => s.players.map((p) => [p.id, p])))
+
+// an unfinished match saved on this device (so closing the app doesn't lose it)
+function readResume() {
+  const r = loadResume()
+  if (!r || r.v !== 1 || !['draft', 'tactics', 'chase'].includes(r.screen) || !['bat', 'bowl', 'super'].includes(r.kind)) return null
+  if (r.mode === 'daily' && r.seedStr !== todayKey()) { clearResume(); return null } // yesterday's daily is gone
+  const ids = [...(r.xi || []), ...(r.attack || []), ...(r.so || [])].filter(Boolean)
+  if (!ids.every((id) => BYID.has(id))) { clearResume(); return null }
+  return r
+}
+
+// run a match exactly as the server will (same seed, same inputs)
+function simulateFor({ kind, order, capIdx, seedStr, level, vs }) {
+  const cond = conditionFor(seedStr)
+  if (kind === 'bat') return simulate(order, rng(hashStr(seedStr + order.map((p) => p.id).join('|'))), vs ? vs.target : batTarget(level), { cap: capIdx, cond })
+  if (kind === 'bowl') return { ...simulateBowl(order, opponentFor(seedStr).players, rng(hashStr(seedStr + 'bowl' + order.map((p) => p.id).join('|'))), vs ? vs.target : bowlTarget(level), { cap: capIdx, cond }), opp: opponentFor(seedStr) }
+  return simulateSuper(order, superOpponent(seedStr), rng(hashStr(seedStr + 'super' + order.map((p) => p.id).join('|'))), { cap: capIdx, cond })
+}
 
 export default function App() {
   const [screen, setScreen] = useState(() => (seenIntro() ? 'home' : 'howto'))
@@ -26,6 +50,17 @@ export default function App() {
   const [stats, setStats] = useState(load())
   const [vsInfo, setVsInfo] = useState(null)
   const [vs, setVs] = useState(null) // head-to-head: { role: 'first'|'follower', target, firstScore, creator }
+  const [saved, setSaved] = useState(readResume)   // unfinished match on this device
+  const [draftMeta, setDraftMeta] = useState(null) // wheel position while drafting
+  const [initMeta, setInitMeta] = useState(null)   // wheel position to resume from
+  const [viewMatch, setViewMatch] = useState(null)
+
+  // keep the match in progress saved after every pick / step
+  useEffect(() => {
+    if (!['draft', 'tactics', 'chase'].includes(screen)) return
+    const ids = (arr) => arr.map((p) => (p ? p.id : null))
+    saveResume({ v: 1, t: Date.now(), screen, kind, mode, seedStr, level, vs, xi: ids(xi), attack: ids(attack), so: ids(soPicks), cap, meta: draftMeta })
+  }, [screen, kind, mode, seedStr, level, vs, xi, attack, soPicks, cap, draftMeta])
 
   // anonymous usage stats (off for opt-outs and under-18s)
   useEffect(() => {
@@ -50,6 +85,7 @@ export default function App() {
     const key = m === 'daily' ? todayKey() : m === 'vs' ? 'vs-' + (code || newCode()) : String(Date.now())
     track('game_start', { kind: k, mode: m, level: k === 'super' || m === 'vs' ? 0 : lv })
     setVs(m === 'vs' ? (code ? { role: 'follower', target: info.target, firstScore: info.firstScore, creator: info.creator } : { role: 'first', target: OPEN_TARGET }) : null)
+    setSaved(null); setDraftMeta(null); setInitMeta(null)
     setLevel(lv); setKind(k); setMode(m); setSeedStr(key); setCap(-1)
     setXi(Array(11).fill(null)); setAttack(Array(5).fill(null)); setSoPicks(Array(4).fill(null)); setResult(null); setScreen('draft')
   }
@@ -60,45 +96,66 @@ export default function App() {
   }
   // tactics confirmed -> run the simulation (the server re-runs the exact same thing)
   const confirmTactics = (order, capIdx) => {
-    const cond = conditionFor(seedStr)
     setCap(capIdx)
-    if (kind === 'bat') {
-      const rand = rng(hashStr(seedStr + order.map((p) => p.id).join('|')))
-      setXi(order); setResult(simulate(order, rand, vs ? vs.target : batTarget(level), { cap: capIdx, cond }))
-    } else if (kind === 'bowl') {
-      const rand = rng(hashStr(seedStr + 'bowl' + order.map((p) => p.id).join('|')))
-      setAttack(order); setResult({ ...simulateBowl(order, opponentFor(seedStr).players, rand, vs ? vs.target : bowlTarget(level), { cap: capIdx, cond }), opp: opponentFor(seedStr) }) // opp = team info (name, year) for the screens
-    } else {
-      const rand = rng(hashStr(seedStr + 'super' + order.map((p) => p.id).join('|')))
-      setSoPicks(order); setResult(simulateSuper(order, superOpponent(seedStr), rand, { cap: capIdx, cond }))
-    }
+    if (kind === 'bat') setXi(order); else if (kind === 'bowl') setAttack(order); else setSoPicks(order)
+    setResult(simulateFor({ kind, order, capIdx, seedStr, level, vs }))
     setScreen('chase')
   }
+  // pick up an unfinished match
+  const continueMatch = () => {
+    const r = saved; if (!r) return
+    const mk = (ids) => (ids || []).map((id) => (id ? BYID.get(id) || null : null))
+    const xi2 = mk(r.xi), at2 = mk(r.attack), so2 = mk(r.so)
+    setKind(r.kind); setMode(r.mode); setSeedStr(r.seedStr); setLevel(r.level); setVs(r.vs || null); setCap(r.cap ?? -1)
+    setXi(xi2.length ? xi2 : Array(11).fill(null)); setAttack(at2.length ? at2 : Array(5).fill(null)); setSoPicks(so2.length ? so2 : Array(4).fill(null))
+    setInitMeta(r.meta || null); setDraftMeta(r.meta || null)
+    if (r.screen === 'chase') { setResult(simulateFor({ kind: r.kind, order: r.kind === 'bat' ? xi2 : r.kind === 'bowl' ? at2 : so2, capIdx: r.cap, seedStr: r.seedStr, level: r.level, vs: r.vs || null })); setScreen('chase') }
+    else { setResult(null); setScreen(r.screen) }
+    track('game_start', { kind: r.kind, mode: r.mode, level: r.kind === 'super' || r.mode === 'vs' ? 0 : r.level, resumed: 1 })
+  }
+  const discardMatch = () => { clearResume(); setSaved(null) }
+  // save the finished match (full scorecard) on this device, and in the cloud backup if it is on
+  const recordMatch = () => {
+    const list = kind === 'bat' ? xi : kind === 'bowl' ? attack : soPicks
+    const open = result.target >= OPEN_TARGET
+    addMatch({
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), t: Date.now(), day: todayKey(), kind, mode,
+      level: kind === 'super' || mode === 'vs' ? 0 : level, target: open ? 0 : result.target || 0, vs: mode === 'vs' && vs ? vs.role : null,
+      score: result.score, wickets: result.wickets, won: !!result.won, tie: !!result.tie, balls: result.ballsUsed,
+      cap: cap >= 0 && list[cap] ? list[cap].name : null, picks: list.map((p) => ({ n: p.name, t: p.team, y: p.year })),
+      opp: kind === 'bowl' && result.opp ? { n: result.opp.name, y: result.opp.year } : kind === 'super' && result.opp ? { n: result.opp.name, y: result.opp.year, s: result.oppScore } : null,
+      ev: compactEvents(kind, result.events || []),
+    })
+    clearResume(); setSaved(null); autoBackup()
+  }
   const done = () => {
-    if (mode === 'vs') { track('game_finish', { kind, mode, level: 0, won: result.won ? 1 : 0, score: result.score }); setStats(recordVs()); setScreen('result'); return }
+    if (mode === 'vs') { track('game_finish', { kind, mode, level: 0, won: result.won ? 1 : 0, score: result.score }); setStats(recordVs()); recordMatch(); setScreen('result'); return }
     const lv = kind === 'super' ? 1 : level
     track('game_finish', { kind, mode, level: kind === 'super' ? 0 : level, won: result.won ? 1 : 0, score: result.score })
     if (result.won && kind !== 'super') track('level_cleared', { kind, level })
     setStats(mode === 'daily' ? recordDaily(kind, result.score, result.won, lv) : recordPractice(kind, result.score, result.won, lv))
+    recordMatch()
     setScreen('result')
   }
-  const home = () => setScreen('home')
-  const abandon = () => { track('draft_abandon', { kind, picks: (kind === 'bat' ? xi : kind === 'bowl' ? attack : soPicks).filter(Boolean).length }); setScreen('home') }
+  const home = () => { setSaved(readResume()); setScreen('home') }
+  const abandon = () => { track('draft_abandon', { kind, picks: (kind === 'bat' ? xi : kind === 'bowl' ? attack : soPicks).filter(Boolean).length }); setSaved(readResume()); setScreen('home') }
   const picks = kind === 'bat' ? xi : kind === 'bowl' ? attack : soPicks
   const navOn = ['home', 'board', 'stats', 'recap'].includes(screen)
 
   return (
     <div className={'app' + (navOn ? ' has-nav' : '')}>
-      {screen === 'home' && <Home stats={stats} onStart={start} onBoard={() => setScreen('board')} onStats={() => setScreen('stats')} onHelp={() => { track('howto_open'); setScreen('howto') }} onPrivacy={() => setScreen('privacy')} onRecap={() => setScreen('recap')} />}
+      {screen === 'home' && <Home stats={stats} saved={saved} onContinue={continueMatch} onDiscard={discardMatch} onBackup={() => setScreen('backup')} onStart={start} onBoard={() => setScreen('board')} onStats={() => setScreen('stats')} onHelp={() => { track('howto_open'); setScreen('howto') }} onPrivacy={() => setScreen('privacy')} onRecap={() => setScreen('recap')} />}
       {screen === 'privacy' && <Privacy onBack={home} />}
+      {screen === 'backup' && <Backup onBack={home} onRestored={() => { setStats(load()); setSaved(readResume()) }} />}
+      {screen === 'match' && viewMatch && <MatchView m={viewMatch} onBack={() => setScreen('stats')} />}
       {screen === 'howto' && <HowTo onClose={() => { markIntroSeen(); setScreen('home') }} />}
-      {screen === 'stats' && <Stats stats={stats} onBack={home} />}
+      {screen === 'stats' && <Stats stats={stats} onBack={home} onOpenMatch={(m) => { setViewMatch(m); setScreen('match') }} onBackup={() => setScreen('backup')} />}
       {screen === 'recap' && <Recap onBack={home} />}
       {screen === 'vs' && <VsIntro info={vsInfo} onPlay={() => start('vs', vsInfo.kind, 1, vsInfo.code, vsInfo)} onHome={leaveVs} />}
       {screen === 'board' && <Board onBack={home} initialKind={kind === 'super' ? 'bat' : kind} />}
-      {screen === 'draft' && kind === 'bat' && <Draft key={seedStr} vs={vs} level={level} seedStr={seedStr} mode={mode} xi={xi} setXi={setXi} onDone={toTactics} onExit={abandon} />}
-      {screen === 'draft' && kind === 'bowl' && <BowlDraft key={seedStr} vs={vs} level={level} seedStr={seedStr} mode={mode} attack={attack} setAttack={setAttack} onDone={toTactics} onExit={abandon} />}
-      {screen === 'draft' && kind === 'super' && <SuperDraft key={seedStr} seedStr={seedStr} mode={mode} picks={soPicks} setPicks={setSoPicks} onDone={toTactics} onExit={abandon} />}
+      {screen === 'draft' && kind === 'bat' && <Draft key={seedStr} vs={vs} level={level} seedStr={seedStr} mode={mode} xi={xi} setXi={setXi} initMeta={initMeta} onMeta={setDraftMeta} onDone={toTactics} onExit={abandon} />}
+      {screen === 'draft' && kind === 'bowl' && <BowlDraft key={seedStr} vs={vs} level={level} seedStr={seedStr} mode={mode} attack={attack} setAttack={setAttack} initMeta={initMeta} onMeta={setDraftMeta} onDone={toTactics} onExit={abandon} />}
+      {screen === 'draft' && kind === 'super' && <SuperDraft key={seedStr} seedStr={seedStr} mode={mode} picks={soPicks} setPicks={setSoPicks} initMeta={initMeta} onMeta={setDraftMeta} onDone={toTactics} onExit={abandon} />}
       {screen === 'tactics' && <Tactics key={seedStr + kind} kind={kind} picks={picks} seedStr={seedStr} onConfirm={confirmTactics} />}
       {screen === 'chase' && kind === 'bat' && <Chase xi={xi} result={result} onDone={done} />}
       {screen === 'chase' && kind === 'bowl' && <BowlInnings result={result} onDone={done} />}
@@ -127,7 +184,17 @@ function unlockMsg({ won, level, levels, frontier, nextText, gap, kind }) {
   return null
 }
 
-function Home({ stats, onStart, onBoard, onStats, onHelp, onRecap, onPrivacy }) {
+function resumeLabel(r) {
+  const kindName = { bat: 'Batting', bowl: 'Bowling', super: 'Super Over' }[r.kind]
+  const mode = r.mode === 'daily' ? 'today' : r.mode === 'vs' ? 'challenge' : 'free play'
+  const lvl = r.kind !== 'super' && r.mode !== 'vs' ? ` · level ${r.level}` : ''
+  const arr = r.kind === 'bat' ? r.xi : r.kind === 'bowl' ? r.attack : r.so
+  const total = (arr || []).length, picked = (arr || []).filter(Boolean).length
+  const step = r.screen === 'draft' ? `${picked}/${total} picked` : r.screen === 'tactics' ? 'team ready, set tactics' : 'innings in progress'
+  return `${kindName} ${mode}${lvl} · ${step}`
+}
+
+function Home({ stats, saved, onContinue, onDiscard, onBackup, onStart, onBoard, onStats, onHelp, onRecap, onPrivacy }) {
   const today = todayKey()
   const streak = liveStreak(stats)
   const batDone = stats.history[histKey('bat', today)]
@@ -140,10 +207,20 @@ function Home({ stats, onStart, onBoard, onStats, onHelp, onRecap, onPrivacy }) 
   const batUnlocked = stats.batLevel || 1
   const [lv, setLv] = useState(unlocked)
   const [bl, setBl] = useState(batUnlocked)
+  const [bnudge, setBnudge] = useState(() => { try { return loadMatches().length >= 2 && !getCode() && localStorage.getItem('chase300.bnudge') !== '1' } catch { return false } })
   const [nudge, setNudge] = useState(() => stats.played >= 1 && !nudgeDismissed() && !getProfile() && !isMinor())
   const Done = ({ d }) => <div className="done">Today <b>{d.score}</b>{d.won ? ' 🏆' : ''}</div>
   return (
     <main className="home compact">
+      {saved && (
+        <div className="resume">
+          <div className="rtxt">
+            <b>▶ Continue your match</b>
+            <small>{resumeLabel(saved)}</small>
+          </div>
+          <div className="rbtn"><button className="primary" onClick={onContinue}>Continue</button><button className="link" onClick={onDiscard}>Discard</button></div>
+        </div>
+      )}
       <div className="hbar">
         <div className="brand"><span className="logo sm">300</span><div><h1>Chase 300</h1><small>Daily franchise T20 draft</small></div></div>
         <button className="theme" onClick={flip} aria-label="Toggle theme">{theme === 'dark' ? '☀️' : '🌙'}</button>
@@ -155,7 +232,13 @@ function Home({ stats, onStart, onBoard, onStats, onHelp, onRecap, onPrivacy }) 
       </div>
       {stats.freezeUsedOn === today && <p className="line">🧊 A streak freeze saved your streak today.</p>}
       <BriefPills seedStr={today} />
-      {nudge && (
+      {bnudge && (
+        <div className="nudge">
+          <span>☁️ Save your progress so a new phone never wipes it</span>
+          <div><button className="link" onClick={onBackup}>Set up</button><button className="link" onClick={() => { try { localStorage.setItem('chase300.bnudge', '1') } catch {} setBnudge(false) }}>Later</button></div>
+        </div>
+      )}
+      {!bnudge && nudge && (
         <div className="nudge">
           <span>👋 Help shape Chase 300: tell us a little about you <small>(optional)</small></span>
           <div><button className="link" onClick={onPrivacy}>Add</button><button className="link" onClick={() => { dismissNudge(); setNudge(false) }}>Not now</button></div>
@@ -200,6 +283,7 @@ function Home({ stats, onStart, onBoard, onStats, onHelp, onRecap, onPrivacy }) 
       <div className="hfoot">
         <button className="link" onClick={onHelp}>❓ How to play</button>
         <Reminders />
+        <button className="link" onClick={onBackup}>☁️ Save progress</button>
         <button className="link" onClick={onPrivacy}>🔒 Privacy &amp; data</button>
       </div>
       <p className="fine">Fan-made, free and unofficial. Ratings are approximate. Not affiliated with or endorsed by any league, board, team or player. Names are used for identification only. <a href="/privacy.html">Privacy</a></p>
@@ -222,11 +306,12 @@ function Stepper({ levels, unlocked, cleared, value, onChange, text }) {
   )
 }
 
-function Draft({ vs, level, seedStr, mode, xi, setXi, onDone, onExit }) {
+function Draft({ vs, level, seedStr, mode, xi, setXi, initMeta, onMeta, onDone, onExit }) {
   const mod = useMemo(() => modifierFor(seedStr), [seedStr])
   const spins = useMemo(() => makeSpins(hashStr('spin' + seedStr), squadsFor(mod)), [seedStr, mod])
-  const [spinIdx, setSpinIdx] = useState(0)
-  const [rerolls, setRerolls] = useState(1)
+  const [spinIdx, setSpinIdx] = useState((initMeta && initMeta.spinIdx) || 0)
+  const [rerolls, setRerolls] = useState(initMeta ? initMeta.rerolls : 1)
+  useEffect(() => { if (onMeta) onMeta({ spinIdx, rerolls }) }, [spinIdx, rerolls])
   const [rolling, setRolling] = useState(true)
   const [ticker, setTicker] = useState('')
   const [sel, setSel] = useState(null)
@@ -484,12 +569,13 @@ function Reminders() {
   )
 }
 
-function BowlDraft({ vs, level, seedStr, mode, attack, setAttack, onDone, onExit }) {
+function BowlDraft({ vs, level, seedStr, mode, attack, setAttack, initMeta, onMeta, onDone, onExit }) {
   const mod = useMemo(() => modifierFor(seedStr), [seedStr])
   const spins = useMemo(() => makeSpins(hashStr('bspin' + seedStr), squadsFor(mod)), [seedStr, mod])
   const opp = useMemo(() => opponentFor(seedStr), [seedStr])
-  const [spinIdx, setSpinIdx] = useState(0)
-  const [rerolls, setRerolls] = useState(1)
+  const [spinIdx, setSpinIdx] = useState((initMeta && initMeta.spinIdx) || 0)
+  const [rerolls, setRerolls] = useState(initMeta ? initMeta.rerolls : 1)
+  useEffect(() => { if (onMeta) onMeta({ spinIdx, rerolls }) }, [spinIdx, rerolls])
   const [rolling, setRolling] = useState(true)
   const [ticker, setTicker] = useState('')
   const [sel, setSel] = useState(null)
@@ -829,12 +915,12 @@ function LevelGrid({ title, kind, total, cleared, frontier, data }) {
   )
 }
 
-function WinHistory({ log }) {
+function WinHistory({ log, title = 'Win history' }) {
   const [all, setAll] = useState(false)
   const shown = all ? log : log.slice(0, 8)
   return (
     <>
-      <h2>Win history <small>{log.length}</small></h2>
+      <h2>{title} <small>{log.length}</small></h2>
       {log.length === 0 && <p className="line">Beat a level and it will appear here.</p>}
       <ul className="recent">
         {shown.map((w, i) => (
@@ -850,7 +936,7 @@ function WinHistory({ log }) {
   )
 }
 
-function Stats({ stats, onBack }) {
+function Stats({ stats, onBack, onOpenMatch, onBackup }) {
   const today = new Date()
   const key = (d) => todayKey(d)
   const played = (k) => stats.history[k] || stats.history['bowl:' + k]
@@ -866,7 +952,7 @@ function Stats({ stats, onBack }) {
   const earned = BADGES.filter((b) => b.test(stats))
   return (
     <main className="stats-screen">
-      <header><button className="link" onClick={onBack}>← Back</button><b>Stats &amp; badges</b><span /></header>
+      <header><button className="link" onClick={onBack}>← Back</button><b>Stats &amp; badges</b><button className="link" onClick={onBackup}>☁️ Backup</button></header>
       <div className="stats">
         <div><b>🔥 {liveStreak(stats)}</b><span>current streak</span></div>
         <div><b>{Math.max(stats.bestStreak || 0, liveStreak(stats))}</b><span>best streak</span></div>
@@ -891,7 +977,12 @@ function Stats({ stats, onBack }) {
           return <div key={b.id} className={'badge' + (ok ? ' got' : '')}><span>{ok ? b.icon : '🔒'}</span><b>{b.name}</b><small>{b.desc}</small></div>
         })}
       </div>
-      <WinHistory log={stats.winLog || []} />
+      <MatchHistory onOpen={onOpenMatch} />
+      {(() => {
+        const ms = loadMatches(); const first = ms.length ? ms[ms.length - 1].day : '9999'
+        const legacy = (stats.winLog || []).filter((w) => w.day < first)
+        return legacy.length ? <WinHistory log={legacy} title="Earlier wins" /> : null
+      })()}
     </main>
   )
 }

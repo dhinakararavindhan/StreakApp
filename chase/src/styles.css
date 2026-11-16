@@ -768,3 +768,16 @@ select { font: inherit; font-size: 0.9rem; color: var(--ink); background: var(--
 .pv-btns { display: flex; gap: 8px; } .pv-btns button { flex: 1; }
 .pv-msg { margin: 0; font-size: 0.82rem; font-weight: 600; color: var(--accent); text-align: center; }
 .privacy a.link { text-align: center; font-size: 0.82rem; }
+
+/* ---------- continue card, match history, backup ---------- */
+.resume { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 12px; border-radius: 18px; background: var(--sheen), var(--glass); border: 1px solid rgba(var(--a1), 0.45); box-shadow: var(--glass-hi), 0 0 0 3px rgba(var(--a1), 0.1), var(--depth-sm); }
+.rtxt { display: flex; flex-direction: column; min-width: 0; } .rtxt b { font-size: 0.92rem; } .rtxt small { color: var(--mut); font-size: 0.72rem; font-weight: 600; }
+.rbtn { display: flex; flex-direction: column; align-items: stretch; flex: none; gap: 2px; } .rbtn .primary { padding: 9px 16px; font-size: 0.85rem; border-radius: 12px; } .rbtn .link { padding: 2px; font-size: 0.7rem; }
+.matches { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.matches li { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 16px; background: var(--sheen), var(--glass); border: 1px solid var(--glass-edge); box-shadow: var(--glass-hi), var(--depth-sm); cursor: pointer; }
+.matches li.won { border-color: rgba(18, 166, 106, 0.35); }
+.matches .mi { font-size: 1.3rem; } .matches .mt { flex: 1; display: flex; flex-direction: column; min-width: 0; } .matches .mt b { font-size: 0.88rem; } .matches small { color: var(--mut); font-size: 0.7rem; font-weight: 600; }
+.matches .ms { text-align: right; display: flex; flex-direction: column; } .matches .ms b { font-size: 1.05rem; } .matches .ms small.w { color: var(--grn); font-weight: 800; }
+.mv-top { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 2px; } .mv-top .big { font-size: 3.4rem; } .mv-res { color: var(--mut); font-size: 0.82rem; font-weight: 600; }
+.mv-team { display: flex; flex-direction: column; gap: 6px; } .mv-picks { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 0.82rem; } .mv-picks small { color: var(--mut); } .mv-picks .c { font-weight: 800; color: var(--accent); }
+.bk-code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 1.35rem; font-weight: 800; letter-spacing: 0.06em; text-align: center; padding: 14px 8px; border-radius: 14px; background: var(--card2); border: 1px dashed var(--line); user-select: all; }

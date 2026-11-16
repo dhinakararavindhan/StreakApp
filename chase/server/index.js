@@ -30,6 +30,9 @@ AN.purgeOld(DATA_DIR)
 let dirty = true // persist the freshly generated salt
 const sha = (s) => crypto.createHash('sha256').update(String(s)).digest()
 const adminOK = (req) => !!ADMIN_TOKEN && crypto.timingSafeEqual(sha(req.headers['x-admin-token'] || ''), sha(ADMIN_TOKEN))
+// cloud backups: one file per code, named by a one-way hash (the code itself is never stored)
+const validSaveCode = (c) => typeof c === 'string' && /^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){3}$/.test(c)
+const savePath = (code) => path.join(DATA_DIR, 'saves', crypto.createHash('sha256').update('save|' + code).digest('hex').slice(0, 40) + '.json')
 const validDevice = (d) => typeof d === 'string' && d.length >= 8 && d.length <= 64
 const save = () => { dirty = true }
 setInterval(() => {
@@ -190,9 +193,9 @@ const clientIp = (req) => req.headers['fly-client-ip'] || String(req.headers['x-
 const limited = (ip) => { const n = (rate.get(ip) || 0) + 1; rate.set(ip, n); return n > 120 }
 setInterval(() => rate.clear(), 60000).unref()
 
-const readJson = (req) => new Promise((res, rej) => {
+const readJson = (req, max = 20000) => new Promise((res, rej) => {
   let b = ''
-  req.on('data', (c) => { b += c; if (b.length > 20000) { rej(new Error('big')); req.destroy() } })
+  req.on('data', (c) => { b += c; if (b.length > max) { rej(new Error('big')); req.destroy() } })
   req.on('end', () => { try { res(JSON.parse(b || '{}')) } catch (e) { rej(e) } })
 })
 const send = (res, code, obj) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(obj)) }
@@ -276,6 +279,23 @@ const server = http.createServer(async (req, res) => {
           }
           save(); return send(res, 200, { sent, failed })
         }
+      }
+      if (url.pathname === '/api/save' && (req.method === 'PUT' || req.method === 'DELETE')) {
+        const body = await readJson(req, 700000)
+        if (!validSaveCode(body.code)) return send(res, 400, { error: 'bad code' })
+        const f = savePath(body.code)
+        if (req.method === 'DELETE') { try { fs.unlinkSync(f) } catch {} return send(res, 200, { ok: true }) }
+        const b = body.blob
+        if (!b || typeof b !== 'object' || typeof b.stats !== 'object' || !Array.isArray(b.matches) || b.matches.length > 100) return send(res, 400, { error: 'bad backup' })
+        fs.mkdirSync(path.dirname(f), { recursive: true })
+        fs.writeFileSync(f + '.tmp', JSON.stringify({ blob: b, at: Date.now() })); fs.renameSync(f + '.tmp', f)
+        return send(res, 200, { ok: true, at: Date.now() })
+      }
+      if (req.method === 'POST' && url.pathname === '/api/restore') {
+        const body = await readJson(req)
+        if (!validSaveCode(body.code)) return send(res, 400, { error: 'bad code' })
+        let rec; try { rec = JSON.parse(fs.readFileSync(savePath(body.code), 'utf8')) } catch { return send(res, 404, { error: 'no backup found for that code' }) }
+        return send(res, 200, rec)
       }
       if (req.method === 'GET' && url.pathname === '/api/weekly') {
         const day = url.searchParams.get('day') || ''
