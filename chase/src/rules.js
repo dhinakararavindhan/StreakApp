@@ -1,6 +1,6 @@
 // Shared by the app and the server: daily pitch conditions, daily draft twists,
 // bowler tags (new ball / spin / death), captain bonuses and weekly points.
-import { SQUADS, BOWL_MIN } from './data.js'
+import { SQUADS, PLAYABLE, BOWL_MIN } from './data.js'
 import { hashStr } from './rng.js'
 
 // ---------- bowler tags ----------
@@ -97,10 +97,14 @@ export const MODIFIERS = [
   { id: 'classic', icon: '📼', title: 'Classic era', desc: 'Only squads from 2016 or earlier.', squadOK: (s) => s.year <= 2016, playerOK: () => true },
   { id: 'modern', icon: '⚡', title: 'Modern era', desc: 'Only squads from 2020 or later.', squadOK: (s) => s.year >= 2020, playerOK: () => true },
   { id: 'underdog', icon: '🐶', title: 'Underdog day', desc: 'No superstars: players rated POW 96+, BAT 88+ or BWL 95+ are banned.', squadOK: () => true, playerOK: (p) => !star(p) },
+  { id: 'duo', icon: '🤝', title: 'Franchise duo', desc: 'At most two players from the same franchise in your side.', squadOK: () => true, playerOK: (p, picks) => picks.filter((q) => q && q.team === p.team).length < 2 },
   { id: 'city', icon: '🏙️', title: 'One per city', desc: 'No two players from the same city in your side.', squadOK: () => true, playerOK: (p, picks) => !picks.some((q) => q && q.team === p.team) },
 ]
-export const modifierFor = (seedStr) => MODIFIERS[hashStr('mod' + seedStr) % MODIFIERS.length]
-export const squadsFor = (mod) => SQUADS.filter(mod.squadOK)
+// a twist is only used if it can actually be played with the squads that are switched on
+const cities = new Set(PLAYABLE.map((s) => s.short)).size
+const USABLE = MODIFIERS.filter((m) => PLAYABLE.some(m.squadOK) && (m.id !== 'city' || cities >= 11) && (m.id !== 'in' || PLAYABLE.some((s) => s.region !== 'IN')))
+export const modifierFor = (seedStr) => USABLE[hashStr('mod' + seedStr) % USABLE.length]
+export const squadsFor = (mod) => PLAYABLE.filter(mod.squadOK)
 const sqById = new Map(SQUADS.map((s) => [s.id, s]))
 // is a pick (player) allowed given the day's twist and earlier picks?
 export const pickAllowed = (mod, p, picks) => mod.squadOK(sqById.get(p.sid)) && mod.playerOK(p, picks)

@@ -1,9 +1,9 @@
-import { SQUADS, BOWL_MIN } from '../src/data.js'
+import { PLAYABLE, BOWL_MIN } from '../src/data.js'
 import { simulateSuper, superOpponent } from '../src/sim.js'
 import { CONDITIONS } from '../src/rules.js'
 import { rng } from '../src/rng.js'
 const r = rng(11)
-const all = SQUADS.flatMap((s) => s.players)
+const all = PLAYABLE.flatMap((s) => s.players)
 const bats = all.filter((p) => p.pow >= 60), bowlers = all.filter((p) => p.bwl >= BOWL_MIN)
 const best = (pool, k, key) => { let b = null; for (let i = 0; i < k; i++) { const p = pool[Math.floor(r() * pool.length)]; if (!b || key(p) > key(b)) b = p } return b }
 for (const skill of [1, 3, 8]) {

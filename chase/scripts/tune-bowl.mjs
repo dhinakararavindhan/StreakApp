@@ -1,9 +1,9 @@
-import { SQUADS, BOWL_MIN, bowlTarget } from '../src/data.js'
+import { PLAYABLE, BOWL_MIN, bowlTarget } from '../src/data.js'
 import { simulateBowl, opponentFor } from '../src/sim.js'
 import { CONDITIONS } from '../src/rules.js'
 import { rng } from '../src/rng.js'
 const r = rng(7)
-const pool = SQUADS.flatMap((s) => s.players).filter((p) => p.bwl >= BOWL_MIN)
+const pool = PLAYABLE.flatMap((s) => s.players).filter((p) => p.bwl >= BOWL_MIN)
 function attack(skill) {
   const a = [], used = new Set()
   while (a.length < 5) {

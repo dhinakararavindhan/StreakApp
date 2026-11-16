@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { SQUADS, SLOT_LABELS, TARGET, BALLS, BOWL_SLOTS, BOWL_LEVELS, bowlTarget, BOWL_MIN, BAT_LEVELS, batTarget, OPEN_TARGET } from './data.js'
+import { SQUADS, PLAYABLE, isPlayable, SLOT_LABELS, TARGET, BALLS, BOWL_SLOTS, BOWL_LEVELS, bowlTarget, BOWL_MIN, BAT_LEVELS, batTarget, OPEN_TARGET } from './data.js'
 import { hashStr, rng, todayKey } from './rng.js'
 import { simulate, teamRatings, verdict, simulateBowl, simulateSuper, superOpponent, opponentFor, bowlRatings, bowlVerdict, simulateFull, autoAttack } from './sim.js'
 import { load, liveStreak, recordDaily, recordPractice, recordVs, histKey, seenIntro, markIntroSeen, BADGES } from './storage.js'
@@ -24,7 +24,7 @@ function readResume() {
   if (!r || r.v !== 1 || !['draft', 'tactics', 'attack', 'chase'].includes(r.screen) || !['bat', 'bowl', 'super', 'full'].includes(r.kind)) return null
   if (r.mode === 'daily' && r.seedStr !== todayKey()) { clearResume(); return null } // yesterday's daily is gone
   const ids = [...(r.xi || []), ...(r.attack || []), ...(r.so || []), ...(r.fa || []), r.ip].filter(Boolean)
-  if (!ids.every((id) => BYID.has(id))) { clearResume(); return null }
+  if (!ids.every((id) => BYID.has(id) && isPlayable(BYID.get(id)))) { clearResume(); return null } // also drops saves with squads that are switched off
   return r
 }
 
@@ -407,7 +407,7 @@ function Draft({ full = false, impactOn = false, impactP = null, setImpactP = ()
     let n = 0
     const t = setInterval(() => {
       n++
-      setTicker(SQUADS[Math.floor(Math.random() * SQUADS.length)].short + ' ' + (2008 + Math.floor(Math.random() * 17)))
+      setTicker(PLAYABLE[Math.floor(Math.random() * PLAYABLE.length)].short + ' ' + (2008 + Math.floor(Math.random() * 17)))
       if (n > 12) { clearInterval(t); setRolling(false) }
     }, 70)
     return () => clearInterval(t)
@@ -688,7 +688,7 @@ function BowlDraft({ vs, level, seedStr, mode, attack, setAttack, initMeta, onMe
     let n = 0
     const t = setInterval(() => {
       n++
-      setTicker(SQUADS[Math.floor(Math.random() * SQUADS.length)].short + ' ' + (2008 + Math.floor(Math.random() * 17)))
+      setTicker(PLAYABLE[Math.floor(Math.random() * PLAYABLE.length)].short + ' ' + (2008 + Math.floor(Math.random() * 17)))
       if (n > 12) { clearInterval(t); setRolling(false) }
     }, 70)
     return () => clearInterval(t)

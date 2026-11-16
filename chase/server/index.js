@@ -6,7 +6,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 const webpush = createRequire(import.meta.url)('web-push')
-import { SQUADS, batTarget, bowlTarget, BOWL_MIN, BAT_LEVELS, BOWL_LEVELS, OPEN_TARGET } from '../src/data.js'
+import { SQUADS, isPlayable, batTarget, bowlTarget, BOWL_MIN, BAT_LEVELS, BOWL_LEVELS, OPEN_TARGET } from '../src/data.js'
 import { simulate, simulateBowl, simulateSuper, superOpponent, opponentFor, simulateFull } from '../src/sim.js'
 import { conditionFor, modifierFor, pickAllowed, orderOK, dailyPoints, mondayOf } from '../src/rules.js'
 import crypto from 'node:crypto'
@@ -85,10 +85,13 @@ setInterval(sendReminders, 10 * 60 * 1000).unref()
 const twistOK = (mod, list) => list.every((p) => pickAllowed(mod, p, list.filter((q) => q !== p)))
 
 // ---------- score verification ----------
-const byId = new Map(SQUADS.flatMap((s) => s.players.map((p) => [p.id, p])))
+const byId = new Map(SQUADS.flatMap((s) => s.players.map((p) => [p.id, p]))) // every player (incl. squads switched off)
+const allPlayable = (list) => list.every((p) => p && isPlayable(p))
 function verify(kind, ids, seed, level, cap = -1, target, extra = {}) {
   const cond = conditionFor(seed), mod = modifierFor(seed)
   const capOK = (n) => Number.isInteger(cap) && cap >= -1 && cap < n
+  // only squads that are switched on (see ACTIVE_REGIONS in src/data.js) can be played
+  if (!allPlayable([...(Array.isArray(ids) ? ids : []), ...(Array.isArray(extra.attack) ? extra.attack : []), extra.impact && extra.impact.id].filter(Boolean).map((id) => byId.get(id)))) return null
   if (kind === 'full') {
     // a whole match: the XI (batting order), five bowlers chosen from that XI, and who goes first
     if (!Array.isArray(ids) || ids.length !== 11 || !capOK(11)) return null

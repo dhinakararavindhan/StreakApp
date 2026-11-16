@@ -1,4 +1,4 @@
-import { SQUADS } from '../src/data.js'
+import { PLAYABLE } from '../src/data.js'
 import { simulateFull, autoAttack } from '../src/sim.js'
 import { CONDITIONS } from '../src/rules.js'
 import { rng } from '../src/rng.js'
@@ -9,12 +9,12 @@ function randomXI(skill) {
   for (const s of [...Array(11).keys()].sort(() => r() - 0.5)) {
     let best = null
     for (let k = 0; k < skill; k++) {
-      const sq = SQUADS[Math.floor(r() * SQUADS.length)], c = sq.players.filter((p) => fits(p, s) && !used.has(p.name))
+      const sq = PLAYABLE[Math.floor(r() * PLAYABLE.length)], c = sq.players.filter((p) => fits(p, s) && !used.has(p.name))
       if (!c.length) continue
       const p = c[Math.floor(r() * c.length)]
       if (!best || p.bat + p.pow + p.bwl > best.bat + best.pow + best.bwl) best = p
     }
-    if (!best) best = SQUADS.flatMap((q) => q.players).find((p) => fits(p, s) && !used.has(p.name))
+    if (!best) best = PLAYABLE.flatMap((q) => q.players).find((p) => fits(p, s) && !used.has(p.name))
     used.add(best.name); xi[s] = best
   }
   return xi

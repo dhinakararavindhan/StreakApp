@@ -291,6 +291,12 @@ export const REGION = { che: 'IN', mum: 'IN', kol: 'IN', blr: 'IN', hyd: 'IN', j
   gqe: 'SA', paa: 'SA', joh: 'SA', pre: 'SA', kar: 'PK', isl: 'PK', mul: 'PK', que: 'PK', pes: 'PK', lah: 'PK', lon: 'EN', not: 'EN' }
 export const SQUADS = RAW.map((s) => ({ ...s, region: REGION[s.id.slice(0, 3)], players: s.players.map((p) => ({ ...p, id: `${s.id}:${p.name}`, sid: s.id, region: REGION[s.id.slice(0, 3)], team: s.short, year: s.year })) }))
 
+// Which leagues are playable. 'IN' = IPL franchises. For the first launch only the IPL is on; the other leagues'
+// squads stay in the data and come back by adding their region here: 'AU' (BBL), 'PK' (PSL), 'WI' (CPL), 'SA' (SA20), 'EN' (The Hundred).
+export const ACTIVE_REGIONS = ['IN']
+export const PLAYABLE = SQUADS.filter((s) => ACTIVE_REGIONS.includes(s.region))
+export const isPlayable = (p) => ACTIVE_REGIONS.includes(p.region)
+
 export const SLOT_LABELS = ['Opener', 'Opener', 'No. 3', 'No. 4', 'No. 5', 'No. 6', 'No. 7', 'No. 8', 'No. 9', 'No. 10', 'No. 11']
 export const TARGET = 300 // brand name; the top batting level is 320
 export const BAT_LEVELS = 13

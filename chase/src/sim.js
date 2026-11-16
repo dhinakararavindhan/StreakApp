@@ -1,4 +1,4 @@
-import { BALLS, SQUADS, BOWL_SCHEDULE, bowlTarget, OPEN_TARGET } from './data.js'
+import { BALLS, PLAYABLE, BOWL_SCHEDULE, bowlTarget, OPEN_TARGET } from './data.js'
 import { hashStr, rng } from './rng.js'
 import { batAdjust, bowlAdjust, phaseBonus, CAPTAIN } from './rules.js'
 
@@ -108,7 +108,7 @@ export function verdict(res, target = res.target) {
 // ---------------- Bowling challenge ----------------
 // The daily opponent: a squad's XI, in batting order.
 export function opponentFor(seedStr) {
-  const sq = SQUADS[hashStr('opp' + seedStr) % SQUADS.length]
+  const sq = PLAYABLE[hashStr('opp' + seedStr) % PLAYABLE.length]
   return { id: sq.id, name: sq.name, year: sq.year, players: [...sq.players].sort((a, b) => a.lo - b.lo || b.bat - a.bat) }
 }
 
@@ -184,7 +184,7 @@ function superInnings(bats, bowler, rand, cond, capIdx = -1) {
 
 // The daily Super Over opponent: the squad's three best hitters and best bowler.
 export function superOpponent(seedStr) {
-  const sq = SQUADS[hashStr('so' + seedStr) % SQUADS.length]
+  const sq = PLAYABLE[hashStr('so' + seedStr) % PLAYABLE.length]
   const bats = [...sq.players].sort((a, b) => b.pow + b.bat - (a.pow + a.bat)).slice(0, 3)
   const bowler = [...sq.players].sort((a, b) => b.bwl - a.bwl)[0]
   return { id: sq.id, name: sq.name, year: sq.year, bats, bowler }

@@ -1,4 +1,4 @@
-import { SQUADS, batTarget, BAT_LEVELS } from '../src/data.js'
+import { PLAYABLE, batTarget, BAT_LEVELS } from '../src/data.js'
 import { CONDITIONS } from '../src/rules.js'
 import { simulate } from '../src/sim.js'
 import { rng } from '../src/rng.js'
@@ -12,13 +12,13 @@ function randomXI(skill) {
   for (const s of order) {
     let best = null
     for (let k = 0; k < skill; k++) {
-      const sq = SQUADS[Math.floor(r() * SQUADS.length)]
+      const sq = PLAYABLE[Math.floor(r() * PLAYABLE.length)]
       const c = sq.players.filter((p) => slotFits(p, s) && !used.has(p.name))
       if (!c.length) continue
       const p = c[Math.floor(r() * c.length)]
       if (!best || p.bat + p.pow + p.bwl > best.bat + best.pow + best.bwl) best = p
     }
-    if (!best) { best = SQUADS.flatMap((q) => q.players).find((p) => slotFits(p, s) && !used.has(p.name)) }
+    if (!best) { best = PLAYABLE.flatMap((q) => q.players).find((p) => slotFits(p, s) && !used.has(p.name)) }
     used.add(best.name); xi[s] = best
   }
   return xi

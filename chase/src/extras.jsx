@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { SQUADS, BOWL_SLOTS, BOWL_MIN, batTarget, bowlTarget } from './data.js'
+import { SQUADS, PLAYABLE, isPlayable, BOWL_SLOTS, BOWL_MIN, batTarget, bowlTarget } from './data.js'
 import { hashStr, todayKey } from './rng.js'
 import { superOpponent, opponentFor, autoAttack } from './sim.js'
 import { conditionFor, modifierFor, squadsFor, pickAllowed, tagOf, TAG_LABEL, phaseBonus, orderOK, nativeSlot, isPower, isAnchor, pitchFitBat, pitchFitBowl } from './rules.js'
@@ -185,7 +185,7 @@ export function SuperDraft({ seedStr, mode, picks, setPicks, initMeta, onMeta, o
     if (picked >= 4) return
     setRolling(true); setSel(null); window.scrollTo(0, 0)
     let n = 0
-    const t = setInterval(() => { n++; setTicker(SQUADS[Math.floor(Math.random() * SQUADS.length)].short + ' ' + (2008 + Math.floor(Math.random() * 17))); if (n > 12) { clearInterval(t); setRolling(false) } }, 70)
+    const t = setInterval(() => { n++; setTicker(PLAYABLE[Math.floor(Math.random() * PLAYABLE.length)].short + ' ' + (2008 + Math.floor(Math.random() * 17))); if (n > 12) { clearInterval(t); setRolling(false) } }, 70)
     return () => clearInterval(t)
   }, [spinIdx])
   useEffect(() => { if (!rolling && picked < 4 && !hasOption) setSpinIdx((i) => i + 1) }, [rolling, hasOption, picked])
