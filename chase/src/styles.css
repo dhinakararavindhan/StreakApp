@@ -745,3 +745,26 @@ body::before {
 .badge small { font-size: 0.6rem; line-height: 1.25; }
 .cal { gap: 5px; }
 .cal span { aspect-ratio: 1.45; border-radius: 10px; font-size: 0.72rem; }
+
+/* ---------- privacy & data screen, about-you nudge ---------- */
+.nudge { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 12px; border-radius: 16px; background: var(--sheen), var(--glass); border: 1px solid var(--glass-edge); box-shadow: var(--glass-hi), var(--depth-sm); font-size: 0.78rem; font-weight: 600; }
+.nudge small { color: var(--mut); font-weight: 600; }
+.nudge > div { display: flex; flex: none; } .nudge .link { padding: 6px 8px; font-size: 0.78rem; }
+.privacy header { display: flex; justify-content: space-between; align-items: center; font-weight: 700; }
+.pv { display: flex; flex-direction: column; gap: 10px; }
+.pv small { color: var(--mut); font-size: 0.74rem; line-height: 1.4; font-weight: 500; display: block; }
+.pv .optl { display: inline; margin-left: 6px; font-weight: 700; }
+.pv-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.pv-row > div { display: flex; flex-direction: column; gap: 2px; }
+.switch { width: 52px; height: 30px; padding: 3px; border-radius: 999px; background: rgba(var(--ink-rgb), 0.18); border: 0; flex: none; transition: background 0.15s; }
+.switch i { display: block; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3); transition: transform 0.15s; }
+.switch.on { background: var(--accent); } .switch.on i { transform: translateX(22px); }
+.pv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.pv-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 0.72rem; font-weight: 700; color: var(--mut); }
+.pv-grid .wide { grid-column: 1 / -1; }
+select { font: inherit; font-size: 0.9rem; color: var(--ink); background: var(--card2); border: 1px solid var(--line); border-radius: 12px; padding: 11px 10px; }
+.check { display: flex; gap: 10px; align-items: flex-start; font-size: 0.76rem; font-weight: 500; color: var(--mut); line-height: 1.4; }
+.check input { width: 20px; height: 20px; padding: 0; margin-top: 1px; flex: none; accent-color: var(--accent); }
+.pv-btns { display: flex; gap: 8px; } .pv-btns button { flex: 1; }
+.pv-msg { margin: 0; font-size: 0.82rem; font-weight: 600; color: var(--accent); text-align: center; }
+.privacy a.link { text-align: center; font-size: 0.82rem; }

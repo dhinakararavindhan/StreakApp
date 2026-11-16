@@ -18,5 +18,7 @@ services:
         value: /data/db.json
       - key: CONTACT_EMAIL
         sync: false
+      - key: ADMIN_TOKEN
+        sync: false   # long random secret; opens /admin (analytics dashboard + push broadcast)
       - key: VAPID_SUBJECT
         sync: false   # e.g. mailto:you@example.com

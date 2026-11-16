@@ -51,3 +51,8 @@ export const submitVs = (code, kind, name, picks, level, cap = -1) =>
   j(`/vs/${code}`, { method: 'POST', body: JSON.stringify({ device: deviceId(), kind, level, name, cap, xi: picks.map((p) => p.id) }) })
 export const fetchWeekly = (day) => j(`/weekly?day=${encodeURIComponent(day)}&device=${encodeURIComponent(deviceId())}`)
 export const fetchRecap = (day) => j(`/recap?day=${encodeURIComponent(day)}`)
+
+// ---- optional profile + data deletion ----
+export const saveProfile = (p) => j('/profile', { method: 'PUT', body: JSON.stringify({ device: deviceId(), consent: true, ...p }) })
+export const deleteProfile = () => j('/profile', { method: 'DELETE', body: JSON.stringify({ device: deviceId() }) })
+export const deleteMe = () => j('/me', { method: 'DELETE', body: JSON.stringify({ device: deviceId() }) })

@@ -6,6 +6,7 @@ import { conditionFor, modifierFor, squadsFor, pickAllowed, tagOf, TAG_LABEL, ph
 import { getName, setName, submitScore, fetchWeekly, fetchRecap } from './api.js'
 import { liveStreak } from './storage.js'
 import { shareCard } from './card.js'
+import { track } from './analytics.js'
 import { makeSpins, oversStr, initials, avatarColor } from './util.js'
 
 export const Av = ({ p }) => <span className="av" style={{ background: avatarColor(p) }}>{initials(p.name)}</span>
@@ -269,7 +270,7 @@ export function SuperResult({ picks, cap, result, mode, stats, seedStr, onHome, 
   const headline = result.won ? '🏆 You win!' : result.tie ? '🤝 Tied' : '💔 You lose'
   const text = `⚡ Chase 300 Super Over ${mode === 'daily' ? seedStr : ''}\n${result.score}/${result.wickets} vs ${result.oppScore} (${result.opp.name} ${result.opp.year}) ${result.won ? '🏆' : ''}\n${picks.map((p) => p.name).join(' · ')}`
   const [copied, setCopied] = useState(false)
-  const share = async () => { try { if (navigator.share) await navigator.share({ text }); else { await navigator.clipboard.writeText(text); setCopied(true) } } catch {} }
+  const share = async () => { track('share', { kind: 'super' }); try { if (navigator.share) await navigator.share({ text }); else { await navigator.clipboard.writeText(text); setCopied(true) } } catch {} }
   return (
     <main className="result has-cta">
       <div className={'big' + (result.won ? ' win' : '')} style={{ fontSize: '3rem' }}>{headline}</div>

@@ -4,6 +4,8 @@ import { hashStr, rng, todayKey } from './rng.js'
 import { simulate, teamRatings, verdict, simulateBowl, simulateSuper, superOpponent, opponentFor, bowlRatings, bowlVerdict } from './sim.js'
 import { load, liveStreak, recordDaily, recordPractice, recordVs, histKey, seenIntro, markIntroSeen, BADGES } from './storage.js'
 import { shareCard } from './card.js'
+import Privacy from './privacy.jsx'
+import { track, analyticsOn, isMinor, getProfile, nudgeDismissed, dismissNudge } from './analytics.js'
 import { BatCard, BowlCard } from './scorecard.jsx'
 import { fits, oversStr, makeSpins, getTheme, applyTheme } from './util.js'
 import { conditionFor, modifierFor, squadsFor, pickAllowed, tagOf, TAG_LABEL, phaseBonus } from './rules.js'
@@ -25,6 +27,16 @@ export default function App() {
   const [vsInfo, setVsInfo] = useState(null)
   const [vs, setVs] = useState(null) // head-to-head: { role: 'first'|'follower', target, firstScore, creator }
 
+  // anonymous usage stats (off for opt-outs and under-18s)
+  useEffect(() => {
+    let first = 0
+    try { if (!localStorage.getItem('chase300.visited')) { first = 1; localStorage.setItem('chase300.visited', '1') } } catch {}
+    track('session_start', { first, theme: getTheme() })
+    const onInstall = () => track('install')
+    window.addEventListener('appinstalled', onInstall)
+    return () => window.removeEventListener('appinstalled', onInstall)
+  }, [])
+
   // open a friend's challenge link (?vs=CODE)
   useEffect(() => {
     const c = (new URLSearchParams(window.location.search).get('vs') || '').toUpperCase()
@@ -36,6 +48,7 @@ export default function App() {
 
   const start = (m, k = 'bat', lv = 1, code, info) => {
     const key = m === 'daily' ? todayKey() : m === 'vs' ? 'vs-' + (code || newCode()) : String(Date.now())
+    track('game_start', { kind: k, mode: m, level: k === 'super' || m === 'vs' ? 0 : lv })
     setVs(m === 'vs' ? (code ? { role: 'follower', target: info.target, firstScore: info.firstScore, creator: info.creator } : { role: 'first', target: OPEN_TARGET }) : null)
     setLevel(lv); setKind(k); setMode(m); setSeedStr(key); setCap(-1)
     setXi(Array(11).fill(null)); setAttack(Array(5).fill(null)); setSoPicks(Array(4).fill(null)); setResult(null); setScreen('draft')
@@ -62,26 +75,30 @@ export default function App() {
     setScreen('chase')
   }
   const done = () => {
-    if (mode === 'vs') { setStats(recordVs()); setScreen('result'); return }
+    if (mode === 'vs') { track('game_finish', { kind, mode, level: 0, won: result.won ? 1 : 0, score: result.score }); setStats(recordVs()); setScreen('result'); return }
     const lv = kind === 'super' ? 1 : level
+    track('game_finish', { kind, mode, level: kind === 'super' ? 0 : level, won: result.won ? 1 : 0, score: result.score })
+    if (result.won && kind !== 'super') track('level_cleared', { kind, level })
     setStats(mode === 'daily' ? recordDaily(kind, result.score, result.won, lv) : recordPractice(kind, result.score, result.won, lv))
     setScreen('result')
   }
   const home = () => setScreen('home')
+  const abandon = () => { track('draft_abandon', { kind, picks: (kind === 'bat' ? xi : kind === 'bowl' ? attack : soPicks).filter(Boolean).length }); setScreen('home') }
   const picks = kind === 'bat' ? xi : kind === 'bowl' ? attack : soPicks
   const navOn = ['home', 'board', 'stats', 'recap'].includes(screen)
 
   return (
     <div className={'app' + (navOn ? ' has-nav' : '')}>
-      {screen === 'home' && <Home stats={stats} onStart={start} onBoard={() => setScreen('board')} onStats={() => setScreen('stats')} onHelp={() => setScreen('howto')} onRecap={() => setScreen('recap')} />}
+      {screen === 'home' && <Home stats={stats} onStart={start} onBoard={() => setScreen('board')} onStats={() => setScreen('stats')} onHelp={() => { track('howto_open'); setScreen('howto') }} onPrivacy={() => setScreen('privacy')} onRecap={() => setScreen('recap')} />}
+      {screen === 'privacy' && <Privacy onBack={home} />}
       {screen === 'howto' && <HowTo onClose={() => { markIntroSeen(); setScreen('home') }} />}
       {screen === 'stats' && <Stats stats={stats} onBack={home} />}
       {screen === 'recap' && <Recap onBack={home} />}
       {screen === 'vs' && <VsIntro info={vsInfo} onPlay={() => start('vs', vsInfo.kind, 1, vsInfo.code, vsInfo)} onHome={leaveVs} />}
       {screen === 'board' && <Board onBack={home} initialKind={kind === 'super' ? 'bat' : kind} />}
-      {screen === 'draft' && kind === 'bat' && <Draft key={seedStr} vs={vs} level={level} seedStr={seedStr} mode={mode} xi={xi} setXi={setXi} onDone={toTactics} onExit={home} />}
-      {screen === 'draft' && kind === 'bowl' && <BowlDraft key={seedStr} vs={vs} level={level} seedStr={seedStr} mode={mode} attack={attack} setAttack={setAttack} onDone={toTactics} onExit={home} />}
-      {screen === 'draft' && kind === 'super' && <SuperDraft key={seedStr} seedStr={seedStr} mode={mode} picks={soPicks} setPicks={setSoPicks} onDone={toTactics} onExit={home} />}
+      {screen === 'draft' && kind === 'bat' && <Draft key={seedStr} vs={vs} level={level} seedStr={seedStr} mode={mode} xi={xi} setXi={setXi} onDone={toTactics} onExit={abandon} />}
+      {screen === 'draft' && kind === 'bowl' && <BowlDraft key={seedStr} vs={vs} level={level} seedStr={seedStr} mode={mode} attack={attack} setAttack={setAttack} onDone={toTactics} onExit={abandon} />}
+      {screen === 'draft' && kind === 'super' && <SuperDraft key={seedStr} seedStr={seedStr} mode={mode} picks={soPicks} setPicks={setSoPicks} onDone={toTactics} onExit={abandon} />}
       {screen === 'tactics' && <Tactics key={seedStr + kind} kind={kind} picks={picks} seedStr={seedStr} onConfirm={confirmTactics} />}
       {screen === 'chase' && kind === 'bat' && <Chase xi={xi} result={result} onDone={done} />}
       {screen === 'chase' && kind === 'bowl' && <BowlInnings result={result} onDone={done} />}
@@ -110,7 +127,7 @@ function unlockMsg({ won, level, levels, frontier, nextText, gap, kind }) {
   return null
 }
 
-function Home({ stats, onStart, onBoard, onStats, onHelp, onRecap }) {
+function Home({ stats, onStart, onBoard, onStats, onHelp, onRecap, onPrivacy }) {
   const today = todayKey()
   const streak = liveStreak(stats)
   const batDone = stats.history[histKey('bat', today)]
@@ -119,10 +136,11 @@ function Home({ stats, onStart, onBoard, onStats, onHelp, onRecap }) {
   const opp = opponentFor(today)
   const unlocked = stats.bowlLevel || 1
   const [theme, setTheme] = useState(getTheme())
-  const flip = () => { const t = theme === 'dark' ? 'light' : 'dark'; applyTheme(t); setTheme(t) }
+  const flip = () => { const t = theme === 'dark' ? 'light' : 'dark'; applyTheme(t); setTheme(t); track('theme_toggle', { to: t }) }
   const batUnlocked = stats.batLevel || 1
   const [lv, setLv] = useState(unlocked)
   const [bl, setBl] = useState(batUnlocked)
+  const [nudge, setNudge] = useState(() => stats.played >= 1 && !nudgeDismissed() && !getProfile() && !isMinor())
   const Done = ({ d }) => <div className="done">Today <b>{d.score}</b>{d.won ? ' 🏆' : ''}</div>
   return (
     <main className="home compact">
@@ -137,6 +155,12 @@ function Home({ stats, onStart, onBoard, onStats, onHelp, onRecap }) {
       </div>
       {stats.freezeUsedOn === today && <p className="line">🧊 A streak freeze saved your streak today.</p>}
       <BriefPills seedStr={today} />
+      {nudge && (
+        <div className="nudge">
+          <span>👋 Help shape Chase 300: tell us a little about you <small>(optional)</small></span>
+          <div><button className="link" onClick={onPrivacy}>Add</button><button className="link" onClick={() => { dismissNudge(); setNudge(false) }}>Not now</button></div>
+        </div>
+      )}
 
       <div className="mgrid">
         <section className="mode sm">
@@ -176,6 +200,7 @@ function Home({ stats, onStart, onBoard, onStats, onHelp, onRecap }) {
       <div className="hfoot">
         <button className="link" onClick={onHelp}>❓ How to play</button>
         <Reminders />
+        <button className="link" onClick={onPrivacy}>🔒 Privacy &amp; data</button>
       </div>
       <p className="fine">Fan-made, free and unofficial. Ratings are approximate. Not affiliated with or endorsed by any league, board, team or player. Names are used for identification only. <a href="/privacy.html">Privacy</a></p>
     </main>
@@ -366,6 +391,7 @@ function Result({ vs, level, cap, xi, result, mode, stats, seedStr, onHome, onPr
     mode === 'daily' ? `🔥 ${streak}-day streak` : '',
   ].filter(Boolean).join('\n')
   const share = async () => {
+    track('share', { kind: 'result' })
     try {
       if (navigator.share) await navigator.share({ text })
       else { await navigator.clipboard.writeText(text); setCopied(true) }
@@ -447,7 +473,7 @@ function Reminders() {
   if (!ok) return null
   const toggle = async () => {
     setMsg('')
-    try { if (on) { await disablePush(); setOn(false) } else { await enablePush(); setOn(true) } }
+    try { if (on) { await disablePush(); setOn(false); track('push_off') } else { await enablePush(); setOn(true); track('push_on') } }
     catch (e) { setMsg(e.message) }
   }
   return (
@@ -604,6 +630,7 @@ function BowlResult({ vs, level, cap, attack, result, mode, stats, seedStr, onHo
     mode === 'daily' ? `🔥 ${streak}-day streak` : '',
   ].filter(Boolean).join('\n')
   const share = async () => {
+    track('share', { kind: 'result' })
     try { if (navigator.share) await navigator.share({ text }); else { await navigator.clipboard.writeText(text); setCopied(true) } } catch {}
   }
   return (
@@ -721,10 +748,11 @@ function VsPanel({ kind, seedStr, vs, result, cap, picks }) {
   const link = `${window.location.origin}/?vs=${code}`
   const submit = async () => {
     setName(name.trim()); setPhase('sending')
-    try { setData(await submitVs(code, kind, name.trim() || 'Anon', picks, 1, cap)); setPhase('done') }
+    try { setData(await submitVs(code, kind, name.trim() || 'Anon', picks, 1, cap)); track(first ? 'vs_create' : 'vs_join', { kind }); setPhase('done') }
     catch (e) { setPhase(e.status === 409 ? 'done' : 'error'); if (e.status === 409) getVs(code).then(setData).catch(() => {}) }
   }
   const share = async () => {
+    track('share', { kind: 'result' })
     const text = kind === 'bowl'
       ? `⚔️ I conceded ${result.score} in Chase 300 bowling. Can you concede fewer?`
       : `⚔️ I scored ${result.score} in Chase 300. Can you chase ${result.score + 1}?`

@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex">
+<title>Chase 300 admin</title>
+<style>
+:root{--bg:#f4f7f7;--card:#fff;--ink:#142022;--mut:#667679;--line:#e1e8e8;--acc:#2b8c84}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:16px;max-width:760px;margin:auto}
+h1{font-size:1.3rem;margin:4px 0 12px}h2{font-size:1rem;margin:22px 0 8px}small,.mut{color:var(--mut)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;margin:8px 0}
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px;text-align:center}.kpi b{display:block;font-size:1.3rem}.kpi span{font-size:.7rem;color:var(--mut)}
+table{width:100%;border-collapse:collapse;font-size:.84rem}th,td{border:1px solid var(--line);padding:6px 8px;text-align:right}th:first-child,td:first-child{text-align:left}th{background:#f0f4f4;color:var(--mut);font-size:.7rem;text-transform:uppercase}
+input,textarea,button{font:inherit;padding:10px;border-radius:10px;border:1px solid var(--line);width:100%}button{background:#1f3236;color:#fff;border:0;font-weight:700;cursor:pointer;margin-top:8px}textarea{min-height:60px}
+.bars{display:flex;align-items:flex-end;gap:2px;height:80px}.bars i{flex:1;background:var(--acc);border-radius:3px 3px 0 0;min-height:1px;opacity:.85}
+pre{white-space:pre-wrap;font-size:.75rem;background:#f0f4f4;padding:8px;border-radius:8px}
+</style></head><body>
+<h1>Chase 300 · admin</h1>
+<div id="login" class="card"><p class="mut">Enter the admin token (the ADMIN_TOKEN value set on the server).</p><input id="tok" type="password" placeholder="Admin token" autocomplete="off"><button id="go">Open dashboard</button><p id="err" style="color:#c0392b"></p></div>
+<div id="app" hidden></div>
+<script>
+const $ = (s) => document.querySelector(s)
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+const pct = (x) => (x == null ? '–' : x + '%')
+async function load(token) {
+  const r = await fetch('/api/admin/summary', { headers: { 'x-admin-token': token } })
+  if (!r.ok) { $('#err').textContent = r.status === 503 ? 'Admin is disabled: set ADMIN_TOKEN on the server.' : 'Wrong token.'; return }
+  sessionStorage.setItem('adm', token); $('#login').hidden = true; render(await r.json(), token)
+}
+function table(head, rows) { return '<table><tr>' + head.map((h) => '<th>' + esc(h) + '</th>').join('') + '</tr>' + rows.map((r) => '<tr>' + r.map((c) => '<td>' + esc(c) + '</td>').join('') + '</tr>').join('') + '</table>' }
+function render(s, token) {
+  const t = s.totals, max = Math.max(1, ...s.series.map((d) => d.dau))
+  const kv = (o) => Object.entries(o).map(([k, v]) => [k, v])
+  $('#app').hidden = false
+  $('#app').innerHTML = `
+  <p class="mut">Last ${s.windowDays} days · ${esc(s.generated)} · <a href="#" id="refresh">refresh</a></p>
+  <div class="kpis">
+    <div class="kpi"><b>${t.dau}</b><span>active today</span></div><div class="kpi"><b>${t.wau}</b><span>active 7 days</span></div><div class="kpi"><b>${t.mau}</b><span>active 30 days</span></div>
+    <div class="kpi"><b>${t.usersEver}</b><span>players ever</span></div><div class="kpi"><b>${t.new7d}</b><span>new in 7 days</span></div><div class="kpi"><b>${t.games7d}</b><span>games in 7 days</span></div>
+    <div class="kpi"><b>${pct(s.retention.d1.pct)}</b><span>came back next day (n=${s.retention.d1.cohort})</span></div><div class="kpi"><b>${pct(s.retention.d7.pct)}</b><span>back after 7 days (n=${s.retention.d7.cohort})</span></div><div class="kpi"><b>${s.pushSubscribers}</b><span>push subscribers</span></div>
+  </div>
+  <h2>Daily active players</h2><div class="card"><div class="bars">${s.series.map((d) => `<i title="${d.day}: ${d.dau} active, ${d.new} new" style="height:${Math.round((d.dau / max) * 100)}%"></i>`).join('')}</div></div>
+  <h2>What people play</h2><div class="card">${table(['Mode', 'Games'], kv(s.modes))}<p class="mut">Scored daily: ${s.plays.daily} · Free play: ${s.plays.free} · Vs friend: ${s.plays.vs}</p></div>
+  <h2>Where people quit</h2><div class="card"><p>${s.abandon.abandoned} of ${s.abandon.starts} drafts abandoned (${pct(s.abandon.pct)}), after ${s.abandon.avgPicks ?? '–'} picks on average.</p></div>
+  <h2>Level difficulty: batting</h2><div class="card">${table(['Level', 'Starts', 'Finished', 'Won', 'Win %'], s.funnel.bat.map((r) => [r.level, r.starts, r.finishes, r.wins, pct(r.winPct)]))}</div>
+  <h2>Level difficulty: bowling</h2><div class="card">${table(['Level', 'Starts', 'Finished', 'Won', 'Win %'], s.funnel.bowl.map((r) => [r.level, r.starts, r.finishes, r.wins, pct(r.winPct)]))}</div>
+  <h2>Where players are</h2><div class="card">${table(['Country', 'Sessions'], s.countries)}</div>
+  <h2>Devices</h2><div class="card">${table(['Type', 'Sessions'], kv(s.devices))}${table(['OS', 'Sessions'], s.os)}<p class="mut">${s.installedShare}% of sessions are from the installed app.</p></div>
+  <h2>Actions</h2><div class="card">${table(['Action', 'Count'], kv(s.actions))}</div>
+  <h2>Audience report (for sponsors)</h2><div class="card"><p class="mut">${s.audience.profiles} players shared an optional profile with consent. Under-18s are never profiled. Groups under ${s.audience.minBucket} are hidden.</p>
+    ${table(['Age band', 'Players'], kv(s.audience.age))}${table(['State', 'Players'], kv(s.audience.state))}${table(['Favourite team city', 'Players'], kv(s.audience.team))}</div>
+  <h2>Send a notification to all subscribers</h2><div class="card"><input id="bt" maxlength="60" placeholder="Title"><textarea id="bb" maxlength="160" placeholder="Message (160 characters)"></textarea><button id="send">Send to ${s.pushSubscribers} subscribers</button><p id="bmsg" class="mut"></p></div>`
+  $('#refresh').onclick = (e) => { e.preventDefault(); load(token) }
+  $('#send').onclick = async () => {
+    if (!confirm('Send this to every subscriber?')) return
+    const r = await fetch('/api/admin/broadcast', { method: 'POST', headers: { 'content-type': 'application/json', 'x-admin-token': token }, body: JSON.stringify({ title: $('#bt').value, body: $('#bb').value }) })
+    const j = await r.json(); $('#bmsg').textContent = r.ok ? `Sent ${j.sent}, failed ${j.failed}.` : (j.error || 'Failed')
+  }
+}
+$('#go').onclick = () => load($('#tok').value.trim())
+$('#tok').onkeydown = (e) => { if (e.key === 'Enter') $('#go').click() }
+const saved = sessionStorage.getItem('adm'); if (saved) load(saved)
+</script></body></html>

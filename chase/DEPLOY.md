@@ -40,3 +40,11 @@ The disk needs the paid Starter plan (about $7/month). Do not use the free plan:
 - One machine, one volume: don't scale to multiple machines (the data is a single JSON file).
 - The server trusts `Fly-Client-IP` / `X-Forwarded-For` for rate limiting, so only run it behind a trusted proxy.
 - Levels are trusted from the client; there are no accounts. Fine for launch, add accounts later if cheating matters.
+
+## Analytics, audience report and broadcasts
+- Set the `ADMIN_TOKEN` environment variable on the host (a long random secret, 20+ characters). Without it the admin features are disabled.
+- Open `https://YOUR-APP/admin`, enter the token, and you get: daily/weekly/monthly active players, retention (next-day and 7-day), where players quit drafts, level difficulty (win % per level), countries/devices, and the sponsor audience report (age band, state, favourite team city; groups under 5 are hidden).
+- The same page can send a push notification to everyone who opted in to reminders.
+- Analytics events are stored as daily files (`events-YYYY-MM-DD.ndjson`) next to the data file on the persistent disk and deleted after 180 days. They contain a hashed device id, never IPs or names.
+- Players control this in the app under **Privacy & data**: switch stats off, add or delete the optional profile (consent required, under-18s are never profiled), or delete all their data. `public/privacy.html` already describes all of this; keep it in sync if you change what is collected.
+- Before sharing audience numbers with sponsors or running ads, have a privacy lawyer check your set-up against India's DPDP Act and any other laws that apply.

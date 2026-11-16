@@ -9,6 +9,9 @@ const webpush = createRequire(import.meta.url)('web-push')
 import { SQUADS, batTarget, bowlTarget, BOWL_MIN, BAT_LEVELS, BOWL_LEVELS, OPEN_TARGET } from '../src/data.js'
 import { simulate, simulateBowl, simulateSuper, superOpponent, opponentFor } from '../src/sim.js'
 import { conditionFor, modifierFor, pickAllowed, orderOK, dailyPoints, mondayOf } from '../src/rules.js'
+import crypto from 'node:crypto'
+import * as AN from './analytics.js'
+import { AGE_BANDS, STATES, TEAM_CITIES } from '../src/profile.js'
 import { rng, hashStr, todayKey } from '../src/rng.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -18,9 +21,16 @@ const PORT = Number(process.env.PORT || 8787)
 const REMINDER_HOUR = Number(process.env.REMINDER_HOUR || 18) // local hour of the player
 
 // ---------- storage (atomic JSON file) ----------
-let db = { scores: [], subs: {}, vs: {} } // scores: {device,name,day,score,wickets,won,balls,xi}; subs: device -> {sub,tz,lastReminded}
+let db = { scores: [], subs: {}, vs: {}, users: {}, profiles: {}, salt: '' } // scores: {device,name,day,score,wickets,won,balls,xi}; subs: device -> {sub,tz,lastReminded}
 try { db = { ...db, ...JSON.parse(fs.readFileSync(DB_FILE, 'utf8')) } } catch {}
-let dirty = false
+AN.ensureSalt(db)
+const DATA_DIR = path.dirname(DB_FILE)
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN || ''
+AN.purgeOld(DATA_DIR)
+let dirty = true // persist the freshly generated salt
+const sha = (s) => crypto.createHash('sha256').update(String(s)).digest()
+const adminOK = (req) => !!ADMIN_TOKEN && crypto.timingSafeEqual(sha(req.headers['x-admin-token'] || ''), sha(ADMIN_TOKEN))
+const validDevice = (d) => typeof d === 'string' && d.length >= 8 && d.length <= 64
 const save = () => { dirty = true }
 setInterval(() => {
   if (!dirty) return
@@ -220,6 +230,53 @@ const server = http.createServer(async (req, res) => {
           return send(res, 200, vsView(code, device))
         }
       }
+      if (req.method === 'POST' && url.pathname === '/api/event') {
+        const body = await readJson(req)
+        const ua = AN.uaInfo(req.headers['user-agent'])
+        const ctx = { ...ua, country: String(req.headers['cf-ipcountry'] || req.headers['x-vercel-ip-country'] || '').slice(0, 2).toUpperCase(), pwa: body.pwa === 1 }
+        const n = AN.ingest(db, DATA_DIR, body.device, body.events, ctx)
+        if (n) save()
+        res.writeHead(204); return res.end()
+      }
+      if (url.pathname === '/api/profile' && (req.method === 'PUT' || req.method === 'DELETE')) {
+        const body = await readJson(req)
+        if (!validDevice(body.device)) return send(res, 400, { error: 'bad device' })
+        const h = AN.hashDevice(db, body.device)
+        if (req.method === 'DELETE') { delete db.profiles[h]; save(); return send(res, 200, { ok: true }) }
+        if (body.consent !== true) return send(res, 400, { error: 'consent required' })
+        // players under 18 are never profiled
+        if (body.age === 'u18') { delete db.profiles[h]; save(); return send(res, 200, { ok: true, stored: false, minor: true }) }
+        if (!AGE_BANDS.some(([k]) => k === body.age) || !STATES.includes(body.state) || !TEAM_CITIES.includes(body.team)) return send(res, 400, { error: 'invalid profile' })
+        db.profiles[h] = { age: body.age, state: body.state, team: body.team, at: Date.now() }
+        save(); return send(res, 200, { ok: true, stored: true })
+      }
+      if (req.method === 'DELETE' && url.pathname === '/api/me') {
+        const body = await readJson(req)
+        if (!validDevice(body.device)) return send(res, 400, { error: 'bad device' })
+        const before = { scores: db.scores.length }
+        delete db.profiles[AN.hashDevice(db, body.device)]
+        delete db.subs[body.device]
+        db.scores = db.scores.filter((s) => s.device !== body.device)
+        for (const ch of Object.values(db.vs)) ch.entries = ch.entries.filter((e) => e.device !== body.device)
+        AN.deleteDevice(db, DATA_DIR, body.device)
+        save(); return send(res, 200, { ok: true, removedScores: before.scores - db.scores.length })
+      }
+      if (url.pathname.startsWith('/api/admin/')) {
+        if (!ADMIN_TOKEN) return send(res, 503, { error: 'admin disabled: set ADMIN_TOKEN' })
+        if (!adminOK(req)) return send(res, 401, { error: 'unauthorized' })
+        if (req.method === 'GET' && url.pathname === '/api/admin/summary') return send(res, 200, AN.summary(db, DATA_DIR, 30))
+        if (req.method === 'POST' && url.pathname === '/api/admin/broadcast') {
+          const b = await readJson(req)
+          const title = String(b.title || '').slice(0, 60), text = String(b.body || '').slice(0, 160)
+          if (!title || !text) return send(res, 400, { error: 'title and body required' })
+          let sent = 0, failed = 0
+          for (const [device, rec] of Object.entries(db.subs)) {
+            try { await webpush.sendNotification(rec.sub, JSON.stringify({ title, body: text, url: '/' })); sent++ }
+            catch (e) { failed++; if (e.statusCode === 404 || e.statusCode === 410) delete db.subs[device] }
+          }
+          save(); return send(res, 200, { sent, failed })
+        }
+      }
       if (req.method === 'GET' && url.pathname === '/api/weekly') {
         const day = url.searchParams.get('day') || ''
         if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return send(res, 400, { error: 'bad day' })
@@ -265,6 +322,10 @@ const server = http.createServer(async (req, res) => {
       const html = fs.readFileSync(path.join(DIST, 'privacy.html'), 'utf8').replace('REPLACE-WITH-YOUR-CONTACT-EMAIL', (process.env.CONTACT_EMAIL || 'contact email not set').replace(/[<>&"]/g, ''))
       res.writeHead(200, { 'content-type': 'text/html' }); return res.end(html)
     }
+    if (url.pathname === '/admin') {
+      res.writeHead(200, { 'content-type': 'text/html', 'cache-control': 'no-store', 'x-robots-tag': 'noindex' })
+      return res.end(fs.readFileSync(path.join(__dirname, 'admin.html'), 'utf8'))
+    }
     // static files (built PWA)
     let f = path.normalize(path.join(DIST, url.pathname === '/' ? 'index.html' : url.pathname))
     if (!f.startsWith(DIST) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) f = path.join(DIST, 'index.html')
@@ -274,3 +335,4 @@ const server = http.createServer(async (req, res) => {
   } catch (e) { send(res, 400, { error: 'bad request' }) }
 })
 server.listen(PORT, () => console.log(`Chase 300 server on :${PORT}`))
+setInterval(() => AN.purgeOld(DATA_DIR), 24 * 3600 * 1000).unref()

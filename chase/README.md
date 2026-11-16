@@ -45,3 +45,6 @@ Push needs HTTPS in production (localhost is exempt). Without VAPID keys the ser
 - No league, franchise nickname, logo, kit or team-colour branding is used: teams appear as city + year only.
 - Player names are plain text for identification; no photos or likenesses. Ratings are fan estimates.
 - Keep it free/non-commercial, avoid league names in the domain, store listing and keywords, and be ready to rename or swap in fictional players if asked. Consider a short consult with an IP lawyer before any commercial launch.
+
+## Analytics and audience data
+Anonymous usage events (`src/analytics.js`, `server/analytics.js`), an optional consented profile (`src/privacy.jsx`), a token-protected `/admin` dashboard (`server/admin.html`) and push broadcasts. See DEPLOY.md. Players under 18 are never profiled and get no analytics.
