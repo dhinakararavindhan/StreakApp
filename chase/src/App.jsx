@@ -14,7 +14,7 @@ import { BatCard, BowlCard } from './scorecard.jsx'
 import { fits, oversStr, makeSpins, getTheme, applyTheme } from './util.js'
 import { conditionFor, modifierFor, squadsFor, pickAllowed, tagOf, TAG_LABEL, phaseBonus } from './rules.js'
 import { Brief, Tactics, SuperDraft, SuperInnings, SuperResult, Weekly, Recap, ratingChips, Av, PlaceSheet, BriefPills, Progress, WheelRow, MyList, AttackPicker, InningsBreak, FullResult } from './extras.jsx'
-import { reportMatch, getVs, submitVs, submitScore, fetchBoard, getName, setName, pushSupported, pushEnabled, enablePush, disablePush } from './api.js'
+import { fetchHall, reportMatch, getVs, submitVs, submitScore, fetchBoard, getName, setName, pushSupported, pushEnabled, enablePush, disablePush } from './api.js'
 
 const BYID = new Map(SQUADS.flatMap((s) => s.players.map((p) => [p.id, p])))
 
@@ -611,23 +611,44 @@ function Board({ onBack, initialKind = 'bat' }) {
   useEffect(() => {
     setData(null); setErr(false)
     if (kind === 'week') return
+    if (kind === 'hall') { fetchHall().then(setData).catch(() => setErr(true)); return }
     fetchBoard(kind, scope, todayKey()).then(setData).catch(() => setErr(true))
   }, [kind, scope])
   return (
     <main className="board">
       <header><button className="link" onClick={onBack}>← Back</button><b>Leaderboards</b><span /></header>
       <div className="tabs">
-        {[['bat', '🏏 Batting'], ['bowl', '🎯 Bowling'], ['week', '🗓️ Weekly']].map(([k, l]) => <button key={k} className={kind === k ? 'on' : ''} onClick={() => setKind(k)}>{l}</button>)}
+        {[['bat', '🏏 Batting'], ['bowl', '🎯 Bowling'], ['hall', '🏆 Winners'], ['week', '🗓️ Weekly']].map(([k, l]) => <button key={k} className={kind === k ? 'on' : ''} onClick={() => setKind(k)}>{l}</button>)}
       </div>
       {kind === 'week' && <Weekly />}
-      {kind !== 'week' && <div className="tabs">
+      {kind === 'hall' && (
+        <>
+          <p className="hint">Everyone who has posted a score and won. Ranked by wins, then levels cleared.</p>
+          {err && <p className="warn">Couldn't load the winners.</p>}
+          {!data && !err && <p className="line">Loading…</p>}
+          {data && data.top.length === 0 && <p className="line">No winners yet. Win a daily game and post your score to be first!</p>}
+          {data && data.top.length > 0 && (
+            <ol className="rows hall">
+              {data.top.map((r) => (
+                <li key={r.rank} className={r.you ? 'you' : ''}>
+                  <span className="rk">{r.rank}</span>
+                  <span className="nm">{r.name}<small>{[r.batLvl ? `🏏 L${r.batLvl}` : '', r.bowlLvl ? `🎯 L${r.bowlLvl}` : '', r.full ? `🏟️ ${r.full}` : '', r.sup ? `⚡ ${r.sup}` : ''].filter(Boolean).join(' · ')}</small></span>
+                  <span className="wn">{r.wins} 🏆<small>of {r.games}</small></span>
+                </li>
+              ))}
+              {data.me && data.me.rank > 100 && <li className="you"><span className="rk">{data.me.rank}</span><span className="nm">{data.me.name}</span><span className="wn">{data.me.wins} 🏆</span></li>}
+            </ol>
+          )}
+        </>
+      )}
+      {kind !== 'week' && kind !== 'hall' && <div className="tabs">
         {['today', 'all'].map((t) => <button key={t} className={scope === t ? 'on' : ''} onClick={() => setScope(t)}>{t === 'today' ? 'Today' : 'All-time'}</button>)}
       </div>}
-      {kind !== 'week' && <p className="hint">{kind === 'bat' ? 'Ranked by level, then runs. Higher level is harder.' : 'Fewest runs conceded wins.'}</p>}
-      {kind !== 'week' && err && <p className="warn">Couldn't load the leaderboard.</p>}
-      {kind !== 'week' && !data && !err && <p className="line">Loading…</p>}
-      {kind !== 'week' && data && data.top.length === 0 && <p className="line">No scores yet. Be the first!</p>}
-      {kind !== 'week' && data && (
+      {kind !== 'week' && kind !== 'hall' && <p className="hint">{kind === 'bat' ? 'Ranked by level, then runs. Higher level is harder.' : 'Fewest runs conceded wins.'}</p>}
+      {kind !== 'week' && kind !== 'hall' && err && <p className="warn">Couldn't load the leaderboard.</p>}
+      {kind !== 'week' && kind !== 'hall' && !data && !err && <p className="line">Loading…</p>}
+      {kind !== 'week' && kind !== 'hall' && data && data.top.length === 0 && <p className="line">No scores yet. Be the first!</p>}
+      {kind !== 'week' && kind !== 'hall' && data && (
         <ol className="rows">
           {data.top.map((r) => (
             <li key={r.rank} className={r.you ? 'you' : ''}>

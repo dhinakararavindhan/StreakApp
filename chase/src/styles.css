@@ -830,3 +830,8 @@ select { font: inherit; font-size: 0.9rem; color: var(--ink); background: var(--
 .card.impact small { color: var(--mut); font-size: 0.74rem; }
 .card.impact select { font: inherit; font-weight: 700; margin-left: 6px; padding: 4px 8px; border-radius: 10px; border: 1px solid var(--glass-edge); background: var(--card); color: var(--ink); max-width: 60%; }
 .brief.one, .brief.compact.one { grid-template-columns: 1fr; }
+.rows.hall .nm { display: flex; flex-direction: column; min-width: 0; }
+.rows.hall .nm small, .rows.hall .wn small { color: var(--mut); font-size: 0.68rem; font-weight: 600; margin-left: 4px; }
+.rows.hall .nm small { margin-left: 0; }
+.rows.hall .wn { font-weight: 800; white-space: nowrap; text-align: right; }
+.rows.hall .wn small { display: block; }

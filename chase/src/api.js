@@ -65,3 +65,5 @@ export async function reportMatch(m) {
     await fetch('/api/match', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ device: deviceId(), ...m }), keepalive: true })
   } catch {}
 }
+
+export const fetchHall = () => j(`/hall?device=${encodeURIComponent(deviceId())}`)

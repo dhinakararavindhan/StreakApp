@@ -164,6 +164,28 @@ function board(kind, scope, device, day) {
   return { top: ranked.slice(0, 50), me: ranked.find((r) => r.you) || null, total: ranked.length }
 }
 
+// ---------- hall of fame: everyone who has posted a score and won ----------
+function hall(device) {
+  const by = new Map()
+  for (const s of db.scores) {
+    const e = by.get(s.device) || { name: s.name, games: 0, wins: 0, batLvl: 0, bowlLvl: 0, full: 0, sup: 0, last: '' }
+    const k = s.kind || 'bat'
+    e.name = s.name; e.games++
+    if (s.won) {
+      e.wins++; if (!e.last || s.day > e.last) e.last = s.day
+      if (k === 'bat') e.batLvl = Math.max(e.batLvl, s.level || 1)
+      else if (k === 'bowl') e.bowlLvl = Math.max(e.bowlLvl, s.level || 1)
+      else if (k === 'full') e.full++
+      else e.sup++
+    }
+    by.set(s.device, e)
+  }
+  const rows = [...by.entries()].filter(([, e]) => e.wins > 0)
+    .sort((a, b) => b[1].wins - a[1].wins || (b[1].batLvl + b[1].bowlLvl) - (a[1].batLvl + a[1].bowlLvl) || a[1].games - b[1].games)
+    .map(([d, e], i) => ({ rank: i + 1, name: e.name, wins: e.wins, games: e.games, batLvl: e.batLvl, bowlLvl: e.bowlLvl, full: e.full, sup: e.sup, last: e.last, you: d === device }))
+  return { top: rows.slice(0, 100), me: rows.find((r) => r.you) || null, total: rows.length }
+}
+
 // ---------- weekly tournament & daily recap ----------
 function weekly(day, device) {
   const start = mondayOf(day)
@@ -355,6 +377,7 @@ const server = http.createServer(async (req, res) => {
         let rec; try { rec = JSON.parse(fs.readFileSync(savePath(body.code), 'utf8')) } catch { return send(res, 404, { error: 'no backup found for that code' }) }
         return send(res, 200, rec)
       }
+      if (req.method === 'GET' && url.pathname === '/api/hall') return send(res, 200, hall(url.searchParams.get('device')))
       if (req.method === 'GET' && url.pathname === '/api/weekly') {
         const day = url.searchParams.get('day') || ''
         if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return send(res, 400, { error: 'bad day' })
