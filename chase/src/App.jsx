@@ -575,6 +575,8 @@ function Result({ vs, level, cap, xi, result, mode, stats, seedStr, onHome, onPr
       else { await navigator.clipboard.writeText(text); setCopied(true) }
     } catch {}
   }
+  // daily scores post themselves once the player has a name, so nobody has to find the button
+  useEffect(() => { if (mode === 'daily' && getName().trim() && sub === 'ask') submit() }, [])
   return (
     <main className={'result' + (mode !== 'vs' ? ' has-cta' : '')}>
       <div className={'big' + (result.won ? ' win' : '')}>{result.score}<small>/{result.wickets}</small></div>
@@ -585,6 +587,7 @@ function Result({ vs, level, cap, xi, result, mode, stats, seedStr, onHome, onPr
       {mode === 'vs' && <VsPanel kind="bat" seedStr={seedStr} vs={vs} result={result} cap={cap} picks={xi} />}
       {sub === 'ask' && (
         <div className="card submit">
+          <b className="subhead">📣 Post your score so your friends can see you</b>
           <input value={name} maxLength={16} placeholder="Your name" onChange={(e) => setNameState(e.target.value)} />
           <button className="primary" onClick={submit}>Post to leaderboard</button>
         </div>
@@ -852,6 +855,8 @@ function BowlResult({ vs, level, cap, attack, result, mode, stats, seedStr, onHo
     track('share', { kind: 'result' })
     try { if (navigator.share) await navigator.share({ text }); else { await navigator.clipboard.writeText(text); setCopied(true) } } catch {}
   }
+  // daily scores post themselves once the player has a name, so nobody has to find the button
+  useEffect(() => { if (mode === 'daily' && getName().trim() && sub === 'ask') submit() }, [])
   return (
     <main className={'result' + (mode !== 'vs' ? ' has-cta' : '')}>
       <div className={'big' + (result.won ? ' win' : '')}>{result.score}<small>/{result.wickets}</small></div>
@@ -862,6 +867,7 @@ function BowlResult({ vs, level, cap, attack, result, mode, stats, seedStr, onHo
       {mode === 'vs' && <VsPanel kind="bowl" seedStr={seedStr} vs={vs} result={result} cap={cap} picks={attack} />}
       {sub === 'ask' && (
         <div className="card submit">
+          <b className="subhead">📣 Post your score so your friends can see you</b>
           <input value={name} maxLength={16} placeholder="Your name" onChange={(e) => setNameState(e.target.value)} />
           <button className="primary" onClick={submit}>Post to leaderboard</button>
         </div>

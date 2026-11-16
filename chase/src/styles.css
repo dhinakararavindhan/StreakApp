@@ -835,3 +835,4 @@ select { font: inherit; font-size: 0.9rem; color: var(--ink); background: var(--
 .rows.hall .nm small { margin-left: 0; }
 .rows.hall .wn { font-weight: 800; white-space: nowrap; text-align: right; }
 .rows.hall .wn small { display: block; }
+.card.submit .subhead { font-size: 0.86rem; }

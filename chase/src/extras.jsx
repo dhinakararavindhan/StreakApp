@@ -282,6 +282,8 @@ export function SuperResult({ picks, cap, result, mode, stats, seedStr, onHome, 
   const text = `⚡ Chase 300 Super Over ${mode === 'daily' ? seedStr : ''}\n${result.score}/${result.wickets} vs ${result.oppScore} (${result.opp.name} ${result.opp.year}) ${result.won ? '🏆' : ''}\n${picks.map((p) => p.name).join(' · ')}`
   const [copied, setCopied] = useState(false)
   const share = async () => { track('share', { kind: 'super' }); try { if (navigator.share) await navigator.share({ text }); else { await navigator.clipboard.writeText(text); setCopied(true) } } catch {} }
+  // daily scores post themselves once the player has a name, so nobody has to find the button
+  useEffect(() => { if (mode === 'daily' && getName().trim() && sub === 'ask') submit() }, [])
   return (
     <main className="result has-cta">
       <div className={'big' + (result.won ? ' win' : '')} style={{ fontSize: '3rem' }}>{headline}</div>
@@ -292,6 +294,7 @@ export function SuperResult({ picks, cap, result, mode, stats, seedStr, onHome, 
       <p className="line">{mode === 'daily' ? `🔥 ${streak}-day streak` : 'Practice'}{pts != null ? ` · +${pts} weekly points` : ''}</p>
       {sub === 'ask' && (
         <div className="card submit">
+          <b className="subhead">📣 Post your score so your friends can see you</b>
           <input value={name} maxLength={16} placeholder="Your name" onChange={(e) => setNameState(e.target.value)} />
           <button className="primary" onClick={submit}>Post to weekly tournament</button>
         </div>
@@ -486,6 +489,8 @@ export function FullResult({ res, xi, attack, cap, mode, stats, seedStr, onHome,
   const headline = res.won ? '🏆 You win!' : res.tie ? '🤝 Match tied' : '💔 You lose'
   const text = `🏟️ Chase 300 full match ${mode === 'daily' ? seedStr : ''}\n${res.text}${res.impact ? `\n⚡ Impact: ${res.impact.p.name}` : ''}\nYou ${bat.score}/${bat.wickets} · ${res.opp.name} ${res.opp.year} ${bowl.score}/${bowl.wickets}\n${xi.map((p) => p.name).join(' · ')}`
   const share = async () => { track('share', { kind: 'full' }); try { if (navigator.share) await navigator.share({ text }); else { await navigator.clipboard.writeText(text); setCopied(true) } } catch {} }
+  // daily scores post themselves once the player has a name, so nobody has to find the button
+  useEffect(() => { if (mode === 'daily' && getName().trim() && sub === 'ask') submit() }, [])
   return (
     <main className="result has-cta">
       <div className={'big' + (res.won ? ' win' : '')} style={{ fontSize: '2.6rem' }}>{headline}</div>
@@ -503,6 +508,7 @@ export function FullResult({ res, xi, attack, cap, mode, stats, seedStr, onHome,
       {tab === 'bat' ? <BatCard result={bat} /> : <BowlCard result={bowl} />}
       {sub === 'ask' && (
         <div className="card submit">
+          <b className="subhead">📣 Post your score so your friends can see you</b>
           <input value={name} maxLength={16} placeholder="Your name" onChange={(e) => setNameState(e.target.value)} />
           <button className="primary" onClick={submit}>Post to weekly tournament</button>
         </div>
