@@ -623,7 +623,7 @@ function Board({ onBack, initialKind = 'bat' }) {
       {kind === 'week' && <Weekly />}
       {kind === 'hall' && (
         <>
-          <p className="hint">Everyone who has posted a score and won. Ranked by wins, then levels cleared.</p>
+          <p className="hint">Every player who has won, and how far they've got. Ranked by wins, then levels completed.</p>
           {err && <p className="warn">Couldn't load the winners.</p>}
           {!data && !err && <p className="line">Loading…</p>}
           {data && data.top.length === 0 && <p className="line">No winners yet. Win a daily game and post your score to be first!</p>}
@@ -632,8 +632,12 @@ function Board({ onBack, initialKind = 'bat' }) {
               {data.top.map((r) => (
                 <li key={r.rank} className={r.you ? 'you' : ''}>
                   <span className="rk">{r.rank}</span>
-                  <span className="nm">{r.name}<small>{[r.batLvl ? `🏏 L${r.batLvl}` : '', r.bowlLvl ? `🎯 L${r.bowlLvl}` : '', r.full ? `🏟️ ${r.full}` : '', r.sup ? `⚡ ${r.sup}` : ''].filter(Boolean).join(' · ')}</small></span>
-                  <span className="wn">{r.wins} 🏆<small>of {r.games}</small></span>
+                  <span className="nm">{r.name}
+                    <small>🏏 Batting: {r.batLvl ? `Level ${r.batLvl} completed` : 'no level yet'}</small>
+                    <small>🎯 Bowling: {r.bowlLvl ? `Level ${r.bowlLvl} completed` : 'no level yet'}</small>
+                    {(r.full > 0 || r.sup > 0) && <small>{[r.full ? `🏟️ ${r.full} full match win${r.full > 1 ? 's' : ''}` : '', r.sup ? `⚡ ${r.sup} Super Over win${r.sup > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · ')}</small>}
+                  </span>
+                  <span className="wn">{r.wins} 🏆<small>won of {r.games}</small></span>
                 </li>
               ))}
               {data.me && data.me.rank > 100 && <li className="you"><span className="rk">{data.me.rank}</span><span className="nm">{data.me.name}</span><span className="wn">{data.me.wins} 🏆</span></li>}
