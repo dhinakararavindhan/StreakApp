@@ -149,17 +149,16 @@ const validDay = (d) => {
   return diff <= 1.5 // tolerate timezones
 }
 
+// best game per player. Level-wise: the highest level a player has WON comes first, then runs, then speed.
+const clearedOf = (s) => (s.won ? s.level || 1 : 0)
+const betterOf = (kind) => (a, b) => clearedOf(b) - clearedOf(a)
+  || (kind === 'bowl' ? a.score - b.score || b.wickets - a.wickets : b.score - a.score)
+  || (b.level || 1) - (a.level || 1) || a.balls - b.balls
+const bestPerDevice = (rows, better) => { const best = new Map(); for (const s of rows) { const b = best.get(s.device); if (!b || better(s, b) < 0) best.set(s.device, s) } return [...best.values()] }
 function board(kind, scope, device, day) {
-  const mine = db.scores.filter((s) => (s.kind || 'bat') === kind)
-  // bowling: fewest runs wins. batting: chases end at their target, so rank by level first, then runs, then speed.
-  const better = kind === 'bowl' ? (a, b) => a.score - b.score || b.wickets - a.wickets || a.balls - b.balls : (a, b) => (b.level || 1) - (a.level || 1) || b.score - a.score || a.balls - b.balls
-  let rows
-  if (scope === 'all') {
-    const best = new Map()
-    for (const s of mine) { const b = best.get(s.device); if (!b || better(s, b) < 0) best.set(s.device, s) }
-    rows = [...best.values()]
-  } else rows = mine.filter((s) => s.day === day)
-  rows.sort(better)
+  const mine = db.scores.filter((s) => (s.kind || 'bat') === kind && (scope === 'all' || s.day === day))
+  const better = betterOf(kind)
+  const rows = bestPerDevice(mine, better).sort(better) // every game counts: each player's best of the day (or ever)
   const ranked = rows.map((s, i) => ({ rank: i + 1, name: s.name, score: s.score, wickets: s.wickets, won: s.won, balls: s.balls, level: s.level || 1, you: s.device === device }))
   return { top: ranked.slice(0, 50), me: ranked.find((r) => r.you) || null, total: ranked.length }
 }
@@ -191,9 +190,13 @@ function weekly(day, device) {
   const start = mondayOf(day)
   const endD = new Date(start + 'T00:00:00Z'); endD.setUTCDate(endD.getUTCDate() + 6)
   const end = endD.toISOString().slice(0, 10)
-  const by = new Map()
+  const by = new Map(), bestDay = new Map() // points: a player's best game per mode per day (more games can't farm points)
   for (const s of db.scores) {
     if (s.day < start || s.day > end) continue
+    const k = s.device + '|' + (s.kind || 'bat') + '|' + s.day
+    const g = bestDay.get(k); if (!g || (s.pts || 0) > (g.pts || 0)) bestDay.set(k, s)
+  }
+  for (const s of bestDay.values()) {
     const e = by.get(s.device) || { name: s.name, pts: 0, games: 0 }
     e.pts += s.pts || 0; e.games += 1; e.name = s.name
     by.set(s.device, e)
@@ -206,10 +209,11 @@ const pubPlayer = (id) => { const p = byId.get(id); return p ? { name: p.name, t
 function recap(day) {
   const out = {}
   for (const kind of ['bat', 'bowl', 'super']) {
-    const rows = db.scores.filter((s) => (s.kind || 'bat') === kind && s.day === day && Array.isArray(s.xi))
-    rows.sort(kind === 'bowl' ? (a, b) => a.score - b.score || b.wickets - a.wickets
+    const rows0 = db.scores.filter((s) => (s.kind || 'bat') === kind && s.day === day && Array.isArray(s.xi))
+    const rows = bestPerDevice(rows0, kind === 'super' ? (a, b) => (b.score - (b.opp || 0)) - (a.score - (a.opp || 0)) : betterOf(kind))
+    rows.sort(kind === 'bowl' ? betterOf('bowl')
       : kind === 'super' ? (a, b) => (b.score - (b.opp || 0)) - (a.score - (a.opp || 0)) || b.score - a.score
-        : (a, b) => (b.level || 1) - (a.level || 1) || b.score - a.score || a.balls - b.balls)
+        : betterOf('bat'))
     out[kind] = rows.slice(0, 3).map((s, i) => ({ rank: i + 1, name: s.name, score: s.score, wickets: s.wickets, opp: s.opp, won: s.won, level: s.level || 1, cap: s.cap, xi: s.xi.map(pubPlayer) }))
   }
   return { day, ...out }
@@ -397,10 +401,16 @@ const server = http.createServer(async (req, res) => {
         if (!validDay(day)) return send(res, 400, { error: 'bad day' })
         const level = kind === 'super' || kind === 'full' ? 1 : Math.min(kind === 'bowl' ? BOWL_LEVELS : BAT_LEVELS, Math.max(1, Number(body.level) | 0 || 1))
         const cap = body.cap === undefined ? -1 : Number(body.cap)
-        const r = verify(kind, xi, day, level, cap, undefined, { attack: body.attack, first: body.first, impact: body.impact })
+        // every game counts. The daily seed is the date; extra / free-play games use their own timestamp seed (must be recent)
+        let seed = day
+        if (body.seed !== undefined) {
+          if (typeof body.seed !== 'string' || !/^\d{12,14}$/.test(body.seed) || Math.abs(Date.now() - Number(body.seed)) > 6 * 3600 * 1000) return send(res, 400, { error: 'bad seed' })
+          seed = body.seed
+        }
+        const r = verify(kind, xi, seed, level, cap, undefined, { attack: body.attack, first: body.first, impact: body.impact })
         if (!r) return send(res, 400, { error: 'invalid XI' })
-        if (db.scores.some((s) => s.device === device && s.day === day && (s.kind || 'bat') === kind)) return send(res, 409, { error: 'already submitted' })
-        db.scores.push({ device, kind, level, name: cleanName(name), day, score: r.score, wickets: r.wickets, won: r.won, balls: r.ballsUsed, pts: dailyPoints(kind, level, r), opp: r.oppScore, xi, cap, ...(kind === 'full' ? { attack: body.attack, first: body.first, impact: body.impact || null, text: r.text } : {}) })
+        if (db.scores.some((s) => s.device === device && s.seed === seed && (s.kind || 'bat') === kind) || (seed === day && db.scores.some((s) => s.device === device && s.day === day && !s.seed && (s.kind || 'bat') === kind))) return send(res, 409, { error: 'already submitted' })
+        db.scores.push({ device, kind, level, name: cleanName(name), day, seed, score: r.score, wickets: r.wickets, won: r.won, balls: r.ballsUsed, pts: dailyPoints(kind, level, r), opp: r.oppScore, xi, cap, ...(kind === 'full' ? { attack: body.attack, first: body.first, impact: body.impact || null, text: r.text } : {}) })
         save()
         return send(res, 200, { score: r.score, pts: dailyPoints(kind, level, r), text: r.text, ...(kind === 'super' || kind === 'full' ? {} : board(kind, 'today', device, day)) })
       }

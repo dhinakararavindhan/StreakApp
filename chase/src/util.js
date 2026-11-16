@@ -27,3 +27,8 @@ export function initials(name) {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
 }
 export const avatarColor = (p) => PAL[hashStr(p.name) % PAL.length]
+
+// a friendly random display name (used when a player doesn't pick one): e.g. "Swift Yorker 47"
+const ADJ = ['Swift', 'Cheeky', 'Calm', 'Bold', 'Sneaky', 'Lucky', 'Fiery', 'Cool', 'Smart', 'Rapid', 'Wild', 'Sharp']
+const NOUN = ['Yorker', 'Googly', 'Sixer', 'Pacer', 'Spinner', 'Stumper', 'Slogger', 'Opener', 'Finisher', 'Bouncer', 'Cover', 'Keeper']
+export const randomName = () => `${ADJ[Math.floor(Math.random() * ADJ.length)]} ${NOUN[Math.floor(Math.random() * NOUN.length)]} ${10 + Math.floor(Math.random() * 90)}`

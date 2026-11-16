@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { SQUADS, PLAYABLE, isPlayable, SLOT_LABELS, TARGET, BALLS, BOWL_SLOTS, BOWL_LEVELS, bowlTarget, BOWL_MIN, BAT_LEVELS, batTarget, OPEN_TARGET } from './data.js'
 import { hashStr, rng, todayKey } from './rng.js'
+import { randomName } from './util.js'
 import { simulate, teamRatings, verdict, simulateBowl, simulateSuper, superOpponent, opponentFor, bowlRatings, bowlVerdict, simulateFull, autoAttack } from './sim.js'
 import { load, liveStreak, recordDaily, recordPractice, recordVs, histKey, seenIntro, markIntroSeen, BADGES } from './storage.js'
 import { shareCard } from './card.js'
@@ -551,13 +552,13 @@ function Chase({ xi, result, onDone, openLabel = 'Setting the score for your fri
 
 function Result({ vs, level, cap, xi, result, mode, stats, seedStr, onHome, onPractice, onNext, onBoard }) {
   const [copied, setCopied] = useState(false)
-  const [name, setNameState] = useState(getName())
-  const [sub, setSub] = useState(mode === 'daily' ? 'ask' : 'none') // ask | sending | done | error
+  const [name, setNameState] = useState(getName() || randomName())
+  const [sub, setSub] = useState(mode !== 'vs' ? 'ask' : 'none') // ask | sending | done | error
   const [rank, setRank] = useState(null)
   const submit = async () => {
     setName(name.trim()); setSub('sending')
     try {
-      const r = await submitScore('bat', name.trim() || 'Anon', seedStr, xi, level, cap)
+      const r = await submitScore('bat', name.trim() || randomName(), todayKey(), xi, level, cap, mode === 'daily' ? {} : { seed: seedStr })
       setRank(r.me); setSub('done')
     } catch (e) { setSub(e.status === 409 ? 'done' : 'error') }
   }
@@ -576,7 +577,7 @@ function Result({ vs, level, cap, xi, result, mode, stats, seedStr, onHome, onPr
     } catch {}
   }
   // daily scores post themselves once the player has a name, so nobody has to find the button
-  useEffect(() => { if (mode === 'daily' && getName().trim() && sub === 'ask') submit() }, [])
+  useEffect(() => { if (mode !== 'vs' && getName().trim() && sub === 'ask') submit() }, [])
   return (
     <main className={'result' + (mode !== 'vs' ? ' has-cta' : '')}>
       <div className={'big' + (result.won ? ' win' : '')}>{result.score}<small>/{result.wickets}</small></div>
@@ -588,7 +589,8 @@ function Result({ vs, level, cap, xi, result, mode, stats, seedStr, onHome, onPr
       {sub === 'ask' && (
         <div className="card submit">
           <b className="subhead">📣 Post your score so your friends can see you</b>
-          <input value={name} maxLength={16} placeholder="Your name" onChange={(e) => setNameState(e.target.value)} />
+          <small className="mut">Your name on the board. We picked one: keep it or type your own.</small>
+          <div className="namerow"><input value={name} maxLength={16} placeholder="Your name" onChange={(e) => setNameState(e.target.value)} /><button type="button" className="ghost small" aria-label="Random name" onClick={() => setNameState(randomName())}>🎲</button></div>
           <button className="primary" onClick={submit}>Post to leaderboard</button>
         </div>
       )}
@@ -651,7 +653,7 @@ function Board({ onBack, initialKind = 'bat' }) {
       {kind !== 'week' && kind !== 'hall' && <div className="tabs">
         {['today', 'all'].map((t) => <button key={t} className={scope === t ? 'on' : ''} onClick={() => setScope(t)}>{t === 'today' ? 'Today' : 'All-time'}</button>)}
       </div>}
-      {kind !== 'week' && kind !== 'hall' && <p className="hint">{kind === 'bat' ? 'Ranked by level, then runs. Higher level is harder.' : 'Fewest runs conceded wins.'}</p>}
+      {kind !== 'week' && kind !== 'hall' && <p className="hint">{kind === 'bat' ? 'Every game counts: your best of the day. Ranked by the highest level you have won, then runs.' : 'Every game counts: your best of the day. Ranked by the highest level you have won, then fewest runs.'}</p>}
       {kind !== 'week' && kind !== 'hall' && err && <p className="warn">Couldn't load the leaderboard.</p>}
       {kind !== 'week' && kind !== 'hall' && !data && !err && <p className="line">Loading…</p>}
       {kind !== 'week' && kind !== 'hall' && data && data.top.length === 0 && <p className="line">No scores yet. Be the first!</p>}
@@ -660,7 +662,7 @@ function Board({ onBack, initialKind = 'bat' }) {
           {data.top.map((r) => (
             <li key={r.rank} className={r.you ? 'you' : ''}>
               <span className="rk">{r.rank}</span><span className="nm">{r.name}{r.won ? ' 🏆' : ''}</span>
-              {kind === 'bat' && <span className="lv">L{r.level}</span>}
+              <span className="lv">L{r.level}</span>
               <span className="sc">{r.score}/{r.wickets}</span>
             </li>
           ))}
@@ -836,13 +838,13 @@ function BowlInnings({ result, onDone, chasing = false, doneLabel = 'See result'
 
 function BowlResult({ vs, level, cap, attack, result, mode, stats, seedStr, onHome, onPractice, onNext, onBoard }) {
   const [copied, setCopied] = useState(false)
-  const [name, setNameState] = useState(getName())
-  const [sub, setSub] = useState(mode === 'daily' ? 'ask' : 'none')
+  const [name, setNameState] = useState(getName() || randomName())
+  const [sub, setSub] = useState(mode !== 'vs' ? 'ask' : 'none')
   const [rank, setRank] = useState(null)
   const streak = liveStreak(stats)
   const submit = async () => {
     setName(name.trim()); setSub('sending')
-    try { const r = await submitScore('bowl', name.trim() || 'Anon', seedStr, attack, level, cap); setRank(r.me); setSub('done') }
+    try { const r = await submitScore('bowl', name.trim() || randomName(), todayKey(), attack, level, cap, mode === 'daily' ? {} : { seed: seedStr }); setRank(r.me); setSub('done') }
     catch (e) { setSub(e.status === 409 ? 'done' : 'error') }
   }
   const text = [
@@ -856,7 +858,7 @@ function BowlResult({ vs, level, cap, attack, result, mode, stats, seedStr, onHo
     try { if (navigator.share) await navigator.share({ text }); else { await navigator.clipboard.writeText(text); setCopied(true) } } catch {}
   }
   // daily scores post themselves once the player has a name, so nobody has to find the button
-  useEffect(() => { if (mode === 'daily' && getName().trim() && sub === 'ask') submit() }, [])
+  useEffect(() => { if (mode !== 'vs' && getName().trim() && sub === 'ask') submit() }, [])
   return (
     <main className={'result' + (mode !== 'vs' ? ' has-cta' : '')}>
       <div className={'big' + (result.won ? ' win' : '')}>{result.score}<small>/{result.wickets}</small></div>
@@ -868,7 +870,8 @@ function BowlResult({ vs, level, cap, attack, result, mode, stats, seedStr, onHo
       {sub === 'ask' && (
         <div className="card submit">
           <b className="subhead">📣 Post your score so your friends can see you</b>
-          <input value={name} maxLength={16} placeholder="Your name" onChange={(e) => setNameState(e.target.value)} />
+          <small className="mut">Your name on the board. We picked one: keep it or type your own.</small>
+          <div className="namerow"><input value={name} maxLength={16} placeholder="Your name" onChange={(e) => setNameState(e.target.value)} /><button type="button" className="ghost small" aria-label="Random name" onClick={() => setNameState(randomName())}>🎲</button></div>
           <button className="primary" onClick={submit}>Post to leaderboard</button>
         </div>
       )}

@@ -8,7 +8,7 @@ import { liveStreak } from './storage.js'
 import { BatCard, BowlCard } from './scorecard.jsx'
 import { shareCard } from './card.js'
 import { track } from './analytics.js'
-import { makeSpins, oversStr, initials, avatarColor } from './util.js'
+import { makeSpins, oversStr, initials, avatarColor, randomName } from './util.js'
 
 export const Av = ({ p }) => <span className="av" style={{ background: avatarColor(p) }}>{initials(p.name)}</span>
 
@@ -269,13 +269,13 @@ export function SuperInnings({ result, onDone }) {
 }
 
 export function SuperResult({ picks, cap, result, mode, stats, seedStr, onHome, onPractice }) {
-  const [name, setNameState] = useState(getName())
-  const [sub, setSub] = useState(mode === 'daily' ? 'ask' : 'none')
+  const [name, setNameState] = useState(getName() || randomName())
+  const [sub, setSub] = useState(mode !== 'vs' ? 'ask' : 'none')
   const [pts, setPts] = useState(null)
   const streak = liveStreak(stats)
   const submit = async () => {
     setName(name.trim()); setSub('sending')
-    try { const r = await submitScore('super', name.trim() || 'Anon', seedStr, picks, 1, cap); setPts(r.pts); setSub('done') }
+    try { const r = await submitScore('super', name.trim() || randomName(), todayKey(), picks, 1, cap, mode === 'daily' ? {} : { seed: seedStr }); setPts(r.pts); setSub('done') }
     catch (e) { setSub(e.status === 409 ? 'done' : 'error') }
   }
   const headline = result.won ? '🏆 You win!' : result.tie ? '🤝 Tied' : '💔 You lose'
@@ -283,7 +283,7 @@ export function SuperResult({ picks, cap, result, mode, stats, seedStr, onHome, 
   const [copied, setCopied] = useState(false)
   const share = async () => { track('share', { kind: 'super' }); try { if (navigator.share) await navigator.share({ text }); else { await navigator.clipboard.writeText(text); setCopied(true) } } catch {} }
   // daily scores post themselves once the player has a name, so nobody has to find the button
-  useEffect(() => { if (mode === 'daily' && getName().trim() && sub === 'ask') submit() }, [])
+  useEffect(() => { if (mode !== 'vs' && getName().trim() && sub === 'ask') submit() }, [])
   return (
     <main className="result has-cta">
       <div className={'big' + (result.won ? ' win' : '')} style={{ fontSize: '3rem' }}>{headline}</div>
@@ -295,7 +295,8 @@ export function SuperResult({ picks, cap, result, mode, stats, seedStr, onHome, 
       {sub === 'ask' && (
         <div className="card submit">
           <b className="subhead">📣 Post your score so your friends can see you</b>
-          <input value={name} maxLength={16} placeholder="Your name" onChange={(e) => setNameState(e.target.value)} />
+          <small className="mut">Your name on the board. We picked one: keep it or type your own.</small>
+          <div className="namerow"><input value={name} maxLength={16} placeholder="Your name" onChange={(e) => setNameState(e.target.value)} /><button type="button" className="ghost small" aria-label="Random name" onClick={() => setNameState(randomName())}>🎲</button></div>
           <button className="primary" onClick={submit}>Post to weekly tournament</button>
         </div>
       )}
@@ -316,7 +317,7 @@ export function Weekly() {
   useEffect(() => { fetchWeekly(todayKey()).then(setData).catch(() => setErr(true)) }, [])
   return (
     <>
-      <p className="hint">Points from every daily game (batting, bowling and Super Over) this week. Resets Monday.</p>
+      <p className="hint">Points from your best game of each mode each day (batting, bowling, Super Over, full match). Resets Monday.</p>
       {data && <p className="line">Week {data.start} → {data.end}</p>}
       {err && <p className="warn">Couldn't load the weekly table.</p>}
       {!data && !err && <p className="line">Loading…</p>}
@@ -474,8 +475,8 @@ export function InningsBreak({ res, onNext }) {
 
 // ---------- full match result ----------
 export function FullResult({ res, xi, attack, cap, mode, stats, seedStr, onHome, onAgain }) {
-  const [name, setNameState] = useState(getName())
-  const [sub, setSub] = useState(mode === 'daily' ? 'ask' : 'none')
+  const [name, setNameState] = useState(getName() || randomName())
+  const [sub, setSub] = useState(mode !== 'vs' ? 'ask' : 'none')
   const [pts, setPts] = useState(null)
   const [tab, setTab] = useState(res.first === 'bat' ? 'bat' : 'bowl')
   const [copied, setCopied] = useState(false)
@@ -483,14 +484,14 @@ export function FullResult({ res, xi, attack, cap, mode, stats, seedStr, onHome,
   const bat = res.myBatting, bowl = res.myBowling
   const submit = async () => {
     setName(name.trim()); setSub('sending')
-    try { const r = await submitScore('full', name.trim() || 'Anon', seedStr, xi, 1, cap, { attack: attack.map((p) => p.id), first: res.first, ...(res.impact ? { impact: { id: res.impact.p.id, out: res.impact.out } } : {}) }); setPts(r.pts); setSub('done') }
+    try { const r = await submitScore('full', name.trim() || randomName(), todayKey(), xi, 1, cap, { ...(mode === 'daily' ? {} : { seed: seedStr }), attack: attack.map((p) => p.id), first: res.first, ...(res.impact ? { impact: { id: res.impact.p.id, out: res.impact.out } } : {}) }); setPts(r.pts); setSub('done') }
     catch (e) { setSub(e.status === 409 ? 'done' : 'error') }
   }
   const headline = res.won ? '🏆 You win!' : res.tie ? '🤝 Match tied' : '💔 You lose'
   const text = `🏟️ Chase 300 full match ${mode === 'daily' ? seedStr : ''}\n${res.text}${res.impact ? `\n⚡ Impact: ${res.impact.p.name}` : ''}\nYou ${bat.score}/${bat.wickets} · ${res.opp.name} ${res.opp.year} ${bowl.score}/${bowl.wickets}\n${xi.map((p) => p.name).join(' · ')}`
   const share = async () => { track('share', { kind: 'full' }); try { if (navigator.share) await navigator.share({ text }); else { await navigator.clipboard.writeText(text); setCopied(true) } } catch {} }
   // daily scores post themselves once the player has a name, so nobody has to find the button
-  useEffect(() => { if (mode === 'daily' && getName().trim() && sub === 'ask') submit() }, [])
+  useEffect(() => { if (mode !== 'vs' && getName().trim() && sub === 'ask') submit() }, [])
   return (
     <main className="result has-cta">
       <div className={'big' + (res.won ? ' win' : '')} style={{ fontSize: '2.6rem' }}>{headline}</div>
@@ -509,7 +510,8 @@ export function FullResult({ res, xi, attack, cap, mode, stats, seedStr, onHome,
       {sub === 'ask' && (
         <div className="card submit">
           <b className="subhead">📣 Post your score so your friends can see you</b>
-          <input value={name} maxLength={16} placeholder="Your name" onChange={(e) => setNameState(e.target.value)} />
+          <small className="mut">Your name on the board. We picked one: keep it or type your own.</small>
+          <div className="namerow"><input value={name} maxLength={16} placeholder="Your name" onChange={(e) => setNameState(e.target.value)} /><button type="button" className="ghost small" aria-label="Random name" onClick={() => setNameState(randomName())}>🎲</button></div>
           <button className="primary" onClick={submit}>Post to weekly tournament</button>
         </div>
       )}
