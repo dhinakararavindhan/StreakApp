@@ -977,7 +977,7 @@ function HowTo({ onClose }) {
     ['🏏', 'Batting', 'Chase the target in 20 overs. Level 1 is 200, level 13 is 320.'],
     ['🎯', 'Bowling', 'Draft 5 bowlers and hold them under the target: 60 down to 15.'],
     ['⬆️', 'Keep playing', 'Play as many games as you like. Beat a level to unlock the next. The first game of the day is your scored daily.'],
-    ['🌦️', 'Conditions', 'Every day has a pitch and a draft twist. Pick players who suit them.'],
+    ['🌦️', 'Conditions', 'Every day has a different pitch. Pick players who suit it.'],
     ['⭐', 'Tactics', 'Pick a captain, tweak the batting order, and fit bowlers to the right phase.'],
     ['⚡', 'Super Over', '3 hitters and 1 bowler: bat one over, then defend it.'],
     ['🧊', 'Streak freeze', 'Win a daily game to earn one. It saves a missed day.'],

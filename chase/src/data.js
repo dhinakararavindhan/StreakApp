@@ -295,6 +295,8 @@ export const SQUADS = RAW.map((s) => ({ ...s, region: REGION[s.id.slice(0, 3)], 
 // squads stay in the data and come back by adding their region here: 'AU' (BBL), 'PK' (PSL), 'WI' (CPL), 'SA' (SA20), 'EN' (The Hundred).
 export const ACTIVE_REGIONS = ['IN']
 export const PLAYABLE = SQUADS.filter((s) => ACTIVE_REGIONS.includes(s.region))
+// Daily draft twists (one per city, era days, underdog...). Off for launch: every draft is a plain random draft.
+export const DRAFT_TWISTS = false
 export const isPlayable = (p) => ACTIVE_REGIONS.includes(p.region)
 
 export const SLOT_LABELS = ['Opener', 'Opener', 'No. 3', 'No. 4', 'No. 5', 'No. 6', 'No. 7', 'No. 8', 'No. 9', 'No. 10', 'No. 11']

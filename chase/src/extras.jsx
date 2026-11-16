@@ -37,7 +37,7 @@ export function PlaceSheet({ player, options, onCancel }) {
 // ---------- compact draft pieces (keep a whole draft on one screen) ----------
 export function BriefPills({ seedStr }) {
   const cond = conditionFor(seedStr), mod = modifierFor(seedStr)
-  return <div className="pills"><span>{cond.icon} {cond.name}</span><span>{mod.icon} {mod.title}</span></div>
+  return <div className="pills"><span>{cond.icon} {cond.name}</span>{mod.id !== 'free' && <span>{mod.icon} {mod.title}</span>}</div>
 }
 export function Progress({ items, total, text }) {
   return (
@@ -68,9 +68,9 @@ export function MyList({ summary, children }) {
 export function Brief({ seedStr, compact }) {
   const cond = conditionFor(seedStr), mod = modifierFor(seedStr)
   return (
-    <div className={'brief' + (compact ? ' compact' : '')}>
+    <div className={'brief' + (compact ? ' compact' : '') + (mod.id === 'free' ? ' one' : '')}>
       <div><span className="bi">{cond.icon}</span><div><b>{cond.name}</b>{!compact && <small>{cond.desc}</small>}</div></div>
-      <div><span className="bi">{mod.icon}</span><div><b>{mod.title}</b>{!compact && <small>{mod.desc}</small>}</div></div>
+      {mod.id !== 'free' && <div><span className="bi">{mod.icon}</span><div><b>{mod.title}</b>{!compact && <small>{mod.desc}</small>}</div></div>}
     </div>
   )
 }
@@ -357,7 +357,7 @@ export function Recap({ onBack }) {
   return (
     <main className="stats-screen">
       <header><button className="link" onClick={onBack}>← Back</button><b>Yesterday's best</b><span /></header>
-      <p className="hint">{day} · {cond.icon} {cond.name} · {mod.icon} {mod.title}. See what the top players drafted and borrow ideas.</p>
+      <p className="hint">{day} · {cond.icon} {cond.name}{mod.id !== 'free' ? ` · ${mod.icon} ${mod.title}` : ''}. See what the top players drafted and borrow ideas.</p>
       {err && <p className="warn">Couldn't load yesterday's recap.</p>}
       {!data && !err && <p className="line">Loading…</p>}
       {data && !data.bat.length && !data.bowl.length && !data.super.length && <p className="line">Nobody posted yesterday yet.</p>}

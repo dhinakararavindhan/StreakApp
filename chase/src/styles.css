@@ -829,3 +829,4 @@ select { font: inherit; font-size: 0.9rem; color: var(--ink); background: var(--
 .card.impact { display: grid; gap: 4px; padding: 10px 12px; text-align: left; }
 .card.impact small { color: var(--mut); font-size: 0.74rem; }
 .card.impact select { font: inherit; font-weight: 700; margin-left: 6px; padding: 4px 8px; border-radius: 10px; border: 1px solid var(--glass-edge); background: var(--card); color: var(--ink); max-width: 60%; }
+.brief.one, .brief.compact.one { grid-template-columns: 1fr; }

@@ -1,6 +1,6 @@
 // Shared by the app and the server: daily pitch conditions, daily draft twists,
 // bowler tags (new ball / spin / death), captain bonuses and weekly points.
-import { SQUADS, PLAYABLE, BOWL_MIN } from './data.js'
+import { SQUADS, PLAYABLE, DRAFT_TWISTS, BOWL_MIN } from './data.js'
 import { hashStr } from './rng.js'
 
 // ---------- bowler tags ----------
@@ -102,7 +102,7 @@ export const MODIFIERS = [
 ]
 // a twist is only used if it can actually be played with the squads that are switched on
 const cities = new Set(PLAYABLE.map((s) => s.short)).size
-const USABLE = MODIFIERS.filter((m) => PLAYABLE.some(m.squadOK) && (m.id !== 'city' || cities >= 11) && (m.id !== 'in' || PLAYABLE.some((s) => s.region !== 'IN')))
+const USABLE = MODIFIERS.filter((m) => (DRAFT_TWISTS || m.id === 'free') && PLAYABLE.some(m.squadOK) && (m.id !== 'city' || cities >= 11) && (m.id !== 'in' || PLAYABLE.some((s) => s.region !== 'IN')))
 export const modifierFor = (seedStr) => USABLE[hashStr('mod' + seedStr) % USABLE.length]
 export const squadsFor = (mod) => PLAYABLE.filter(mod.squadOK)
 const sqById = new Map(SQUADS.map((s) => [s.id, s]))
