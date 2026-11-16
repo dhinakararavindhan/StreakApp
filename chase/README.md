@@ -17,6 +17,7 @@ Daily franchise-T20 draft game (PWA). Draft an XI from spun franchise-season squ
 - **Full match:** draft an XI, pick bat-first or bowl-first, choose your five bowlers, then play both innings against the day's opponent. Win 120 / tie 60 / loss 25 weekly points (first daily only; verified server-side). `node scripts/tune-full.mjs` checks balance (about 46% win for a random draft, 55-58% for a stronger one).
 - **Skip a pick:** every draft (batting, full match, bowling) lets you drop one drafted player once (✂️ next to the re-roll). He can't come back and you get a fresh spin.
 - **Impact player (IPL rule):** tick "Impact player" on the Full match card to draft a 12th player. He subs in for the 2nd innings in place of a player you choose (bowls in your defence if you bat first, bats in the chase if you bowl first). Verified server-side.
+- **Match database:** every finished game is posted to `/api/match`, re-run and verified by the server, and appended to `matches-YYYY-MM.ndjson` next to the db (anonymous hashed device id, no names, 12 months, skipped for opt-outs and under-18s). Admin: `/admin` shows totals and downloads CSV; `GET /api/admin/matches?days=30&kind=&mode=&format=csv` with the `x-admin-token` header.
 - **Weekly tournament:** points from every daily game (batting, bowling, Super Over), Monday to Sunday, server-computed (`dailyPoints` in `src/rules.js`).
 - **Yesterday's best XIs:** top 3 per mode with their drafted players and captain.
 - **Streak freeze:** each daily win earns a freeze (max 3) that covers one missed day.

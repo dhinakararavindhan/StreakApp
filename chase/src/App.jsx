@@ -14,7 +14,7 @@ import { BatCard, BowlCard } from './scorecard.jsx'
 import { fits, oversStr, makeSpins, getTheme, applyTheme } from './util.js'
 import { conditionFor, modifierFor, squadsFor, pickAllowed, tagOf, TAG_LABEL, phaseBonus } from './rules.js'
 import { Brief, Tactics, SuperDraft, SuperInnings, SuperResult, Weekly, Recap, ratingChips, Av, PlaceSheet, BriefPills, Progress, WheelRow, MyList, AttackPicker, InningsBreak, FullResult } from './extras.jsx'
-import { getVs, submitVs, submitScore, fetchBoard, getName, setName, pushSupported, pushEnabled, enablePush, disablePush } from './api.js'
+import { reportMatch, getVs, submitVs, submitScore, fetchBoard, getName, setName, pushSupported, pushEnabled, enablePush, disablePush } from './api.js'
 
 const BYID = new Map(SQUADS.flatMap((s) => s.players.map((p) => [p.id, p])))
 
@@ -144,11 +144,15 @@ export default function App() {
   // save the finished match (full scorecard) on this device, and in the cloud backup if it is on
   const recordMatch = () => {
     const list = kind === 'bat' || kind === 'full' ? xi : kind === 'bowl' ? attack : soPicks
+    const mid = Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
+    // the anonymous match database (the server re-runs the match to verify it)
+    reportMatch({ id: mid, kind, mode, seed: seedStr, level: kind === 'super' || kind === 'full' ? 1 : level, cap, ids: list.map((p) => p.id), ...(mode === 'vs' && kind !== 'super' && kind !== 'full' && result.target ? { target: result.target } : {}),
+      extra: kind === 'full' ? { attack: fullAttack.map((p) => p.id), first, ...((fullRes || result).impact ? { impact: { id: (fullRes || result).impact.p.id, out: (fullRes || result).impact.out } } : {}) } : {} })
     const open = result.target >= OPEN_TARGET
     if (kind === 'full') {
       const res = fullRes || result
       addMatch({
-        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), t: Date.now(), day: todayKey(), kind: 'full', mode, level: 0, target: 0,
+        id: mid, t: Date.now(), day: todayKey(), kind: 'full', mode, level: 0, target: 0,
         first, score: res.myScore, oppScore: res.oppScore, wickets: res.myBatting.wickets, won: !!res.won, tie: !!res.tie, text: res.text, balls: res.myBatting.ballsUsed,
         cap: cap >= 0 && xi[cap] ? xi[cap].name : null, picks: (res.batXi || xi).map((p) => ({ n: p.name, t: p.team, y: p.year })), impact: res.impact ? { n: res.impact.p.name, out: xi[res.impact.out].name } : null, attackPicks: fullAttack.map((p) => ({ n: p.name, t: p.team, y: p.year })),
         opp: { n: res.opp.name, y: res.opp.year }, evBat: compactEvents('bat', res.myBatting.events), evBowl: compactEvents('bowl', res.myBowling.events),
@@ -156,7 +160,7 @@ export default function App() {
       clearResume(); setSaved(null); autoBackup(); return
     }
     addMatch({
-      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), t: Date.now(), day: todayKey(), kind, mode,
+      id: mid, t: Date.now(), day: todayKey(), kind, mode,
       level: kind === 'super' || mode === 'vs' ? 0 : level, target: open ? 0 : result.target || 0, vs: mode === 'vs' && vs ? vs.role : null,
       score: result.score, wickets: result.wickets, won: !!result.won, tie: !!result.tie, balls: result.ballsUsed,
       cap: cap >= 0 && list[cap] ? list[cap].name : null, picks: list.map((p) => ({ n: p.name, t: p.team, y: p.year })),

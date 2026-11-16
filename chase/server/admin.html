@@ -38,6 +38,7 @@ function render(s, token) {
   </div>
   <h2>Daily active players</h2><div class="card"><div class="bars">${s.series.map((d) => `<i title="${d.day}: ${d.dau} active, ${d.new} new" style="height:${Math.round((d.dau / max) * 100)}%"></i>`).join('')}</div></div>
   <h2>What people play</h2><div class="card">${table(['Mode', 'Games'], kv(s.modes))}<p class="mut">Scored daily: ${s.plays.daily} · Free play: ${s.plays.free} · Vs friend: ${s.plays.vs}</p></div>
+  <h2>Match database</h2><div class="card"><p>${s.matches.total} verified matches in the last ${s.matches.windowDays} days (${s.matches.last7d} in the last 7). Win rate ${pct(s.matches.winPct)}. Impact player used in ${s.matches.impactUsed}.</p>${table(['Kind', 'Matches'], kv(s.matches.byKind))}${table(['Mode', 'Matches'], kv(s.matches.byMode))}<button id="mcsv">Download matches (CSV)</button> <button id="mjson">Latest 50 (JSON)</button></div>
   <h2>Where people quit</h2><div class="card"><p>${s.abandon.abandoned} of ${s.abandon.starts} drafts abandoned (${pct(s.abandon.pct)}), after ${s.abandon.avgPicks ?? '–'} picks on average.</p></div>
   <h2>Level difficulty: batting</h2><div class="card">${table(['Level', 'Starts', 'Finished', 'Won', 'Win %'], s.funnel.bat.map((r) => [r.level, r.starts, r.finishes, r.wins, pct(r.winPct)]))}</div>
   <h2>Level difficulty: bowling</h2><div class="card">${table(['Level', 'Starts', 'Finished', 'Won', 'Win %'], s.funnel.bowl.map((r) => [r.level, r.starts, r.finishes, r.wins, pct(r.winPct)]))}</div>
@@ -47,6 +48,9 @@ function render(s, token) {
   <h2>Audience report (for sponsors)</h2><div class="card"><p class="mut">${s.audience.profiles} players shared an optional profile with consent. Under-18s are never profiled. Groups under ${s.audience.minBucket} are hidden.</p>
     ${table(['Age band', 'Players'], kv(s.audience.age))}${table(['State', 'Players'], kv(s.audience.state))}${table(['Favourite team city', 'Players'], kv(s.audience.team))}</div>
   <h2>Send a notification to all subscribers</h2><div class="card"><input id="bt" maxlength="60" placeholder="Title"><textarea id="bb" maxlength="160" placeholder="Message (160 characters)"></textarea><button id="send">Send to ${s.pushSubscribers} subscribers</button><p id="bmsg" class="mut"></p></div>`
+  const dl = async (q, name, json) => { const r = await fetch('/api/admin/matches?' + q, { headers: { 'x-admin-token': token } }); const b = await r.blob(); const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = name; a.click() }
+  $('#mcsv').onclick = () => dl('format=csv&days=365&limit=50000', 'chase300-matches.csv')
+  $('#mjson').onclick = () => dl('limit=50', 'chase300-matches.json')
   $('#refresh').onclick = (e) => { e.preventDefault(); load(token) }
   $('#send').onclick = async () => {
     if (!confirm('Send this to every subscriber?')) return

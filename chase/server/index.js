@@ -11,6 +11,7 @@ import { simulate, simulateBowl, simulateSuper, superOpponent, opponentFor, simu
 import { conditionFor, modifierFor, pickAllowed, orderOK, dailyPoints, mondayOf } from '../src/rules.js'
 import crypto from 'node:crypto'
 import * as AN from './analytics.js'
+import * as MX from './matches.js'
 import { AGE_BANDS, STATES, TEAM_CITIES } from '../src/profile.js'
 import { rng, hashStr, todayKey } from '../src/rng.js'
 
@@ -27,6 +28,7 @@ AN.ensureSalt(db)
 const DATA_DIR = path.dirname(DB_FILE)
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || ''
 AN.purgeOld(DATA_DIR)
+MX.purgeOldMatches(DATA_DIR)
 let dirty = true // persist the freshly generated salt
 const sha = (s) => crypto.createHash('sha256').update(String(s)).digest()
 const adminOK = (req) => !!ADMIN_TOKEN && crypto.timingSafeEqual(sha(req.headers['x-admin-token'] || ''), sha(ADMIN_TOKEN))
@@ -266,6 +268,27 @@ const server = http.createServer(async (req, res) => {
         if (n) save()
         res.writeHead(204); return res.end()
       }
+      // every finished game, re-verified by the server and stored anonymously in the match database
+      if (req.method === 'POST' && url.pathname === '/api/match') {
+        const b = await readJson(req)
+        if (!validDevice(b.device) || typeof b.id !== 'string' || !/^[a-z0-9]{4,24}$/.test(b.id)) return send(res, 400, { error: 'bad match' })
+        const kind = ['bat', 'bowl', 'super', 'full'].includes(b.kind) ? b.kind : null
+        const mode = ['daily', 'practice', 'vs'].includes(b.mode) ? b.mode : null
+        if (!kind || !mode || typeof b.seed !== 'string' || b.seed.length > 40) return send(res, 400, { error: 'bad match' })
+        const level = kind === 'super' || kind === 'full' ? 1 : Math.min(kind === 'bowl' ? BOWL_LEVELS : BAT_LEVELS, Math.max(1, Number(b.level) | 0 || 1))
+        const target = mode === 'vs' && Number.isFinite(b.target) && b.target > 0 && b.target <= OPEN_TARGET ? Math.round(b.target) : undefined
+        const cap = Number.isInteger(b.cap) ? b.cap : -1
+        const ex = b.extra && typeof b.extra === 'object' ? { attack: b.extra.attack, first: b.extra.first, impact: b.extra.impact } : {}
+        const r = verify(kind, b.ids, b.seed, level, cap, target, ex)
+        if (!r) return send(res, 400, { error: 'invalid match' })
+        const h = AN.hashDevice(db, b.device), ua = AN.uaInfo(req.headers['user-agent'])
+        const ok = MX.recordMatch(DATA_DIR, {
+          t: Date.now(), id: b.id, d: h, kind, mode, level: kind === 'super' || kind === 'full' || mode === 'vs' ? 0 : level, seed: mode === 'practice' ? '' : b.seed,
+          score: r.score, wk: r.wickets, balls: r.ballsUsed, won: r.won ? 1 : 0, tie: r.tie ? 1 : 0, oppScore: r.oppScore ?? null, opp: r.opp && r.opp.name ? { name: r.opp.name, year: r.opp.year } : null,
+          text: r.text || '', first: ex.first || '', impact: ex.impact ? { id: ex.impact.id, out: ex.impact.out } : null, cap, xi: b.ids, attack: kind === 'full' ? ex.attack : null, target: target || null, dev: ua.dev,
+        })
+        return send(res, 200, { ok: true, stored: ok })
+      }
       if (url.pathname === '/api/profile' && (req.method === 'PUT' || req.method === 'DELETE')) {
         const body = await readJson(req)
         if (!validDevice(body.device)) return send(res, 400, { error: 'bad device' })
@@ -287,12 +310,19 @@ const server = http.createServer(async (req, res) => {
         db.scores = db.scores.filter((s) => s.device !== body.device)
         for (const ch of Object.values(db.vs)) ch.entries = ch.entries.filter((e) => e.device !== body.device)
         AN.deleteDevice(db, DATA_DIR, body.device)
+        MX.deleteDeviceMatches(DATA_DIR, AN.hashDevice(db, body.device))
         save(); return send(res, 200, { ok: true, removedScores: before.scores - db.scores.length })
       }
       if (url.pathname.startsWith('/api/admin/')) {
         if (!ADMIN_TOKEN) return send(res, 503, { error: 'admin disabled: set ADMIN_TOKEN' })
         if (!adminOK(req)) return send(res, 401, { error: 'unauthorized' })
-        if (req.method === 'GET' && url.pathname === '/api/admin/summary') return send(res, 200, AN.summary(db, DATA_DIR, 30))
+        if (req.method === 'GET' && url.pathname === '/api/admin/summary') return send(res, 200, { ...AN.summary(db, DATA_DIR, 30), matches: MX.matchStats(DATA_DIR, 30) })
+        if (req.method === 'GET' && url.pathname === '/api/admin/matches') {
+          const q = url.searchParams
+          const rows = MX.readMatches(DATA_DIR, { days: Math.min(365, Number(q.get('days')) || 30), kind: q.get('kind') || '', mode: q.get('mode') || '', limit: Math.min(50000, Number(q.get('limit')) || 200) })
+          if (q.get('format') === 'csv') { res.writeHead(200, { 'content-type': 'text/csv', 'content-disposition': 'attachment; filename="chase300-matches.csv"' }); return res.end(MX.toCsv(rows)) }
+          return send(res, 200, { count: rows.length, matches: rows })
+        }
         if (req.method === 'POST' && url.pathname === '/api/admin/broadcast') {
           const b = await readJson(req)
           const title = String(b.title || '').slice(0, 60), text = String(b.body || '').slice(0, 160)

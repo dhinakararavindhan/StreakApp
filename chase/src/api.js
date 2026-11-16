@@ -56,3 +56,12 @@ export const fetchRecap = (day) => j(`/recap?day=${encodeURIComponent(day)}`)
 export const saveProfile = (p) => j('/profile', { method: 'PUT', body: JSON.stringify({ device: deviceId(), consent: true, ...p }) })
 export const deleteProfile = () => j('/profile', { method: 'DELETE', body: JSON.stringify({ device: deviceId() }) })
 export const deleteMe = () => j('/me', { method: 'DELETE', body: JSON.stringify({ device: deviceId() }) })
+
+// report a finished game to the anonymous match database (only when analytics is on; the server re-verifies it)
+export async function reportMatch(m) {
+  try {
+    const { analyticsOn } = await import('./analytics.js')
+    if (!analyticsOn()) return
+    await fetch('/api/match', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ device: deviceId(), ...m }), keepalive: true })
+  } catch {}
+}
