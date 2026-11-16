@@ -67,6 +67,9 @@ export default function App() {
   const [impactP, setImpactP] = useState(null)       // the drafted Impact Player
   const [impactOut, setImpactOut] = useState(-1)     // XI slot he replaces from the 2nd innings (-1 = not used)
 
+  // tell the auto-updater whether a game is in progress (it waits for the game to end before reloading)
+  useEffect(() => { window.__chaseBusy = ['draft', 'tactics', 'attack', 'chase'].includes(screen) }, [screen])
+
   // keep the match in progress saved after every pick / step
   useEffect(() => {
     if (!['draft', 'tactics', 'attack', 'chase'].includes(screen)) return
