@@ -441,7 +441,7 @@ const server = http.createServer(async (req, res) => {
     let f = path.normalize(path.join(DIST, url.pathname === '/' ? 'index.html' : url.pathname))
     if (!f.startsWith(DIST) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) f = path.join(DIST, 'index.html')
     const type = MIME[path.extname(f)] || 'application/octet-stream'
-    res.writeHead(200, { 'content-type': type, 'cache-control': f.endsWith('sw.js') || f.endsWith('index.html') ? 'no-cache' : 'public, max-age=31536000' })
+    res.writeHead(200, { 'content-type': type, 'cache-control': f.startsWith(path.join(DIST, 'assets') + path.sep) ? 'public, max-age=31536000, immutable' : 'no-cache' // only fingerprinted /assets files are cached long; manifest, icons, sw.js and index.html always revalidate })
     fs.createReadStream(f).pipe(res)
   } catch (e) { send(res, 400, { error: 'bad request' }) }
 })
