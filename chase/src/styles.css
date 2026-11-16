@@ -781,3 +781,16 @@ select { font: inherit; font-size: 0.9rem; color: var(--ink); background: var(--
 .mv-top { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 2px; } .mv-top .big { font-size: 3.4rem; } .mv-res { color: var(--mut); font-size: 0.82rem; font-weight: 600; }
 .mv-team { display: flex; flex-direction: column; gap: 6px; } .mv-picks { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 0.82rem; } .mv-picks small { color: var(--mut); } .mv-picks .c { font-weight: 800; color: var(--accent); }
 .bk-code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 1.35rem; font-weight: 800; letter-spacing: 0.06em; text-align: center; padding: 14px 8px; border-radius: 14px; background: var(--card2); border: 1px dashed var(--line); user-select: all; }
+
+/* ---------- full match ---------- */
+.tabs.first { margin: 0; }
+.bench-h { margin: 6px 0 0; font-size: 0.95rem; }
+.bench { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.bp { display: flex; align-items: center; gap: 9px; text-align: left; padding: 8px 10px; border-radius: 14px; background: var(--sheen), var(--glass); border: 1px solid var(--glass-edge); box-shadow: var(--glass-hi), var(--depth-sm); min-width: 0; }
+.bp .av { width: 30px; height: 30px; font-size: 0.66rem; border-radius: 10px; }
+.bp b { display: block; font-size: 0.82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .bp small { color: var(--mut); font-size: 0.68rem; font-weight: 600; }
+.bp.sel { border-color: rgba(var(--a1), 0.55); box-shadow: 0 0 0 3px rgba(var(--a1), 0.12), var(--depth-sm); }
+.mode.wide { grid-column: 1 / -1; }
+.mode.wide p { min-height: 0; }
+.wide-row { display: flex; gap: 8px; align-items: center; }
+.wide-row .primary { flex: 1; } .wide-row .link { flex: none; }

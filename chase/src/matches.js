@@ -33,29 +33,32 @@ export function compactEvents(kind, events) {
 }
 
 // rebuild the same shape the scorecard components get from a live simulation
+function expandBat(picks, ev, target, won) {
+  let score = 0, wickets = 0
+  const events = ev.map(([ball, batter, runs, w]) => { score += runs; wickets += w; return { ball, batter, runs, wicket: !!w, score, wickets } })
+  const card = picks.map((p) => ({ name: p.n, runs: 0, balls: 0, out: false, fours: 0, sixes: 0 }))
+  const idx = new Map(card.map((c, i) => [c.name, i]))
+  for (const e of events) {
+    const c = card[idx.get(e.batter)]
+    if (!c) continue
+    c.balls += 1; c.runs += e.runs
+    if (e.runs === 4) c.fours += 1
+    if (e.runs === 6) c.sixes += 1
+    if (e.wicket) c.out = true
+  }
+  return { events, card, score, wickets, ballsUsed: events.length ? events[events.length - 1].ball : 0, target, won }
+}
+function expandBowl(picks, ev, target, won, opp) {
+  let score = 0, wickets = 0
+  const events = ev.map(([ball, batter, bowler, runs, w]) => { score += runs; wickets += w; return { ball, batter, bowler, runs, wicket: !!w, score, wickets } })
+  const figs = picks.map((p) => ({ name: p.n, balls: 0, runs: 0, wkts: 0 }))
+  const idx = new Map(figs.map((f, i) => [f.name, i]))
+  for (const e of events) { const f = figs[idx.get(e.bowler)]; if (f) { f.balls += 1; f.runs += e.runs; f.wkts += e.wicket ? 1 : 0 } }
+  return { events, figs, score, wickets, ballsUsed: events.length ? events[events.length - 1].ball : 0, target, won, allOut: wickets >= 10, opp: opp ? { name: opp.n, year: opp.y } : { name: '', year: '' } }
+}
 export function expandMatch(m) {
-  if (m.kind === 'bat') {
-    let score = 0, wickets = 0
-    const events = m.ev.map(([ball, batter, runs, w]) => { score += runs; wickets += w; return { ball, batter, runs, wicket: !!w, score, wickets } })
-    const card = m.picks.map((p) => ({ name: p.n, runs: 0, balls: 0, out: false, fours: 0, sixes: 0 }))
-    const idx = new Map(card.map((c, i) => [c.name, i]))
-    for (const e of events) {
-      const c = card[idx.get(e.batter)]
-      if (!c) continue
-      c.balls += 1; c.runs += e.runs
-      if (e.runs === 4) c.fours += 1
-      if (e.runs === 6) c.sixes += 1
-      if (e.wicket) c.out = true
-    }
-    return { events, card, score, wickets, ballsUsed: events.length ? events[events.length - 1].ball : 0, target: m.target, won: m.won }
-  }
-  if (m.kind === 'bowl') {
-    let score = 0, wickets = 0
-    const events = m.ev.map(([ball, batter, bowler, runs, w]) => { score += runs; wickets += w; return { ball, batter, bowler, runs, wicket: !!w, score, wickets } })
-    const figs = m.picks.map((p) => ({ name: p.n, balls: 0, runs: 0, wkts: 0 }))
-    const idx = new Map(figs.map((f, i) => [f.name, i]))
-    for (const e of events) { const f = figs[idx.get(e.bowler)]; if (f) { f.balls += 1; f.runs += e.runs; f.wkts += e.wicket ? 1 : 0 } }
-    return { events, figs, score, wickets, ballsUsed: events.length ? events[events.length - 1].ball : 0, target: m.target, won: m.won, allOut: wickets >= 10, opp: m.opp ? { name: m.opp.n, year: m.opp.y } : { name: '', year: '' } }
-  }
+  if (m.kind === 'bat') return expandBat(m.picks, m.ev, m.target, m.won)
+  if (m.kind === 'bowl') return expandBowl(m.picks, m.ev, m.target, m.won, m.opp)
+  if (m.kind === 'full') return { bat: expandBat(m.picks, m.evBat || [], 0, m.won), bowl: expandBowl(m.attackPicks || [], m.evBowl || [], 0, m.won, m.opp) }
   return null
 }

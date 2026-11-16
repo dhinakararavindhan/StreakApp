@@ -1,5 +1,5 @@
-import { BALLS, SQUADS, BOWL_SCHEDULE, bowlTarget } from './data.js'
-import { hashStr } from './rng.js'
+import { BALLS, SQUADS, BOWL_SCHEDULE, bowlTarget, OPEN_TARGET } from './data.js'
+import { hashStr, rng } from './rng.js'
 import { batAdjust, bowlAdjust, phaseBonus, CAPTAIN } from './rules.js'
 
 // Team-level summary used for ratings display.
@@ -38,7 +38,7 @@ function ballOutcome(r, bat, pow, morale, pressure, grit = 0) {
 
 // Simulates a whole chase. Returns events + summary. `rand` is a seeded rng.
 export function simulate(xi, rand, target = 300, opts = {}) {
-  const { cap = -1, cond = null } = opts
+  const { cap = -1, cond = null, grit = 0 } = opts // grit: how good the opposition's bowling is (full match only)
   // effective ratings: pitch condition + captain bonus
   const eff = xi.map((p, i) => {
     const a = batAdjust(cond, p)
@@ -57,9 +57,9 @@ export function simulate(xi, rand, target = 300, opts = {}) {
   for (let ball = 0; ball < BALLS && wickets < 10; ball++) {
     const need = target - score
     const ballsLeft = BALLS - ball
-    const pressure = Math.max(0, Math.min(2, need / ballsLeft - 2.2))
+    const pressure = target >= OPEN_TARGET ? 0 : Math.max(0, Math.min(2, need / ballsLeft - 2.2)) // no 'required rate' pressure when there is no target
     const b = xi[striker]
-    const o = ballOutcome(rand, eff[striker].bat, eff[striker].pow, morale, pressure)
+    const o = ballOutcome(rand, eff[striker].bat, eff[striker].pow, morale, pressure, grit)
     card[striker].balls++
     let runs = 0, wicket = false
     if (o === 'W') {
@@ -119,7 +119,7 @@ export function bowlRatings(attack) {
 }
 
 export function simulateBowl(attack, opp, rand, target = bowlTarget(1), opts = {}) {
-  const { cap = -1, cond = null } = opts
+  const { cap = -1, cond = null, stopAtTarget = false } = opts // stopAtTarget: the opposition is chasing and the match ends once they get there
   // effective bowling rating per slot: phase fit + pitch condition + captain
   const effBwl = attack.map((p, i) => Math.min(110, Math.max(0, p.bwl + phaseBonus(i, p) + bowlAdjust(cond, p) + (i === cap ? CAPTAIN.bowl : 0))))
   const oppEff = opp.map((p) => { const a = batAdjust(cond, p); return { bat: Math.min(100, p.bat + a.bat), pow: p.pow * a.pow } })
@@ -144,6 +144,7 @@ export function simulateBowl(attack, opp, rand, target = bowlTarget(1), opts = {
       }
       events.push({ ball, bowler: attack[bi].name, batter: bat.name, runs, wicket, score, wickets })
       if (striker < 0) break outer
+      if (stopAtTarget && score >= target) break outer
     }
     if (striker >= 0) [striker, nonStriker] = [nonStriker, striker]
   }
@@ -198,4 +199,53 @@ export function simulateSuper(picks, opp, rand, opts = {}) {
     mine, theirs, score: mine.runs, wickets: mine.wickets, oppScore: theirs.runs, ballsUsed: mine.events.length + theirs.events.length,
     won: mine.runs > theirs.runs, tie: mine.runs === theirs.runs, opp,
   }
+}
+
+
+// ---------------- Full match: bat and bowl a whole T20 with the same XI ----------------
+const FULL_GRIT = 1.0 // how strongly the opposition's bowling attack dents our batting
+const FULL_BOOST = 1.15 // the opposition's batters hit a little harder in a full match
+export function oppAttackGrit(players) {
+  const top = [...players].sort((a, b) => b.bwl - a.bwl).slice(0, 5)
+  const avg = top.reduce((x, p) => x + p.bwl, 0) / top.length
+  return Math.min(1.1, Math.max(0, (avg - 50) / 50))
+}
+
+// xi: 11 players in batting order. attack: 5 bowlers (slots: 2 new ball, 2 middle, 1 death) picked from the XI.
+// first: 'bat' (set a score, then defend it) or 'bowl' (restrict them, then chase).
+export function simulateFull(xi, attack, { seedStr, cap = -1, first = 'bat', cond = null }) {
+  const opp = opponentFor(seedStr)
+  const oppInfo = { name: opp.name, year: opp.year }
+  const bowlCap = cap >= 0 && xi[cap] ? attack.findIndex((p) => p.name === xi[cap].name) : -1
+  const xiKey = xi.map((p) => p.id).join('|'), atKey = attack.map((p) => p.id).join('|')
+  const grit = oppAttackGrit(opp.players) * FULL_GRIT
+  const boosted = opp.players.map((p) => ({ ...p, pow: Math.min(110, p.pow * FULL_BOOST) }))
+  const bat = (target) => simulate(xi, rng(hashStr(seedStr + 'fullbat' + xiKey)), target, { cap, cond, grit })
+  const bowl = (target, stop) => ({
+    ...simulateBowl(attack, boosted, rng(hashStr(seedStr + 'fullbowl' + atKey + xiKey)), target, { cap: bowlCap, cond, stopAtTarget: stop }),
+    opp: oppInfo,
+  })
+  let inn1, inn2, out
+  if (first === 'bat') {
+    inn1 = bat(OPEN_TARGET); const S = inn1.score
+    inn2 = bowl(S + 1, true); const T = inn2.score
+    out = T >= S + 1 ? { won: false, tie: false, text: `Lost by ${10 - inn2.wickets} wicket${10 - inn2.wickets === 1 ? '' : 's'}` }
+      : T === S ? { won: false, tie: true, text: 'Match tied' }
+      : { won: true, tie: false, text: `Won by ${S - T} run${S - T === 1 ? '' : 's'}` }
+    return { first, opp: oppInfo, inn1, inn2, myBatting: inn1, myBowling: inn2, myScore: S, oppScore: T, ...out }
+  }
+  inn1 = bowl(OPEN_TARGET, false); const R = inn1.score
+  inn2 = bat(R + 1); const T = inn2.score
+  const left = BALLS - inn2.ballsUsed
+  out = T >= R + 1 ? { won: true, tie: false, text: `Won by ${10 - inn2.wickets} wicket${10 - inn2.wickets === 1 ? '' : 's'}${left > 0 ? ` (${left} ball${left === 1 ? '' : 's'} left)` : ''}` }
+    : T === R ? { won: false, tie: true, text: 'Match tied' }
+    : { won: false, tie: false, text: `Lost by ${R - T} run${R - T === 1 ? '' : 's'}` }
+  return { first, opp: oppInfo, inn1, inn2, myBatting: inn2, myBowling: inn1, myScore: T, oppScore: R, ...out }
+}
+
+// the five best bowlers of an XI (a sensible default attack), in slot order: strongest opens and closes
+export function autoAttack(xi) {
+  const best = [...xi].sort((a, b) => b.bwl - a.bwl).slice(0, 5)
+  // slots: 0,1 new ball, 2,3 middle, 4 death: put the top two first, the next two in the middle, fifth at the death
+  return [best[0], best[1], best[3], best[4], best[2]].filter(Boolean)
 }

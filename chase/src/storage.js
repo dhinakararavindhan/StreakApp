@@ -14,7 +14,7 @@ export function load() {
 function save(s) { try { localStorage.setItem(KEY, JSON.stringify(s)) } catch {} }
 
 const dayDiff = (a, b) => Math.round((new Date(b) - new Date(a)) / 86400000)
-export const histKey = (kind, day) => (kind === 'bowl' ? 'bowl:' + day : kind === 'super' ? 'super:' + day : day)
+export const histKey = (kind, day) => (kind === 'bowl' ? 'bowl:' + day : kind === 'super' ? 'super:' + day : kind === 'full' ? 'full:' + day : day)
 
 // Effective streak: shows 0 if the player missed yesterday and hasn't played today.
 export function liveStreak(s, today = todayKey()) {
@@ -38,7 +38,7 @@ function recordWin(s, kind, level, score) {
 }
 
 function bump(s, kind, score, won, level) {
-  if (kind === 'super') { s.played += 1; if (won) { s.wins += 1; s.superWins = (s.superWins || 0) + 1 } return }
+  if (kind === 'super' || kind === 'full') { s.played += 1; if (won) { s.wins += 1; if (kind === 'super') s.superWins = (s.superWins || 0) + 1; else s.fullWins = (s.fullWins || 0) + 1 } return }
   // A level opens the next one only when it is beaten.
   if (kind === 'bowl') {
     s.bestBowl = s.bestBowl == null ? score : Math.min(s.bestBowl, score)
@@ -60,7 +60,7 @@ function bump(s, kind, score, won, level) {
 }
 
 // Either daily challenge keeps the streak alive; it grows once per day.
-export function recordDaily(kind, score, won, level = 1, today = todayKey()) {
+export function recordDaily(kind, score, won, level = 1, today = todayKey(), extra = {}) {
   const s = load()
   const k = histKey(kind, today)
   if (s.history[k]) return s
@@ -74,7 +74,7 @@ export function recordDaily(kind, score, won, level = 1, today = todayKey()) {
   }
   bump(s, kind, score, won, level)
   if (won) s.freezes = Math.min(3, (s.freezes || 0) + 1) // earn a streak freeze for each daily win
-  s.history[k] = { score, won, level }
+  s.history[k] = { score, won, level, ...extra }
   save(s)
   return s
 }
@@ -109,5 +109,7 @@ export const BADGES = [
   { id: 'vs1', icon: '⚔️', name: 'Challenger', desc: 'Play a friend challenge', test: (s) => (s.vsPlayed || 0) >= 1 },
   { id: 'so1', icon: '⚡', name: 'Super!', desc: 'Win a Super Over', test: (s) => (s.superWins || 0) >= 1 },
   { id: 'frz', icon: '🧊', name: 'Ice cold', desc: 'Earn a streak freeze', test: (s) => (s.freezes || 0) >= 1 || !!s.freezeUsedOn },
+  { id: 'full1', icon: '🏟️', name: 'Complete cricketer', desc: 'Win a full match', test: (s) => (s.fullWins || 0) >= 1 },
+  { id: 'full5', icon: '🧢', name: 'Captain material', desc: 'Win 5 full matches', test: (s) => (s.fullWins || 0) >= 5 },
   { id: 'p50', icon: '💯', name: 'Veteran', desc: 'Play 50 games', test: (s) => s.played >= 50 },
 ]

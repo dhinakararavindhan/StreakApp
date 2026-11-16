@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { SQUADS, BOWL_SLOTS, BOWL_MIN, batTarget, bowlTarget } from './data.js'
 import { hashStr, todayKey } from './rng.js'
-import { superOpponent } from './sim.js'
+import { superOpponent, opponentFor, autoAttack } from './sim.js'
 import { conditionFor, modifierFor, squadsFor, pickAllowed, tagOf, TAG_LABEL, phaseBonus, orderOK, nativeSlot, isPower, isAnchor, pitchFitBat, pitchFitBowl } from './rules.js'
 import { getName, setName, submitScore, fetchWeekly, fetchRecap } from './api.js'
 import { liveStreak } from './storage.js'
+import { BatCard, BowlCard } from './scorecard.jsx'
 import { shareCard } from './card.js'
 import { track } from './analytics.js'
 import { makeSpins, oversStr, initials, avatarColor } from './util.js'
@@ -92,8 +93,9 @@ const ratingChips = (p, cond, mode = 'both') => {
 export { ratingChips }
 
 // ---------- tactics: batting order swap + captain ----------
-export function Tactics({ kind, picks, seedStr, onConfirm }) {
+export function Tactics({ kind, picks, seedStr, onConfirm, full = false }) {
   const cond = conditionFor(seedStr)
+  const [first, setFirst] = useState('bat')
   const [order, setOrder] = useState(picks)
   const [cap, setCap] = useState(-1)
   const [sel, setSel] = useState(null)
@@ -111,12 +113,19 @@ export function Tactics({ kind, picks, seedStr, onConfirm }) {
     if (capName) setCap(next.indexOf(capName))
   }
   const label = (i) => (kind === 'bat' ? `#${i + 1}` : kind === 'bowl' ? BOWL_SLOTS[i] : i < 3 ? `Bat ${i + 1}` : 'Bowler')
-  const title = kind === 'bat' ? 'Tactics: batting order and captain' : kind === 'bowl' ? 'Tactics: bowling slots and captain' : 'Tactics: pick your captain'
-  const go = kind === 'bat' ? 'Start the chase' : kind === 'bowl' ? 'Bowl!' : 'Play the Super Over'
+  const title = full ? 'Match plan: order, captain, who goes first' : kind === 'bat' ? 'Tactics: batting order and captain' : kind === 'bowl' ? 'Tactics: bowling slots and captain' : 'Tactics: pick your captain'
+  const go = full ? 'Next: pick your bowlers ▶' : kind === 'bat' ? 'Start the chase' : kind === 'bowl' ? 'Bowl!' : 'Play the Super Over'
   return (
     <main className="tactics">
       <h1>{title}</h1>
       <Brief seedStr={seedStr} compact />
+      {full && (
+        <div className="tabs first">
+          <button className={first === 'bat' ? 'on' : ''} onClick={() => setFirst('bat')}>🏏 Bat first</button>
+          <button className={first === 'bowl' ? 'on' : ''} onClick={() => setFirst('bowl')}>🎯 Bowl first</button>
+        </div>
+      )}
+      {full && <p className="hint">{first === 'bat' ? 'Set a score, then defend it with your bowlers.' : 'Restrict them first, then chase their score with your batters.'}</p>}
       <p className="hint">
         {kind === 'bat' && 'Tap two players to swap them. You may move up to 2 players one place out of position.'}
         {kind === 'bowl' && 'Tap two bowlers to swap slots. Specialists get a bonus in their phase: new-ball pace early, spin in the middle, death specialists last.'}
@@ -144,7 +153,7 @@ export function Tactics({ kind, picks, seedStr, onConfirm }) {
         })}
       </ol>
       {msg && <p className="warn">{msg}</p>}
-      <button className="primary" disabled={cap < 0} onClick={() => onConfirm(order, cap)}>{cap < 0 ? 'Pick a captain ⭐' : go}</button>
+      <button className="primary" disabled={cap < 0} onClick={() => onConfirm(order, cap, first)}>{cap < 0 ? 'Pick a captain ⭐' : go}</button>
     </main>
   )
 }
@@ -354,6 +363,130 @@ export function Recap({ onBack }) {
       {data && section('bat', '🏏 Batting')}
       {data && section('bowl', '🎯 Bowling')}
       {data && section('super', '⚡ Super Over')}
+    </main>
+  )
+}
+
+
+// ---------- Full match: choose your five bowlers from the XI ----------
+export function AttackPicker({ xi, cap, seedStr, onConfirm }) {
+  const cond = conditionFor(seedStr)
+  const opp = useMemo(() => opponentFor(seedStr), [seedStr])
+  const [slots, setSlots] = useState(() => autoAttack(xi))
+  const [selSlot, setSelSlot] = useState(null)
+  const [selBench, setSelBench] = useState(null)
+  const bench = xi.filter((p) => !slots.includes(p)).sort((a, b) => b.bwl - a.bwl)
+  const capPlayer = cap >= 0 ? xi[cap] : null
+  const oppBat = Math.round(opp.players.reduce((s, p) => s + p.pow, 0) / opp.players.length)
+  const tapSlot = (i) => {
+    if (selBench) { const n = slots.slice(); n[i] = selBench; setSlots(n); setSelBench(null); setSelSlot(null); return }
+    if (selSlot === null) { setSelSlot(i); return }
+    if (selSlot === i) { setSelSlot(null); return }
+    const n = slots.slice(); [n[selSlot], n[i]] = [n[i], n[selSlot]]; setSlots(n); setSelSlot(null)
+  }
+  const tapBench = (p) => {
+    if (selSlot !== null) { const n = slots.slice(); n[selSlot] = p; setSlots(n); setSelSlot(null); setSelBench(null); return }
+    setSelBench(selBench === p ? null : p)
+  }
+  const avg = Math.round(slots.reduce((s, p) => s + p.bwl, 0) / 5)
+  return (
+    <main className="tactics">
+      <h1>Pick your five bowlers</h1>
+      <Brief seedStr={seedStr} compact />
+      <div className="card opp tight"><small>vs</small><b>{opp.name} {opp.year}</b><span>their batting power {oppBat} · your attack {avg}</span></div>
+      <p className="hint">Four overs each: two with the new ball, two in the middle, one at the death. Tap two slots to swap, or tap a bench player then a slot to bring them in.</p>
+      <ol className="slots tac">
+        {slots.map((p, i) => {
+          const fit = phaseBonus(i, p)
+          return (
+            <li key={p.id} className={(selSlot === i ? 'can ' : '') + 'filled'} onClick={() => tapSlot(i)}>
+              <span className="sn">{i + 1}</span>
+              <Av p={p} />
+              <span className="sl">
+                {capPlayer && capPlayer.name === p.name ? '⭐ ' : ''}{p.name} <small className="tm">{p.team} {String(p.year).slice(2)}</small>
+                <small className="sub2">{BOWL_SLOTS[i]} · bowling {p.bwl}</small>
+                <span className="chips">{ratingChips(p, cond, 'bowl')}
+                  {fit > 0 && <i className="chip up">+{fit} fit</i>}{fit < 0 && <i className="chip dn">{fit} fit</i>}{p.bwl < 40 && <i className="chip dn">part-timer</i>}
+                </span>
+              </span>
+            </li>
+          )
+        })}
+      </ol>
+      <h2 className="bench-h">Bench</h2>
+      <div className="bench">
+        {bench.map((p) => (
+          <button key={p.id} className={'bp' + (selBench === p ? ' sel' : '')} onClick={() => tapBench(p)}>
+            <Av p={p} /><span><b>{p.name}</b><small>bowling {p.bwl}</small></span>
+          </button>
+        ))}
+      </div>
+      <button className="primary" onClick={() => onConfirm(slots)}>Start the match ▶</button>
+    </main>
+  )
+}
+
+// ---------- between the innings ----------
+export function InningsBreak({ res, onNext }) {
+  const bat1 = res.first === 'bat'
+  const i1 = res.inn1
+  const target = i1.score + 1
+  return (
+    <main className="chase">
+      <div className="target">Innings break</div>
+      <div className="card" style={{ textAlign: 'center' }}>
+        <small className="mut">{bat1 ? 'You batted first' : `${res.opp.name} ${res.opp.year} batted first`}</small>
+        <div className="big" style={{ fontSize: '3.4rem' }}>{i1.score}<small>/{i1.wickets}</small></div>
+        <p className="line">{oversStr(i1.ballsUsed)} overs</p>
+      </div>
+      <p className="verdict" style={{ textAlign: 'center' }}>{bat1 ? `${res.opp.name} ${res.opp.year} need ${target} to win.` : `You need ${target} to win.`}</p>
+      <div className="hcta"><button className="primary" onClick={onNext}>{bat1 ? 'Start bowling ▶' : 'Start the chase ▶'}</button></div>
+    </main>
+  )
+}
+
+// ---------- full match result ----------
+export function FullResult({ res, xi, attack, cap, mode, stats, seedStr, onHome, onAgain }) {
+  const [name, setNameState] = useState(getName())
+  const [sub, setSub] = useState(mode === 'daily' ? 'ask' : 'none')
+  const [pts, setPts] = useState(null)
+  const [tab, setTab] = useState(res.first === 'bat' ? 'bat' : 'bowl')
+  const [copied, setCopied] = useState(false)
+  const streak = liveStreak(stats)
+  const bat = res.myBatting, bowl = res.myBowling
+  const submit = async () => {
+    setName(name.trim()); setSub('sending')
+    try { const r = await submitScore('full', name.trim() || 'Anon', seedStr, xi, 1, cap, { attack: attack.map((p) => p.id), first: res.first }); setPts(r.pts); setSub('done') }
+    catch (e) { setSub(e.status === 409 ? 'done' : 'error') }
+  }
+  const headline = res.won ? '🏆 You win!' : res.tie ? '🤝 Match tied' : '💔 You lose'
+  const text = `🏟️ Chase 300 full match ${mode === 'daily' ? seedStr : ''}\n${res.text}\nYou ${bat.score}/${bat.wickets} · ${res.opp.name} ${res.opp.year} ${bowl.score}/${bowl.wickets}\n${xi.map((p) => p.name).join(' · ')}`
+  const share = async () => { track('share', { kind: 'full' }); try { if (navigator.share) await navigator.share({ text }); else { await navigator.clipboard.writeText(text); setCopied(true) } } catch {} }
+  return (
+    <main className="result has-cta">
+      <div className={'big' + (res.won ? ' win' : '')} style={{ fontSize: '2.6rem' }}>{headline}</div>
+      <p className="verdict">{res.text}</p>
+      <div className="so-board" style={{ width: '100%' }}>
+        <div><small>You</small><b>{bat.score}<em>/{bat.wickets}</em></b><small>{oversStr(bat.ballsUsed)} ov</small></div>
+        <div><small>{res.opp.name} {res.opp.year}</small><b>{bowl.score}<em>/{bowl.wickets}</em></b><small>{oversStr(bowl.ballsUsed)} ov</small></div>
+      </div>
+      <p className="line">{mode === 'daily' ? `🔥 ${streak}-day streak` : 'Free play'}{pts != null ? ` · +${pts} weekly points` : ''} · you {res.first === 'bat' ? 'batted' : 'bowled'} first</p>
+      <div className="tabs" style={{ width: '100%' }}>
+        <button className={tab === 'bat' ? 'on' : ''} onClick={() => setTab('bat')}>🏏 Our batting</button>
+        <button className={tab === 'bowl' ? 'on' : ''} onClick={() => setTab('bowl')}>🎯 Our bowling</button>
+      </div>
+      {tab === 'bat' ? <BatCard result={bat} /> : <BowlCard result={bowl} />}
+      {sub === 'ask' && (
+        <div className="card submit">
+          <input value={name} maxLength={16} placeholder="Your name" onChange={(e) => setNameState(e.target.value)} />
+          <button className="primary" onClick={submit}>Post to weekly tournament</button>
+        </div>
+      )}
+      {sub === 'sending' && <p className="line">Posting…</p>}
+      {sub === 'error' && <p className="warn">Couldn't reach the server. <button className="link" onClick={submit}>Retry</button></p>}
+      <button className="ghost" onClick={share}>{copied ? 'Copied!' : 'Share result'}</button>
+      <button className="link" onClick={onHome}>Home</button>
+      <div className="hcta"><button className="primary" onClick={onAgain}>🏟️ Play another full match</button></div>
     </main>
   )
 }

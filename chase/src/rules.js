@@ -125,6 +125,7 @@ export function orderOK(xi) {
 // ---------- weekly points ----------
 export function dailyPoints(kind, level, res) {
   if (kind === 'super') return res.won ? 100 : res.tie ? 50 : 20
+  if (kind === 'full') return res.won ? 120 : res.tie ? 60 : 25
   if (kind === 'bowl') {
     return (res.won ? 100 : Math.max(0, Math.min(99, Math.round((100 * res.target) / Math.max(res.score, 1))))) + level * 5 + (res.won ? 40 : 0)
   }

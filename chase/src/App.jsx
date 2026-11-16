@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { SQUADS, SLOT_LABELS, TARGET, BALLS, BOWL_SLOTS, BOWL_LEVELS, bowlTarget, BOWL_MIN, BAT_LEVELS, batTarget, OPEN_TARGET } from './data.js'
 import { hashStr, rng, todayKey } from './rng.js'
-import { simulate, teamRatings, verdict, simulateBowl, simulateSuper, superOpponent, opponentFor, bowlRatings, bowlVerdict } from './sim.js'
+import { simulate, teamRatings, verdict, simulateBowl, simulateSuper, superOpponent, opponentFor, bowlRatings, bowlVerdict, simulateFull, autoAttack } from './sim.js'
 import { load, liveStreak, recordDaily, recordPractice, recordVs, histKey, seenIntro, markIntroSeen, BADGES } from './storage.js'
 import { shareCard } from './card.js'
 import Privacy from './privacy.jsx'
@@ -13,7 +13,7 @@ import { track, analyticsOn, isMinor, getProfile, nudgeDismissed, dismissNudge }
 import { BatCard, BowlCard } from './scorecard.jsx'
 import { fits, oversStr, makeSpins, getTheme, applyTheme } from './util.js'
 import { conditionFor, modifierFor, squadsFor, pickAllowed, tagOf, TAG_LABEL, phaseBonus } from './rules.js'
-import { Brief, Tactics, SuperDraft, SuperInnings, SuperResult, Weekly, Recap, ratingChips, Av, PlaceSheet, BriefPills, Progress, WheelRow, MyList } from './extras.jsx'
+import { Brief, Tactics, SuperDraft, SuperInnings, SuperResult, Weekly, Recap, ratingChips, Av, PlaceSheet, BriefPills, Progress, WheelRow, MyList, AttackPicker, InningsBreak, FullResult } from './extras.jsx'
 import { getVs, submitVs, submitScore, fetchBoard, getName, setName, pushSupported, pushEnabled, enablePush, disablePush } from './api.js'
 
 const BYID = new Map(SQUADS.flatMap((s) => s.players.map((p) => [p.id, p])))
@@ -21,17 +21,18 @@ const BYID = new Map(SQUADS.flatMap((s) => s.players.map((p) => [p.id, p])))
 // an unfinished match saved on this device (so closing the app doesn't lose it)
 function readResume() {
   const r = loadResume()
-  if (!r || r.v !== 1 || !['draft', 'tactics', 'chase'].includes(r.screen) || !['bat', 'bowl', 'super'].includes(r.kind)) return null
+  if (!r || r.v !== 1 || !['draft', 'tactics', 'attack', 'chase'].includes(r.screen) || !['bat', 'bowl', 'super', 'full'].includes(r.kind)) return null
   if (r.mode === 'daily' && r.seedStr !== todayKey()) { clearResume(); return null } // yesterday's daily is gone
-  const ids = [...(r.xi || []), ...(r.attack || []), ...(r.so || [])].filter(Boolean)
+  const ids = [...(r.xi || []), ...(r.attack || []), ...(r.so || []), ...(r.fa || [])].filter(Boolean)
   if (!ids.every((id) => BYID.has(id))) { clearResume(); return null }
   return r
 }
 
 // run a match exactly as the server will (same seed, same inputs)
-function simulateFor({ kind, order, capIdx, seedStr, level, vs }) {
+function simulateFor({ kind, order, capIdx, seedStr, level, vs, attack, first }) {
   const cond = conditionFor(seedStr)
   if (kind === 'bat') return simulate(order, rng(hashStr(seedStr + order.map((p) => p.id).join('|'))), vs ? vs.target : batTarget(level), { cap: capIdx, cond })
+  if (kind === 'full') { const res = simulateFull(order, attack, { seedStr, cap: capIdx, first, cond }); return { ...res, score: res.myScore, wickets: res.myBatting.wickets, ballsUsed: res.myBatting.ballsUsed, target: 0 } }
   if (kind === 'bowl') return { ...simulateBowl(order, opponentFor(seedStr).players, rng(hashStr(seedStr + 'bowl' + order.map((p) => p.id).join('|'))), vs ? vs.target : bowlTarget(level), { cap: capIdx, cond }), opp: opponentFor(seedStr) }
   return simulateSuper(order, superOpponent(seedStr), rng(hashStr(seedStr + 'super' + order.map((p) => p.id).join('|'))), { cap: capIdx, cond })
 }
@@ -54,13 +55,17 @@ export default function App() {
   const [draftMeta, setDraftMeta] = useState(null) // wheel position while drafting
   const [initMeta, setInitMeta] = useState(null)   // wheel position to resume from
   const [viewMatch, setViewMatch] = useState(null)
+  const [first, setFirst] = useState('bat')        // full match: bat or bowl first
+  const [fullAttack, setFullAttack] = useState([]) // full match: the five bowlers
+  const [fullRes, setFullRes] = useState(null)
+  const [stage, setStage] = useState('inn1')        // full match: inn1 | break | inn2
 
   // keep the match in progress saved after every pick / step
   useEffect(() => {
-    if (!['draft', 'tactics', 'chase'].includes(screen)) return
+    if (!['draft', 'tactics', 'attack', 'chase'].includes(screen)) return
     const ids = (arr) => arr.map((p) => (p ? p.id : null))
-    saveResume({ v: 1, t: Date.now(), screen, kind, mode, seedStr, level, vs, xi: ids(xi), attack: ids(attack), so: ids(soPicks), cap, meta: draftMeta })
-  }, [screen, kind, mode, seedStr, level, vs, xi, attack, soPicks, cap, draftMeta])
+    saveResume({ v: 1, t: Date.now(), screen, kind, mode, seedStr, level, vs, xi: ids(xi), attack: ids(attack), so: ids(soPicks), fa: ids(fullAttack), first, stage, cap, meta: draftMeta })
+  }, [screen, kind, mode, seedStr, level, vs, xi, attack, soPicks, fullAttack, first, stage, cap, draftMeta])
 
   // anonymous usage stats (off for opt-outs and under-18s)
   useEffect(() => {
@@ -83,9 +88,9 @@ export default function App() {
 
   const start = (m, k = 'bat', lv = 1, code, info) => {
     const key = m === 'daily' ? todayKey() : m === 'vs' ? 'vs-' + (code || newCode()) : String(Date.now())
-    track('game_start', { kind: k, mode: m, level: k === 'super' || m === 'vs' ? 0 : lv })
+    track('game_start', { kind: k, mode: m, level: k === 'super' || k === 'full' || m === 'vs' ? 0 : lv })
     setVs(m === 'vs' ? (code ? { role: 'follower', target: info.target, firstScore: info.firstScore, creator: info.creator } : { role: 'first', target: OPEN_TARGET }) : null)
-    setSaved(null); setDraftMeta(null); setInitMeta(null)
+    setSaved(null); setDraftMeta(null); setInitMeta(null); setFirst('bat'); setFullAttack([]); setFullRes(null); setStage('inn1')
     setLevel(lv); setKind(k); setMode(m); setSeedStr(key); setCap(-1)
     setXi(Array(11).fill(null)); setAttack(Array(5).fill(null)); setSoPicks(Array(4).fill(null)); setResult(null); setScreen('draft')
   }
@@ -95,11 +100,19 @@ export default function App() {
     setScreen('tactics')
   }
   // tactics confirmed -> run the simulation (the server re-runs the exact same thing)
-  const confirmTactics = (order, capIdx) => {
+  const confirmTactics = (order, capIdx, firstPick) => {
     setCap(capIdx)
+    if (kind === 'full') { setXi(order); setFirst(firstPick || 'bat'); setFullAttack(autoAttack(order)); setScreen('attack'); return }
     if (kind === 'bat') setXi(order); else if (kind === 'bowl') setAttack(order); else setSoPicks(order)
     setResult(simulateFor({ kind, order, capIdx, seedStr, level, vs }))
     setScreen('chase')
+  }
+  // full match: bowlers chosen -> play the whole match
+  const confirmAttack = (attackPicks) => {
+    setFullAttack(attackPicks)
+    const sim = simulateFor({ kind: 'full', order: xi, capIdx: cap, seedStr, level: 1, vs: null, attack: attackPicks, first })
+    setFullRes(sim); setResult(sim)
+    setStage('inn1'); setScreen('chase')
   }
   // pick up an unfinished match
   const continueMatch = () => {
@@ -107,17 +120,33 @@ export default function App() {
     const mk = (ids) => (ids || []).map((id) => (id ? BYID.get(id) || null : null))
     const xi2 = mk(r.xi), at2 = mk(r.attack), so2 = mk(r.so)
     setKind(r.kind); setMode(r.mode); setSeedStr(r.seedStr); setLevel(r.level); setVs(r.vs || null); setCap(r.cap ?? -1)
+    const fa2 = mk(r.fa); setFirst(r.first || 'bat'); setFullAttack(fa2); setStage(r.stage || 'inn1'); setFullRes(null)
     setXi(xi2.length ? xi2 : Array(11).fill(null)); setAttack(at2.length ? at2 : Array(5).fill(null)); setSoPicks(so2.length ? so2 : Array(4).fill(null))
     setInitMeta(r.meta || null); setDraftMeta(r.meta || null)
-    if (r.screen === 'chase') { setResult(simulateFor({ kind: r.kind, order: r.kind === 'bat' ? xi2 : r.kind === 'bowl' ? at2 : so2, capIdx: r.cap, seedStr: r.seedStr, level: r.level, vs: r.vs || null })); setScreen('chase') }
+    if (r.screen === 'chase') {
+      const order = r.kind === 'bat' || r.kind === 'full' ? xi2 : r.kind === 'bowl' ? at2 : so2
+      const sim = simulateFor({ kind: r.kind, order, capIdx: r.cap, seedStr: r.seedStr, level: r.level, vs: r.vs || null, attack: fa2, first: r.first || 'bat' })
+      if (r.kind === 'full') { setFullRes(sim); setResult(sim) } else setResult(sim)
+      setScreen('chase')
+    }
     else { setResult(null); setScreen(r.screen) }
     track('game_start', { kind: r.kind, mode: r.mode, level: r.kind === 'super' || r.mode === 'vs' ? 0 : r.level, resumed: 1 })
   }
   const discardMatch = () => { clearResume(); setSaved(null) }
   // save the finished match (full scorecard) on this device, and in the cloud backup if it is on
   const recordMatch = () => {
-    const list = kind === 'bat' ? xi : kind === 'bowl' ? attack : soPicks
+    const list = kind === 'bat' || kind === 'full' ? xi : kind === 'bowl' ? attack : soPicks
     const open = result.target >= OPEN_TARGET
+    if (kind === 'full') {
+      const res = fullRes || result
+      addMatch({
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), t: Date.now(), day: todayKey(), kind: 'full', mode, level: 0, target: 0,
+        first, score: res.myScore, oppScore: res.oppScore, wickets: res.myBatting.wickets, won: !!res.won, tie: !!res.tie, text: res.text, balls: res.myBatting.ballsUsed,
+        cap: cap >= 0 && xi[cap] ? xi[cap].name : null, picks: xi.map((p) => ({ n: p.name, t: p.team, y: p.year })), attackPicks: fullAttack.map((p) => ({ n: p.name, t: p.team, y: p.year })),
+        opp: { n: res.opp.name, y: res.opp.year }, evBat: compactEvents('bat', res.myBatting.events), evBowl: compactEvents('bowl', res.myBowling.events),
+      })
+      clearResume(); setSaved(null); autoBackup(); return
+    }
     addMatch({
       id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), t: Date.now(), day: todayKey(), kind, mode,
       level: kind === 'super' || mode === 'vs' ? 0 : level, target: open ? 0 : result.target || 0, vs: mode === 'vs' && vs ? vs.role : null,
@@ -130,16 +159,17 @@ export default function App() {
   }
   const done = () => {
     if (mode === 'vs') { track('game_finish', { kind, mode, level: 0, won: result.won ? 1 : 0, score: result.score }); setStats(recordVs()); recordMatch(); setScreen('result'); return }
-    const lv = kind === 'super' ? 1 : level
-    track('game_finish', { kind, mode, level: kind === 'super' ? 0 : level, won: result.won ? 1 : 0, score: result.score })
-    if (result.won && kind !== 'super') track('level_cleared', { kind, level })
-    setStats(mode === 'daily' ? recordDaily(kind, result.score, result.won, lv) : recordPractice(kind, result.score, result.won, lv))
+    const lv = kind === 'super' || kind === 'full' ? 1 : level
+    const extra = { wickets: result.wickets, balls: result.ballsUsed, ...(kind === 'super' || kind === 'full' ? { oppScore: result.oppScore } : {}), ...(kind === 'full' ? { text: result.text } : {}) }
+    track('game_finish', { kind, mode, level: kind === 'super' || kind === 'full' ? 0 : level, won: result.won ? 1 : 0, score: result.score })
+    if (result.won && kind !== 'super' && kind !== 'full') track('level_cleared', { kind, level })
+    setStats(mode === 'daily' ? recordDaily(kind, result.score, result.won, lv, undefined, extra) : recordPractice(kind, result.score, result.won, lv))
     recordMatch()
     setScreen('result')
   }
   const home = () => { setSaved(readResume()); setScreen('home') }
-  const abandon = () => { track('draft_abandon', { kind, picks: (kind === 'bat' ? xi : kind === 'bowl' ? attack : soPicks).filter(Boolean).length }); setSaved(readResume()); setScreen('home') }
-  const picks = kind === 'bat' ? xi : kind === 'bowl' ? attack : soPicks
+  const abandon = () => { track('draft_abandon', { kind, picks: (kind === 'bat' || kind === 'full' ? xi : kind === 'bowl' ? attack : soPicks).filter(Boolean).length }); setSaved(readResume()); setScreen('home') }
+  const picks = kind === 'bat' || kind === 'full' ? xi : kind === 'bowl' ? attack : soPicks
   const navOn = ['home', 'board', 'stats', 'recap'].includes(screen)
 
   return (
@@ -153,13 +183,20 @@ export default function App() {
       {screen === 'recap' && <Recap onBack={home} />}
       {screen === 'vs' && <VsIntro info={vsInfo} onPlay={() => start('vs', vsInfo.kind, 1, vsInfo.code, vsInfo)} onHome={leaveVs} />}
       {screen === 'board' && <Board onBack={home} initialKind={kind === 'super' ? 'bat' : kind} />}
-      {screen === 'draft' && kind === 'bat' && <Draft key={seedStr} vs={vs} level={level} seedStr={seedStr} mode={mode} xi={xi} setXi={setXi} initMeta={initMeta} onMeta={setDraftMeta} onDone={toTactics} onExit={abandon} />}
+      {screen === 'draft' && (kind === 'bat' || kind === 'full') && <Draft key={seedStr} full={kind === 'full'} vs={vs} level={level} seedStr={seedStr} mode={mode} xi={xi} setXi={setXi} initMeta={initMeta} onMeta={setDraftMeta} onDone={toTactics} onExit={abandon} />}
       {screen === 'draft' && kind === 'bowl' && <BowlDraft key={seedStr} vs={vs} level={level} seedStr={seedStr} mode={mode} attack={attack} setAttack={setAttack} initMeta={initMeta} onMeta={setDraftMeta} onDone={toTactics} onExit={abandon} />}
       {screen === 'draft' && kind === 'super' && <SuperDraft key={seedStr} seedStr={seedStr} mode={mode} picks={soPicks} setPicks={setSoPicks} initMeta={initMeta} onMeta={setDraftMeta} onDone={toTactics} onExit={abandon} />}
-      {screen === 'tactics' && <Tactics key={seedStr + kind} kind={kind} picks={picks} seedStr={seedStr} onConfirm={confirmTactics} />}
+      {screen === 'tactics' && <Tactics key={seedStr + kind} kind={kind === 'full' ? 'bat' : kind} full={kind === 'full'} picks={picks} seedStr={seedStr} onConfirm={confirmTactics} />}
+      {screen === 'attack' && kind === 'full' && <AttackPicker key={seedStr + 'atk'} xi={xi} cap={cap} seedStr={seedStr} onConfirm={confirmAttack} />}
+      {screen === 'chase' && kind === 'full' && fullRes && (
+        stage === 'inn1' ? (first === 'bat' ? <Chase xi={xi} result={fullRes.inn1} onDone={() => setStage('break')} openLabel="Your innings: set a target" doneLabel="Innings break" /> : <BowlInnings result={fullRes.inn1} onDone={() => setStage('break')} doneLabel="Innings break" />)
+          : stage === 'break' ? <InningsBreak res={fullRes} onNext={() => setStage('inn2')} />
+            : (first === 'bat' ? <BowlInnings result={fullRes.inn2} chasing onDone={done} /> : <Chase xi={xi} result={fullRes.inn2} onDone={done} />)
+      )}
       {screen === 'chase' && kind === 'bat' && <Chase xi={xi} result={result} onDone={done} />}
       {screen === 'chase' && kind === 'bowl' && <BowlInnings result={result} onDone={done} />}
       {screen === 'chase' && kind === 'super' && <SuperInnings result={result} onDone={done} />}
+      {screen === 'result' && kind === 'full' && fullRes && <FullResult res={fullRes} xi={xi} attack={fullAttack} cap={cap} mode={mode} stats={stats} seedStr={seedStr} onHome={home} onAgain={() => start('practice', 'full')} />}
       {screen === 'result' && kind === 'bat' && <Result vs={vs} level={level} cap={cap} xi={xi} result={result} mode={mode} stats={stats} seedStr={seedStr} onHome={home} onPractice={() => start('practice', 'bat', level)} onNext={() => start('practice', 'bat', Math.min(BAT_LEVELS, level + 1))} onBoard={() => setScreen('board')} />}
       {screen === 'result' && kind === 'bowl' && <BowlResult vs={vs} level={level} cap={cap} attack={attack} result={result} mode={mode} stats={stats} seedStr={seedStr} onHome={home} onPractice={() => start('practice', 'bowl', level)} onNext={() => start('practice', 'bowl', Math.min(BOWL_LEVELS, level + 1))} onBoard={() => setScreen('board')} />}
       {navOn && (
@@ -184,13 +221,22 @@ function unlockMsg({ won, level, levels, frontier, nextText, gap, kind }) {
   return null
 }
 
+// what the 'today' card says after the daily game: which level, the score, and how many overs it took
+function doneText(kind, d) {
+  const w = d.wickets != null ? `/${d.wickets}` : ''
+  const ov = d.balls ? ` · ${oversStr(d.balls)} ov` : ''
+  if (kind === 'full') return d.text ? `${d.text} (${d.score}${w} v ${d.oppScore})` : `${d.score}`
+  if (kind === 'super') return `${d.score}${w}${d.oppScore != null ? ` v ${d.oppScore}` : ''}`
+  return `L${d.level || 1} · ${d.score}${w}${ov}`
+}
+
 function resumeLabel(r) {
-  const kindName = { bat: 'Batting', bowl: 'Bowling', super: 'Super Over' }[r.kind]
+  const kindName = { bat: 'Batting', bowl: 'Bowling', super: 'Super Over', full: 'Full match' }[r.kind]
   const mode = r.mode === 'daily' ? 'today' : r.mode === 'vs' ? 'challenge' : 'free play'
-  const lvl = r.kind !== 'super' && r.mode !== 'vs' ? ` · level ${r.level}` : ''
-  const arr = r.kind === 'bat' ? r.xi : r.kind === 'bowl' ? r.attack : r.so
+  const lvl = r.kind !== 'super' && r.kind !== 'full' && r.mode !== 'vs' ? ` · level ${r.level}` : ''
+  const arr = r.kind === 'bat' || r.kind === 'full' ? r.xi : r.kind === 'bowl' ? r.attack : r.so
   const total = (arr || []).length, picked = (arr || []).filter(Boolean).length
-  const step = r.screen === 'draft' ? `${picked}/${total} picked` : r.screen === 'tactics' ? 'team ready, set tactics' : 'innings in progress'
+  const step = r.screen === 'draft' ? `${picked}/${total} picked` : r.screen === 'tactics' ? 'team ready, set tactics' : r.screen === 'attack' ? 'choose your bowlers' : r.kind === 'full' ? (r.stage === 'break' ? 'innings break' : r.stage === 'inn2' ? '2nd innings' : '1st innings') : 'innings in progress'
   return `${kindName} ${mode}${lvl} · ${step}`
 }
 
@@ -209,7 +255,8 @@ function Home({ stats, saved, onContinue, onDiscard, onBackup, onStart, onBoard,
   const [bl, setBl] = useState(batUnlocked)
   const [bnudge, setBnudge] = useState(() => { try { return loadMatches().length >= 2 && !getCode() && localStorage.getItem('chase300.bnudge') !== '1' } catch { return false } })
   const [nudge, setNudge] = useState(() => stats.played >= 1 && !nudgeDismissed() && !getProfile() && !isMinor())
-  const Done = ({ d }) => <div className="done">Today <b>{d.score}</b>{d.won ? ' 🏆' : ''}</div>
+  const fullDone = stats.history[histKey('full', today)]
+  const Done = ({ d, kind }) => <div className="done"><b>Today</b> {doneText(kind, d)}{d.won ? ' 🏆' : ''}</div>
   return (
     <main className="home compact">
       {saved && (
@@ -246,10 +293,20 @@ function Home({ stats, saved, onContinue, onDiscard, onBackup, onStart, onBoard,
       )}
 
       <div className="mgrid">
+        <section className="mode sm wide">
+          <h2>🏟️ Full match</h2>
+          <p>Bat and bowl a whole T20 with one XI. Win the match.</p>
+          {fullDone && <Done d={fullDone} kind="full" />}
+          <div className="wide-row">
+            <button className="primary" onClick={() => onStart(fullDone ? 'practice' : 'daily', 'full')}>{fullDone ? 'Play another' : 'Play today'}</button>
+            {!fullDone && <button className="link" onClick={() => onStart('practice', 'full')}>Free play</button>}
+          </div>
+        </section>
+
         <section className="mode sm">
           <h2>🏏 Batting</h2>
           <Stepper levels={BAT_LEVELS} unlocked={batUnlocked} cleared={stats.batCleared || 0} value={bl} onChange={setBl} text={`chase ${batTarget(bl)}`} />
-          {batDone && <Done d={batDone} />}
+          {batDone && <Done d={batDone} kind="bat" />}
           <button className="primary" onClick={() => onStart(batDone ? 'practice' : 'daily', 'bat', bl)}>{batDone ? `Play level ${bl}` : 'Play today'}</button>
           {!batDone && <button className="link" onClick={() => onStart('practice', 'bat', bl)}>Free play</button>}
         </section>
@@ -257,7 +314,7 @@ function Home({ stats, saved, onContinue, onDiscard, onBackup, onStart, onBoard,
         <section className="mode sm">
           <h2>🎯 Bowling</h2>
           <Stepper levels={BOWL_LEVELS} unlocked={unlocked} cleared={stats.bowlCleared || 0} value={lv} onChange={setLv} text={`under ${bowlTarget(lv)}`} />
-          {bowlDone && <Done d={bowlDone} />}
+          {bowlDone && <Done d={bowlDone} kind="bowl" />}
           <button className="primary" onClick={() => onStart(bowlDone ? 'practice' : 'daily', 'bowl', lv)}>{bowlDone ? `Play level ${lv}` : 'Play today'}</button>
           {!bowlDone && <button className="link" onClick={() => onStart('practice', 'bowl', lv)}>Free play</button>}
         </section>
@@ -265,7 +322,7 @@ function Home({ stats, saved, onContinue, onDiscard, onBackup, onStart, onBoard,
         <section className="mode sm">
           <h2>⚡ Super Over</h2>
           <p>3 hitters + 1 bowler. Bat one over, then defend it.</p>
-          {superDone && <Done d={superDone} />}
+          {superDone && <Done d={superDone} kind="super" />}
           <button className="primary" onClick={() => onStart(superDone ? 'practice' : 'daily', 'super')}>{superDone ? 'Play another' : 'Play today'}</button>
           {!superDone && <button className="link" onClick={() => onStart('practice', 'super')}>Free play</button>}
         </section>
@@ -306,7 +363,7 @@ function Stepper({ levels, unlocked, cleared, value, onChange, text }) {
   )
 }
 
-function Draft({ vs, level, seedStr, mode, xi, setXi, initMeta, onMeta, onDone, onExit }) {
+function Draft({ full = false, vs, level, seedStr, mode, xi, setXi, initMeta, onMeta, onDone, onExit }) {
   const mod = useMemo(() => modifierFor(seedStr), [seedStr])
   const spins = useMemo(() => makeSpins(hashStr('spin' + seedStr), squadsFor(mod)), [seedStr, mod])
   const [spinIdx, setSpinIdx] = useState((initMeta && initMeta.spinIdx) || 0)
@@ -352,11 +409,12 @@ function Draft({ vs, level, seedStr, mode, xi, setXi, initMeta, onMeta, onDone, 
     <main className={'draft' + (sel ? ' has-sheet' : '')}>
       <header>
         <button className="link" onClick={onExit}>✕</button>
-        <b>{vs ? (vs.role === 'first' ? 'Set the score' : `Chase ${vs.target}`) : `Chase ${batTarget(level)}`}<small className="sub3">{mode === 'daily' ? ` · daily L${level}` : mode === 'vs' ? ' · challenge' : ` · practice L${level}`}</small></b>
+        <b>{full ? 'Full match' : vs ? (vs.role === 'first' ? 'Set the score' : `Chase ${vs.target}`) : `Chase ${batTarget(level)}`}<small className="sub3">{full ? (mode === 'daily' ? ' · daily' : ' · free play') : mode === 'daily' ? ` · daily L${level}` : mode === 'vs' ? ' · challenge' : ` · practice L${level}`}</small></b>
         <span>{picked}/11</span>
       </header>
       <BriefPills seedStr={seedStr} />
-      <Progress items={xi} total={11} text={`B${Math.round(r.bat)} P${Math.round(r.pow)} W${Math.round(r.bwl)}`} />
+      {full && (() => { const o = opponentFor(seedStr); const top = [...o.players].sort((x, y) => y.bwl - x.bwl).slice(0, 5); return <div className="card opp tight"><small>vs</small><b>{o.name} {o.year}</b><span>their attack {Math.round(top.reduce((s, p) => s + p.bwl, 0) / 5)} · their batting {Math.round(o.players.reduce((s, p) => s + p.pow, 0) / o.players.length)}</span></div> })()}
+      <Progress items={xi} total={11} text={full ? `B${Math.round(r.bat)} P${Math.round(r.pow)} · ${xi.filter((p) => p && p.bwl >= 50).length}/5 bowlers` : `B${Math.round(r.bat)} P${Math.round(r.pow)} W${Math.round(r.bwl)}`} />
 
       {picked < 11 ? (
         <>
@@ -409,7 +467,7 @@ function Meter({ label, v }) {
   )
 }
 
-function Chase({ xi, result, onDone }) {
+function Chase({ xi, result, onDone, openLabel = 'Setting the score for your friend', doneLabel = 'See result' }) {
   const [i, setI] = useState(0)
   const [speed, setSpeed] = useState(1)
   const logRef = useRef(null)
@@ -434,7 +492,7 @@ function Chase({ xi, result, onDone }) {
 
   return (
     <main className="chase">
-      <div className="target">{open ? 'Setting the score for your friend' : `Target ${result.target}`}</div>
+      <div className="target">{open ? openLabel : `Target ${result.target}`}</div>
       <div className="big">{score}<small>/{wk}</small></div>
       <div className="line">{oversStr(balls)} ov · {open ? `Run rate ${balls ? (score / (balls / 6)).toFixed(1) : '0.0'}` : `Req ${rrr}/ov · ${Math.max(0, result.target - score)} to win`}</div>
       <div className="bar big"><div style={{ width: `${open ? (balls / BALLS) * 100 : Math.min(100, (score / result.target) * 100)}%` }} /></div>
@@ -450,7 +508,7 @@ function Chase({ xi, result, onDone }) {
           <button className="ghost small" onClick={() => setSpeed((s) => (s === 1 ? 4 : s === 4 ? 12 : 1))}>Speed ×{speed}</button>
           <button className="ghost small" onClick={() => setI(ev.length)}>Skip</button>
         </>}
-        {finished && <button className="primary" onClick={onDone}>See result</button>}
+        {finished && <button className="primary" onClick={onDone}>{doneLabel}</button>}
       </div>
     </main>
   )
@@ -656,7 +714,7 @@ function BowlDraft({ vs, level, seedStr, mode, attack, setAttack, initMeta, onMe
   )
 }
 
-function BowlInnings({ result, onDone }) {
+function BowlInnings({ result, onDone, chasing = false, doneLabel = 'See result' }) {
   const [i, setI] = useState(0)
   const [speed, setSpeed] = useState(1)
   const logRef = useRef(null)
@@ -676,7 +734,7 @@ function BowlInnings({ result, onDone }) {
   const open = result.target >= OPEN_TARGET
   return (
     <main className="chase">
-      <div className="target">{result.opp.name} {result.opp.year} batting · {open ? 'setting the score' : `hold under ${result.target}`}</div>
+      <div className="target">{result.opp.name} {result.opp.year} {chasing ? `chasing ${result.target}` : `batting · ${open ? 'setting the score' : `hold under ${result.target}`}`}</div>
       <div className={'big' + (!open && score >= result.target ? ' over' : '')}>{score}<small>/{cur ? cur.wickets : 0}</small></div>
       <div className="line">{oversStr(balls)} ov{cur ? ` · ${cur.bowler} bowling` : ''}</div>
       <div className="bar big"><div style={{ width: `${open ? Math.min(100, (balls / 120) * 100) : Math.min(100, (score / result.target) * 100)}%`, background: !open && score >= result.target ? 'var(--red)' : undefined }} /></div>
@@ -692,7 +750,7 @@ function BowlInnings({ result, onDone }) {
           <button className="ghost small" onClick={() => setSpeed((s) => (s === 1 ? 4 : s === 4 ? 12 : 1))}>Speed ×{speed}</button>
           <button className="ghost small" onClick={() => setI(ev.length)}>Skip</button>
         </>}
-        {finished && <button className="primary" onClick={onDone}>See result</button>}
+        {finished && <button className="primary" onClick={onDone}>{doneLabel}</button>}
       </div>
     </main>
   )
@@ -943,7 +1001,7 @@ function Stats({ stats, onBack, onOpenMatch, onBackup }) {
   const days = Array.from({ length: 28 }, (_, i) => {
     const d = new Date(today); d.setDate(d.getDate() - (27 - i))
     const k = key(d)
-    const hit = [stats.history[k], stats.history['bowl:' + k], stats.history['super:' + k]].filter(Boolean)
+    const hit = [stats.history[k], stats.history['bowl:' + k], stats.history['super:' + k], stats.history['full:' + k]].filter(Boolean)
     return { k, n: d.getDate(), played: hit.length > 0, won: hit.some((h) => h.won), today: i === 27 }
   })
   const recent = Object.entries(stats.history)

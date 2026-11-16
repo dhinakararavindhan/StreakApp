@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 const webpush = createRequire(import.meta.url)('web-push')
 import { SQUADS, batTarget, bowlTarget, BOWL_MIN, BAT_LEVELS, BOWL_LEVELS, OPEN_TARGET } from '../src/data.js'
-import { simulate, simulateBowl, simulateSuper, superOpponent, opponentFor } from '../src/sim.js'
+import { simulate, simulateBowl, simulateSuper, superOpponent, opponentFor, simulateFull } from '../src/sim.js'
 import { conditionFor, modifierFor, pickAllowed, orderOK, dailyPoints, mondayOf } from '../src/rules.js'
 import crypto from 'node:crypto'
 import * as AN from './analytics.js'
@@ -84,9 +84,21 @@ const twistOK = (mod, list) => list.every((p) => pickAllowed(mod, p, list.filter
 
 // ---------- score verification ----------
 const byId = new Map(SQUADS.flatMap((s) => s.players.map((p) => [p.id, p])))
-function verify(kind, ids, seed, level, cap = -1, target) {
+function verify(kind, ids, seed, level, cap = -1, target, extra = {}) {
   const cond = conditionFor(seed), mod = modifierFor(seed)
   const capOK = (n) => Number.isInteger(cap) && cap >= -1 && cap < n
+  if (kind === 'full') {
+    // a whole match: the XI (batting order), five bowlers chosen from that XI, and who goes first
+    if (!Array.isArray(ids) || ids.length !== 11 || !capOK(11)) return null
+    const xi = ids.map((id) => byId.get(id))
+    if (xi.some((p) => !p) || !orderOK(xi) || new Set(xi.map((p) => p.name)).size !== 11 || !twistOK(mod, xi)) return null
+    const at = extra.attack
+    if (!Array.isArray(at) || at.length !== 5 || new Set(at).size !== 5 || at.some((id) => !ids.includes(id))) return null
+    if (extra.first !== 'bat' && extra.first !== 'bowl') return null
+    const attack = at.map((id) => byId.get(id))
+    const res = simulateFull(xi, attack, { seedStr: seed, cap, first: extra.first, cond })
+    return { ...res, score: res.myScore, wickets: res.myBatting.wickets, ballsUsed: res.myBatting.ballsUsed, target: 0 }
+  }
   if (kind === 'super') {
     if (!Array.isArray(ids) || ids.length !== 4 || !capOK(3)) return null
     const picks = ids.map((id) => byId.get(id))
@@ -311,17 +323,17 @@ const server = http.createServer(async (req, res) => {
       if (req.method === 'POST' && url.pathname === '/api/score') {
         const body = await readJson(req)
         const { device, name, day, xi } = body
-        const kind = body.kind === 'bowl' ? 'bowl' : body.kind === 'super' ? 'super' : 'bat'
+        const kind = body.kind === 'bowl' ? 'bowl' : body.kind === 'super' ? 'super' : body.kind === 'full' ? 'full' : 'bat'
         if (typeof device !== 'string' || device.length < 8 || device.length > 64) return send(res, 400, { error: 'bad device' })
         if (!validDay(day)) return send(res, 400, { error: 'bad day' })
-        const level = kind === 'super' ? 1 : Math.min(kind === 'bowl' ? BOWL_LEVELS : BAT_LEVELS, Math.max(1, Number(body.level) | 0 || 1))
+        const level = kind === 'super' || kind === 'full' ? 1 : Math.min(kind === 'bowl' ? BOWL_LEVELS : BAT_LEVELS, Math.max(1, Number(body.level) | 0 || 1))
         const cap = body.cap === undefined ? -1 : Number(body.cap)
-        const r = verify(kind, xi, day, level, cap)
+        const r = verify(kind, xi, day, level, cap, undefined, { attack: body.attack, first: body.first })
         if (!r) return send(res, 400, { error: 'invalid XI' })
         if (db.scores.some((s) => s.device === device && s.day === day && (s.kind || 'bat') === kind)) return send(res, 409, { error: 'already submitted' })
-        db.scores.push({ device, kind, level, name: cleanName(name), day, score: r.score, wickets: r.wickets, won: r.won, balls: r.ballsUsed, pts: dailyPoints(kind, level, r), opp: r.oppScore, xi, cap })
+        db.scores.push({ device, kind, level, name: cleanName(name), day, score: r.score, wickets: r.wickets, won: r.won, balls: r.ballsUsed, pts: dailyPoints(kind, level, r), opp: r.oppScore, xi, cap, ...(kind === 'full' ? { attack: body.attack, first: body.first, text: r.text } : {}) })
         save()
-        return send(res, 200, { score: r.score, pts: dailyPoints(kind, level, r), ...(kind === 'super' ? {} : board(kind, 'today', device, day)) })
+        return send(res, 200, { score: r.score, pts: dailyPoints(kind, level, r), text: r.text, ...(kind === 'super' || kind === 'full' ? {} : board(kind, 'today', device, day)) })
       }
       if (req.method === 'POST' && url.pathname === '/api/push/subscribe') {
         if (!pushOn) return send(res, 503, { error: 'push disabled' })

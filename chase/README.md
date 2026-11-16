@@ -14,6 +14,7 @@ Daily franchise-T20 draft game (PWA). Draft an XI from spun franchise-season squ
 - **Pitch hints:** cards show POWER / ANCHOR / bowler tags (spin, new ball, death) and "suits pitch" chips. Tags are fan heuristics in `src/rules.js`.
 - **Tactics:** after the draft, pick a **captain** (required) and tweak order. Batting: up to 2 players one place out of position. Bowling: swap slots; specialists get +8 in their phase (new ball slots 1-2, middle 3-4, death 5) and a small penalty out of phase.
 - **Super Over:** 3 hitters + 1 bowler, bat one over, then defend it vs the day's opponent trio. Daily counts for streak and weekly points.
+- **Full match:** draft an XI, pick bat-first or bowl-first, choose your five bowlers, then play both innings against the day's opponent. Win 120 / tie 60 / loss 25 weekly points (first daily only; verified server-side). `node scripts/tune-full.mjs` checks balance (about 46% win for a random draft, 55-58% for a stronger one).
 - **Weekly tournament:** points from every daily game (batting, bowling, Super Over), Monday to Sunday, server-computed (`dailyPoints` in `src/rules.js`).
 - **Yesterday's best XIs:** top 3 per mode with their drafted players and captain.
 - **Streak freeze:** each daily win earns a freeze (max 3) that covers one missed day.
