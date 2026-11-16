@@ -67,3 +67,6 @@ export async function reportMatch(m) {
 }
 
 export const fetchHall = () => j(`/hall?device=${encodeURIComponent(deviceId())}`)
+
+export const sendFeedback = (type, text, contact, ctx) => j('/feedback', { method: 'POST', body: JSON.stringify({ device: deviceId(), type, text, contact, ctx }) })
+export const reportName = (pid) => j('/report', { method: 'POST', body: JSON.stringify({ device: deviceId(), pid }) })

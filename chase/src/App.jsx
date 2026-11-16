@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { SQUADS, PLAYABLE, isPlayable, SLOT_LABELS, TARGET, BALLS, BOWL_SLOTS, BOWL_LEVELS, bowlTarget, BOWL_MIN, BAT_LEVELS, batTarget, OPEN_TARGET } from './data.js'
 import { hashStr, rng, todayKey } from './rng.js'
 import { randomName } from './util.js'
+import { badName } from './names.js'
+import Feedback from './feedback.jsx'
 import { simulate, teamRatings, verdict, simulateBowl, simulateSuper, superOpponent, opponentFor, bowlRatings, bowlVerdict, simulateFull, autoAttack } from './sim.js'
 import { load, liveStreak, recordDaily, recordPractice, recordVs, histKey, seenIntro, markIntroSeen, BADGES } from './storage.js'
 import { shareCard } from './card.js'
@@ -14,8 +16,8 @@ import { track, analyticsOn, isMinor, getProfile, nudgeDismissed, dismissNudge }
 import { BatCard, BowlCard } from './scorecard.jsx'
 import { fits, oversStr, makeSpins, getTheme, applyTheme } from './util.js'
 import { conditionFor, modifierFor, squadsFor, pickAllowed, tagOf, TAG_LABEL, phaseBonus } from './rules.js'
-import { Brief, Tactics, SuperDraft, SuperInnings, SuperResult, Weekly, Recap, ratingChips, Av, PlaceSheet, BriefPills, Progress, WheelRow, MyList, AttackPicker, InningsBreak, FullResult } from './extras.jsx'
-import { fetchHall, reportMatch, getVs, submitVs, submitScore, fetchBoard, getName, setName, pushSupported, pushEnabled, enablePush, disablePush } from './api.js'
+import { Brief, Tactics, SuperDraft, SuperInnings, SuperResult, Weekly, Recap, ReportBtn, ratingChips, Av, PlaceSheet, BriefPills, Progress, WheelRow, MyList, AttackPicker, InningsBreak, FullResult } from './extras.jsx'
+import { reportName, fetchHall, reportMatch, getVs, submitVs, submitScore, fetchBoard, getName, setName, pushSupported, pushEnabled, enablePush, disablePush } from './api.js'
 
 const BYID = new Map(SQUADS.flatMap((s) => s.players.map((p) => [p.id, p])))
 
@@ -190,8 +192,9 @@ export default function App() {
 
   return (
     <div className={'app' + (navOn ? ' has-nav' : '')}>
-      {screen === 'home' && <Home stats={stats} saved={saved} onContinue={continueMatch} onDiscard={discardMatch} onBackup={() => setScreen('backup')} onStart={start} onBoard={() => setScreen('board')} onStats={() => setScreen('stats')} onHelp={() => { track('howto_open'); setScreen('howto') }} onPrivacy={() => setScreen('privacy')} onRecap={() => setScreen('recap')} />}
+      {screen === 'home' && <Home onFeedback={() => setScreen('feedback')} stats={stats} saved={saved} onContinue={continueMatch} onDiscard={discardMatch} onBackup={() => setScreen('backup')} onStart={start} onBoard={() => setScreen('board')} onStats={() => setScreen('stats')} onHelp={() => { track('howto_open'); setScreen('howto') }} onPrivacy={() => setScreen('privacy')} onRecap={() => setScreen('recap')} />}
       {screen === 'privacy' && <Privacy onBack={home} />}
+      {screen === 'feedback' && <Feedback onBack={home} />}
       {screen === 'backup' && <Backup onBack={home} onRestored={() => { setStats(load()); setSaved(readResume()) }} />}
       {screen === 'match' && viewMatch && <MatchView m={viewMatch} onBack={() => setScreen('stats')} />}
       {screen === 'howto' && <HowTo onClose={() => { markIntroSeen(); setScreen('home') }} />}
@@ -256,7 +259,7 @@ function resumeLabel(r) {
   return `${kindName} ${mode}${lvl} · ${step}`
 }
 
-function Home({ stats, saved, onContinue, onDiscard, onBackup, onStart, onBoard, onStats, onHelp, onRecap, onPrivacy }) {
+function Home({ onFeedback, stats, saved, onContinue, onDiscard, onBackup, onStart, onBoard, onStats, onHelp, onRecap, onPrivacy }) {
   const [imp, setImp] = useState(impactPref)
   const today = todayKey()
   const streak = liveStreak(stats)
@@ -358,6 +361,7 @@ function Home({ stats, saved, onContinue, onDiscard, onBackup, onStart, onBoard,
       <div className="hfoot">
         <button className="link" onClick={onHelp}>❓ How to play</button>
         <Reminders />
+        <button className="link" onClick={onFeedback}>💬 Feedback</button>
         <button className="link" onClick={onBackup}>☁️ Save progress</button>
         <button className="link" onClick={onPrivacy}>🔒 Privacy &amp; data</button>
       </div>
@@ -556,9 +560,11 @@ function Chase({ xi, result, onDone, openLabel = 'Setting the score for your fri
 function Result({ vs, level, cap, xi, result, mode, stats, seedStr, onHome, onPractice, onNext, onBoard }) {
   const [copied, setCopied] = useState(false)
   const [name, setNameState] = useState(getName() || randomName())
+  const [nameMsg, setNameMsg] = useState('')
   const [sub, setSub] = useState(mode !== 'vs' ? 'ask' : 'none') // ask | sending | done | error
   const [rank, setRank] = useState(null)
   const submit = async () => {
+    if (badName(name)) { setNameState(randomName()); setNameMsg("That name isn't allowed here, so we picked another. Tap Post to keep it, or type your own."); return }
     setName(name.trim()); setSub('sending')
     try {
       const r = await submitScore('bat', name.trim() || randomName(), todayKey(), xi, level, cap, mode === 'daily' ? {} : { seed: seedStr })
@@ -594,6 +600,7 @@ function Result({ vs, level, cap, xi, result, mode, stats, seedStr, onHome, onPr
           <b className="subhead">📣 Post your score so your friends can see you</b>
           <small className="mut">Your name on the board. We picked one: keep it or type your own.</small>
           <div className="namerow"><input value={name} maxLength={16} placeholder="Your name" onChange={(e) => setNameState(e.target.value)} /><button type="button" className="ghost small" aria-label="Random name" onClick={() => setNameState(randomName())}>🎲</button></div>
+          {nameMsg && <small className="warn">{nameMsg}</small>}
           <button className="primary" onClick={submit}>Post to leaderboard</button>
         </div>
       )}
@@ -645,7 +652,7 @@ function Board({ onBack, initialKind = 'bat' }) {
                     <small>🎯 Bowling: {r.bowlLvl ? `Level ${r.bowlLvl} completed` : 'no level yet'}</small>
                     {(r.full > 0 || r.sup > 0) && <small>{[r.full ? `🏟️ ${r.full} full match win${r.full > 1 ? 's' : ''}` : '', r.sup ? `⚡ ${r.sup} Super Over win${r.sup > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · ')}</small>}
                   </span>
-                  <span className="wn">{r.wins} 🏆<small>won of {r.games}</small></span>
+                  <span className="wn">{r.wins} 🏆<small>won of {r.games}</small></span>{!r.you && <ReportBtn pid={r.pid} />}
                 </li>
               ))}
               {data.me && data.me.rank > 100 && <li className="you"><span className="rk">{data.me.rank}</span><span className="nm">{data.me.name}</span><span className="wn">{data.me.wins} 🏆</span></li>}
@@ -666,7 +673,7 @@ function Board({ onBack, initialKind = 'bat' }) {
             <li key={r.rank} className={r.you ? 'you' : ''}>
               <span className="rk">{r.rank}</span><span className="nm">{r.name}{r.won ? ' 🏆' : ''}</span>
               <span className="lv">L{r.level}</span>
-              <span className="sc">{r.score}/{r.wickets}</span>
+              <span className="sc">{r.score}/{r.wickets}</span>{!r.you && <ReportBtn pid={r.pid} />}
             </li>
           ))}
           {data.me && data.me.rank > 50 && <li className="you"><span className="rk">{data.me.rank}</span><span className="nm">{data.me.name}</span><span className="sc">{data.me.score}/{data.me.wickets}</span></li>}
@@ -842,10 +849,12 @@ function BowlInnings({ result, onDone, chasing = false, doneLabel = 'See result'
 function BowlResult({ vs, level, cap, attack, result, mode, stats, seedStr, onHome, onPractice, onNext, onBoard }) {
   const [copied, setCopied] = useState(false)
   const [name, setNameState] = useState(getName() || randomName())
+  const [nameMsg, setNameMsg] = useState('')
   const [sub, setSub] = useState(mode !== 'vs' ? 'ask' : 'none')
   const [rank, setRank] = useState(null)
   const streak = liveStreak(stats)
   const submit = async () => {
+    if (badName(name)) { setNameState(randomName()); setNameMsg("That name isn't allowed here, so we picked another. Tap Post to keep it, or type your own."); return }
     setName(name.trim()); setSub('sending')
     try { const r = await submitScore('bowl', name.trim() || randomName(), todayKey(), attack, level, cap, mode === 'daily' ? {} : { seed: seedStr }); setRank(r.me); setSub('done') }
     catch (e) { setSub(e.status === 409 ? 'done' : 'error') }
@@ -875,6 +884,7 @@ function BowlResult({ vs, level, cap, attack, result, mode, stats, seedStr, onHo
           <b className="subhead">📣 Post your score so your friends can see you</b>
           <small className="mut">Your name on the board. We picked one: keep it or type your own.</small>
           <div className="namerow"><input value={name} maxLength={16} placeholder="Your name" onChange={(e) => setNameState(e.target.value)} /><button type="button" className="ghost small" aria-label="Random name" onClick={() => setNameState(randomName())}>🎲</button></div>
+          {nameMsg && <small className="warn">{nameMsg}</small>}
           <button className="primary" onClick={submit}>Post to leaderboard</button>
         </div>
       )}

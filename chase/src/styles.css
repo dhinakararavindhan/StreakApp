@@ -841,3 +841,12 @@ select { font: inherit; font-size: 0.9rem; color: var(--ink); background: var(--
 .namerow .ghost { width: auto; padding: 0 14px; }
 #upd { position: fixed; left: 50%; transform: translateX(-50%); bottom: 90px; z-index: 50; display: flex; gap: 12px; align-items: center; padding: 10px 14px; border-radius: 999px; background: var(--ink); color: var(--bg, #fff); font-size: 0.84rem; font-weight: 700; box-shadow: var(--depth-sm, 0 6px 20px rgba(0,0,0,.2)); }
 #upd button { font: inherit; font-weight: 800; border: 0; border-radius: 999px; padding: 6px 12px; background: #fff; color: #111; }
+
+/* report-a-name flag, feedback screen */
+.rows li .rep { flex: none; width: 28px; height: 28px; border-radius: 9px; border: 0; background: transparent; color: var(--mut); font-size: 0.95rem; opacity: 0.55; padding: 0; }
+.rows li .rep:active:not(:disabled) { opacity: 1; color: var(--red, #d6455d); }
+.feedback { display: flex; flex-direction: column; gap: 10px; }
+.feedback header { display: flex; justify-content: space-between; align-items: center; font-weight: 700; }
+.feedback textarea, .feedback input { width: 100%; font: inherit; padding: 12px 14px; border-radius: 16px; border: 1px solid var(--glass-edge, var(--line)); background: var(--card); color: var(--ink); resize: vertical; }
+.feedback .tabs button { font-size: 0.78rem; }
+small.warn { color: var(--red, #d6455d); font-weight: 600; font-size: 0.74rem; }

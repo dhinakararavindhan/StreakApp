@@ -3,11 +3,12 @@ import { SQUADS, PLAYABLE, isPlayable, BOWL_SLOTS, BOWL_MIN, batTarget, bowlTarg
 import { hashStr, todayKey } from './rng.js'
 import { superOpponent, opponentFor, autoAttack } from './sim.js'
 import { conditionFor, modifierFor, squadsFor, pickAllowed, tagOf, TAG_LABEL, phaseBonus, orderOK, nativeSlot, isPower, isAnchor, pitchFitBat, pitchFitBowl } from './rules.js'
-import { getName, setName, submitScore, fetchWeekly, fetchRecap } from './api.js'
+import { getName, setName, submitScore, fetchWeekly, fetchRecap, reportName } from './api.js'
 import { liveStreak } from './storage.js'
 import { BatCard, BowlCard } from './scorecard.jsx'
 import { shareCard } from './card.js'
 import { track } from './analytics.js'
+import { badName } from './names.js'
 import { makeSpins, oversStr, initials, avatarColor, randomName } from './util.js'
 
 export const Av = ({ p }) => <span className="av" style={{ background: avatarColor(p) }}>{initials(p.name)}</span>
@@ -32,6 +33,18 @@ export function PlaceSheet({ player, options, onCancel }) {
       </div>
     </div>
   )
+}
+
+// flag a name on a public board for the admin to review
+export function ReportBtn({ pid }) {
+  const [st, setSt] = useState('')
+  if (!pid) return null
+  const go = async () => {
+    if (st) return
+    if (!window.confirm('Report this name as offensive? We will review it.')) return
+    try { await reportName(pid); setSt('done') } catch { setSt('') }
+  }
+  return <button type="button" className="rep" aria-label="Report this name" title="Report this name" disabled={st === 'done'} onClick={go}>{st === 'done' ? '✓' : '⚑'}</button>
 }
 
 // ---------- compact draft pieces (keep a whole draft on one screen) ----------
@@ -270,10 +283,12 @@ export function SuperInnings({ result, onDone }) {
 
 export function SuperResult({ picks, cap, result, mode, stats, seedStr, onHome, onPractice }) {
   const [name, setNameState] = useState(getName() || randomName())
+  const [nameMsg, setNameMsg] = useState('')
   const [sub, setSub] = useState(mode !== 'vs' ? 'ask' : 'none')
   const [pts, setPts] = useState(null)
   const streak = liveStreak(stats)
   const submit = async () => {
+    if (badName(name)) { setNameState(randomName()); setNameMsg("That name isn't allowed here, so we picked another. Tap Post to keep it, or type your own."); return }
     setName(name.trim()); setSub('sending')
     try { const r = await submitScore('super', name.trim() || randomName(), todayKey(), picks, 1, cap, mode === 'daily' ? {} : { seed: seedStr }); setPts(r.pts); setSub('done') }
     catch (e) { setSub(e.status === 409 ? 'done' : 'error') }
@@ -297,6 +312,7 @@ export function SuperResult({ picks, cap, result, mode, stats, seedStr, onHome, 
           <b className="subhead">📣 Post your score so your friends can see you</b>
           <small className="mut">Your name on the board. We picked one: keep it or type your own.</small>
           <div className="namerow"><input value={name} maxLength={16} placeholder="Your name" onChange={(e) => setNameState(e.target.value)} /><button type="button" className="ghost small" aria-label="Random name" onClick={() => setNameState(randomName())}>🎲</button></div>
+          {nameMsg && <small className="warn">{nameMsg}</small>}
           <button className="primary" onClick={submit}>Post to weekly tournament</button>
         </div>
       )}
@@ -325,7 +341,7 @@ export function Weekly() {
       {data && (
         <ol className="rows">
           {data.top.map((r) => (
-            <li key={r.rank} className={r.you ? 'you' : ''}><span className="rk">{r.rank}</span><span className="nm">{r.name}</span><span className="lv">{r.games} game{r.games === 1 ? '' : 's'}</span><span className="sc">{r.pts} pts</span></li>
+            <li key={r.rank} className={r.you ? 'you' : ''}><span className="rk">{r.rank}</span><span className="nm">{r.name}</span><span className="lv">{r.games} game{r.games === 1 ? '' : 's'}</span><span className="sc">{r.pts} pts</span>{!r.you && <ReportBtn pid={r.pid} />}</li>
           ))}
           {data.me && data.me.rank > 50 && <li className="you"><span className="rk">{data.me.rank}</span><span className="nm">{data.me.name}</span><span className="sc">{data.me.pts} pts</span></li>}
         </ol>
@@ -476,6 +492,7 @@ export function InningsBreak({ res, onNext }) {
 // ---------- full match result ----------
 export function FullResult({ res, xi, attack, cap, mode, stats, seedStr, onHome, onAgain }) {
   const [name, setNameState] = useState(getName() || randomName())
+  const [nameMsg, setNameMsg] = useState('')
   const [sub, setSub] = useState(mode !== 'vs' ? 'ask' : 'none')
   const [pts, setPts] = useState(null)
   const [tab, setTab] = useState(res.first === 'bat' ? 'bat' : 'bowl')
@@ -483,6 +500,7 @@ export function FullResult({ res, xi, attack, cap, mode, stats, seedStr, onHome,
   const streak = liveStreak(stats)
   const bat = res.myBatting, bowl = res.myBowling
   const submit = async () => {
+    if (badName(name)) { setNameState(randomName()); setNameMsg("That name isn't allowed here, so we picked another. Tap Post to keep it, or type your own."); return }
     setName(name.trim()); setSub('sending')
     try { const r = await submitScore('full', name.trim() || randomName(), todayKey(), xi, 1, cap, { ...(mode === 'daily' ? {} : { seed: seedStr }), attack: attack.map((p) => p.id), first: res.first, ...(res.impact ? { impact: { id: res.impact.p.id, out: res.impact.out } } : {}) }); setPts(r.pts); setSub('done') }
     catch (e) { setSub(e.status === 409 ? 'done' : 'error') }
@@ -512,6 +530,7 @@ export function FullResult({ res, xi, attack, cap, mode, stats, seedStr, onHome,
           <b className="subhead">📣 Post your score so your friends can see you</b>
           <small className="mut">Your name on the board. We picked one: keep it or type your own.</small>
           <div className="namerow"><input value={name} maxLength={16} placeholder="Your name" onChange={(e) => setNameState(e.target.value)} /><button type="button" className="ghost small" aria-label="Random name" onClick={() => setNameState(randomName())}>🎲</button></div>
+          {nameMsg && <small className="warn">{nameMsg}</small>}
           <button className="primary" onClick={submit}>Post to weekly tournament</button>
         </div>
       )}

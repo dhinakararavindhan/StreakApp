@@ -14,6 +14,8 @@ import * as AN from './analytics.js'
 import * as MX from './matches.js'
 import { AGE_BANDS, STATES, TEAM_CITIES } from '../src/profile.js'
 import { rng, hashStr, todayKey } from '../src/rng.js'
+import { badName } from '../src/names.js'
+import { randomName } from '../src/util.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const DIST = path.join(__dirname, '..', 'dist')
@@ -22,9 +24,10 @@ const PORT = Number(process.env.PORT || 8787)
 const REMINDER_HOUR = Number(process.env.REMINDER_HOUR || 18) // local hour of the player
 
 // ---------- storage (atomic JSON file) ----------
-let db = { scores: [], subs: {}, vs: {}, users: {}, profiles: {}, salt: '' } // scores: {device,name,day,score,wickets,won,balls,xi}; subs: device -> {sub,tz,lastReminded}
+let db = { scores: [], subs: {}, vs: {}, users: {}, profiles: {}, salt: '', reports: [], feedback: [], nameLock: {} } // scores: {device,name,day,score,wickets,won,balls,xi}; subs: device -> {sub,tz,lastReminded}
 try { db = { ...db, ...JSON.parse(fs.readFileSync(DB_FILE, 'utf8')) } } catch {}
 AN.ensureSalt(db)
+db.reports = db.reports || []; db.feedback = db.feedback || []; db.nameLock = db.nameLock || {}
 const DATA_DIR = path.dirname(DB_FILE)
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || ''
 AN.purgeOld(DATA_DIR)
@@ -142,7 +145,12 @@ function verify(kind, ids, seed, level, cap = -1, target, extra = {}) {
   if (!twistOK(mod, xi)) return null
   return simulate(xi, rng(hashStr(seed + xi.map((p) => p.id).join('|'))), target ?? batTarget(level), { cap, cond })
 }
-const cleanName = (n) => String(n || 'Anon').replace(/[^\p{L}\p{N} _.-]/gu, '').trim().slice(0, 16) || 'Anon'
+// public display names: letters/digits only, no offensive words, and admin-locked players always get a generated name
+const pidOf = (device) => AN.hashDevice(db, device).slice(0, 10)
+const cleanName = (n, device) => {
+  const c = String(n || '').replace(/[^\p{L}\p{N} _.-]/gu, '').trim().slice(0, 16)
+  return !c || badName(c) || (device && db.nameLock[pidOf(device)]) ? randomName() : c
+}
 const validDay = (d) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return false
   const diff = Math.abs(new Date(d) - new Date(todayKey(new Date()))) / 86400000
@@ -159,7 +167,7 @@ function board(kind, scope, device, day) {
   const mine = db.scores.filter((s) => (s.kind || 'bat') === kind && (scope === 'all' || s.day === day))
   const better = betterOf(kind)
   const rows = bestPerDevice(mine, better).sort(better) // every game counts: each player's best of the day (or ever)
-  const ranked = rows.map((s, i) => ({ rank: i + 1, name: s.name, score: s.score, wickets: s.wickets, won: s.won, balls: s.balls, level: s.level || 1, you: s.device === device }))
+  const ranked = rows.map((s, i) => ({ rank: i + 1, name: s.name, score: s.score, wickets: s.wickets, won: s.won, balls: s.balls, level: s.level || 1, pid: pidOf(s.device), you: s.device === device }))
   return { top: ranked.slice(0, 50), me: ranked.find((r) => r.you) || null, total: ranked.length }
 }
 
@@ -181,7 +189,7 @@ function hall(device) {
   }
   const rows = [...by.entries()].filter(([, e]) => e.wins > 0)
     .sort((a, b) => b[1].wins - a[1].wins || (b[1].batLvl + b[1].bowlLvl) - (a[1].batLvl + a[1].bowlLvl) || a[1].games - b[1].games)
-    .map(([d, e], i) => ({ rank: i + 1, name: e.name, wins: e.wins, games: e.games, batLvl: e.batLvl, bowlLvl: e.bowlLvl, full: e.full, sup: e.sup, last: e.last, you: d === device }))
+    .map(([d, e], i) => ({ rank: i + 1, name: e.name, wins: e.wins, games: e.games, batLvl: e.batLvl, bowlLvl: e.bowlLvl, full: e.full, sup: e.sup, last: e.last, pid: pidOf(d), you: d === device }))
   return { top: rows.slice(0, 100), me: rows.find((r) => r.you) || null, total: rows.length }
 }
 
@@ -201,7 +209,7 @@ function weekly(day, device) {
     e.pts += s.pts || 0; e.games += 1; e.name = s.name
     by.set(s.device, e)
   }
-  const rows = [...by.entries()].map(([d, e]) => ({ ...e, you: d === device })).sort((a, b) => b.pts - a.pts || a.games - b.games)
+  const rows = [...by.entries()].map(([d, e]) => ({ ...e, pid: pidOf(d), you: d === device })).sort((a, b) => b.pts - a.pts || a.games - b.games)
   const ranked = rows.map((r, i) => ({ rank: i + 1, ...r }))
   return { start, end, top: ranked.slice(0, 50), me: ranked.find((r) => r.you) || null, total: ranked.length }
 }
@@ -284,7 +292,7 @@ const server = http.createServer(async (req, res) => {
           if (isFirst) ch = db.vs[code] = { kind, created: Date.now(), firstScore: r.score, target: kind === 'bowl' ? r.score : r.score + 1, entries: [] }
           if (ch.entries.some((e) => e.device === device)) return send(res, 409, { error: 'already played' })
           if (ch.entries.length >= VS_MAX) return send(res, 409, { error: 'challenge full' })
-          ch.entries.push({ device, name: cleanName(name), score: r.score, wickets: r.wickets, won: isFirst ? false : r.won, balls: r.ballsUsed, outcome: isFirst ? 'set' : vsOutcome(ch, r) })
+          ch.entries.push({ device, name: cleanName(name, device), score: r.score, wickets: r.wickets, won: isFirst ? false : r.won, balls: r.ballsUsed, outcome: isFirst ? 'set' : vsOutcome(ch, r) })
           save()
           return send(res, 200, vsView(code, device))
         }
@@ -318,6 +326,29 @@ const server = http.createServer(async (req, res) => {
         })
         return send(res, 200, { ok: true, stored: ok })
       }
+      // a player reports a name on a public board (admin reviews it); a feedback message from the in-app form
+      if (req.method === 'POST' && url.pathname === '/api/report') {
+        const b = await readJson(req)
+        if (!validDevice(b.device) || typeof b.pid !== 'string' || !/^[0-9a-f]{10}$/.test(b.pid)) return send(res, 400, { error: 'bad report' })
+        const me = pidOf(b.device), dayAgo = Date.now() - 86400000
+        if (b.pid === me) return send(res, 200, { ok: true })
+        if (db.reports.filter((r) => r.by === me && r.t > dayAgo).length >= 10) return send(res, 429, { error: 'too many reports today' })
+        if (!db.reports.some((r) => r.by === me && r.pid === b.pid)) { db.reports.push({ t: Date.now(), by: me, pid: b.pid }); if (db.reports.length > 5000) db.reports.splice(0, 1000); save() }
+        return send(res, 200, { ok: true })
+      }
+      if (req.method === 'POST' && url.pathname === '/api/feedback') {
+        const b = await readJson(req)
+        if (!validDevice(b.device)) return send(res, 400, { error: 'bad request' })
+        const type = ['bug', 'idea', 'other'].includes(b.type) ? b.type : 'other'
+        const text = String(b.text || '').replace(/\s+/g, ' ').trim().slice(0, 600)
+        if (text.length < 5) return send(res, 400, { error: 'Please write a little more.' })
+        const me = pidOf(b.device)
+        if (db.feedback.filter((f) => f.by === me && f.t > Date.now() - 86400000).length >= 5) return send(res, 429, { error: 'You have sent a few already today. Thank you!' })
+        const ua = AN.uaInfo(req.headers['user-agent'])
+        db.feedback.push({ id: crypto.randomBytes(5).toString('hex'), t: Date.now(), by: me, type, text, contact: String(b.contact || '').trim().slice(0, 60), ctx: String(b.ctx || '').slice(0, 30), dev: ua.dev, os: ua.os, br: ua.br })
+        if (db.feedback.length > 3000) db.feedback.splice(0, 500)
+        save(); return send(res, 200, { ok: true })
+      }
       if (url.pathname === '/api/profile' && (req.method === 'PUT' || req.method === 'DELETE')) {
         const body = await readJson(req)
         if (!validDevice(body.device)) return send(res, 400, { error: 'bad device' })
@@ -335,6 +366,7 @@ const server = http.createServer(async (req, res) => {
         if (!validDevice(body.device)) return send(res, 400, { error: 'bad device' })
         const before = { scores: db.scores.length }
         delete db.profiles[AN.hashDevice(db, body.device)]
+        { const me = pidOf(body.device); db.reports = db.reports.filter((r) => r.by !== me); db.feedback = db.feedback.filter((f) => f.by !== me) }
         delete db.subs[body.device]
         db.scores = db.scores.filter((s) => s.device !== body.device)
         for (const ch of Object.values(db.vs)) ch.entries = ch.entries.filter((e) => e.device !== body.device)
@@ -346,6 +378,33 @@ const server = http.createServer(async (req, res) => {
         if (!ADMIN_TOKEN) return send(res, 503, { error: 'admin disabled: set ADMIN_TOKEN' })
         if (!adminOK(req)) return send(res, 401, { error: 'unauthorized' })
         if (req.method === 'GET' && url.pathname === '/api/admin/summary') return send(res, 200, { ...AN.summary(db, DATA_DIR, 30), matches: MX.matchStats(DATA_DIR, 30) })
+        // moderation: players ranked by reports, remove (lock) a name; feedback inbox
+        if (req.method === 'GET' && url.pathname === '/api/admin/moderation') {
+          const by = new Map()
+          for (const s of db.scores) { const pid = pidOf(s.device); const e = by.get(pid) || { pid, name: s.name, games: 0, wins: 0, last: '' }; e.name = s.name; e.games++; if (s.won) e.wins++; if (!e.last || s.day > e.last) e.last = s.day; by.set(pid, e) }
+          const rc = {}; for (const r of db.reports) rc[r.pid] = (rc[r.pid] || 0) + 1
+          const players = [...by.values()].map((e) => ({ ...e, reports: rc[e.pid] || 0, locked: !!db.nameLock[e.pid] })).sort((a, b) => b.reports - a.reports || (a.last < b.last ? 1 : -1)).slice(0, 300)
+          return send(res, 200, { players, reported: players.filter((p) => p.reports > 0).length })
+        }
+        if (req.method === 'POST' && url.pathname === '/api/admin/rename') {
+          const b = await readJson(req); if (typeof b.pid !== 'string') return send(res, 400, { error: 'bad pid' })
+          const nn = randomName(); let n = 0
+          const devices = new Set(db.scores.map((s) => s.device).filter((d) => pidOf(d) === b.pid))
+          for (const s of db.scores) if (devices.has(s.device)) { s.name = nn; n++ }
+          for (const ch of Object.values(db.vs)) for (const e of ch.entries) if (devices.has(e.device)) e.name = nn
+          db.nameLock[b.pid] = true; db.reports = db.reports.filter((r) => r.pid !== b.pid); save()
+          return send(res, 200, { ok: true, name: nn, updated: n })
+        }
+        if (req.method === 'POST' && url.pathname === '/api/admin/dismiss') {
+          const b = await readJson(req); db.reports = db.reports.filter((r) => r.pid !== b.pid); save(); return send(res, 200, { ok: true })
+        }
+        if (req.method === 'POST' && url.pathname === '/api/admin/unlock') {
+          const b = await readJson(req); delete db.nameLock[b.pid]; save(); return send(res, 200, { ok: true })
+        }
+        if (req.method === 'GET' && url.pathname === '/api/admin/feedback') return send(res, 200, { total: db.feedback.length, items: [...db.feedback].reverse().slice(0, 200) })
+        if (req.method === 'POST' && url.pathname === '/api/admin/feedback/delete') {
+          const b = await readJson(req); db.feedback = db.feedback.filter((f) => f.id !== b.id); save(); return send(res, 200, { ok: true })
+        }
         if (req.method === 'GET' && url.pathname === '/api/admin/matches') {
           const q = url.searchParams
           const rows = MX.readMatches(DATA_DIR, { days: Math.min(365, Number(q.get('days')) || 30), kind: q.get('kind') || '', mode: q.get('mode') || '', limit: Math.min(50000, Number(q.get('limit')) || 200) })
@@ -410,7 +469,7 @@ const server = http.createServer(async (req, res) => {
         const r = verify(kind, xi, seed, level, cap, undefined, { attack: body.attack, first: body.first, impact: body.impact })
         if (!r) return send(res, 400, { error: 'invalid XI' })
         if (db.scores.some((s) => s.device === device && s.seed === seed && (s.kind || 'bat') === kind) || (seed === day && db.scores.some((s) => s.device === device && s.day === day && !s.seed && (s.kind || 'bat') === kind))) return send(res, 409, { error: 'already submitted' })
-        db.scores.push({ device, kind, level, name: cleanName(name), day, seed, score: r.score, wickets: r.wickets, won: r.won, balls: r.ballsUsed, pts: dailyPoints(kind, level, r), opp: r.oppScore, xi, cap, ...(kind === 'full' ? { attack: body.attack, first: body.first, impact: body.impact || null, text: r.text } : {}) })
+        db.scores.push({ device, kind, level, name: cleanName(name, device), day, seed, score: r.score, wickets: r.wickets, won: r.won, balls: r.ballsUsed, pts: dailyPoints(kind, level, r), opp: r.oppScore, xi, cap, ...(kind === 'full' ? { attack: body.attack, first: body.first, impact: body.impact || null, text: r.text } : {}) })
         save()
         return send(res, 200, { score: r.score, pts: dailyPoints(kind, level, r), text: r.text, ...(kind === 'super' || kind === 'full' ? {} : board(kind, 'today', device, day)) })
       }
@@ -443,6 +502,12 @@ const server = http.createServer(async (req, res) => {
     // only fingerprinted /assets files are cached long; manifest, icons, sw.js and index.html always revalidate
     const type = MIME[path.extname(f)] || 'application/octet-stream'
     res.writeHead(200, { 'content-type': type, 'cache-control': f.startsWith(path.join(DIST, 'assets') + path.sep) ? 'public, max-age=31536000, immutable' : 'no-cache' })
+    if (f.endsWith('index.html')) {
+      // absolute URLs for the link preview (WhatsApp, Telegram, iMessage...): use the host this request came in on
+      const proto = String(req.headers['x-forwarded-proto'] || 'https').split(',')[0].trim() === 'http' ? 'http' : 'https'
+      const host = String(req.headers.host || '').replace(/[^a-zA-Z0-9.:-]/g, '')
+      return res.end(fs.readFileSync(f, 'utf8').replace(/__ORIGIN__/g, host ? `${proto}://${host}` : ''))
+    }
     fs.createReadStream(f).pipe(res)
   } catch (e) { send(res, 400, { error: 'bad request' }) }
 })

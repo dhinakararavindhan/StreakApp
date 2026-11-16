@@ -11,7 +11,7 @@ table{width:100%;border-collapse:collapse;font-size:.84rem}th,td{border:1px soli
 input,textarea,button{font:inherit;padding:10px;border-radius:10px;border:1px solid var(--line);width:100%}button{background:#1f3236;color:#fff;border:0;font-weight:700;cursor:pointer;margin-top:8px}textarea{min-height:60px}
 .bars{display:flex;align-items:flex-end;gap:2px;height:80px}.bars i{flex:1;background:var(--acc);border-radius:3px 3px 0 0;min-height:1px;opacity:.85}
 pre{white-space:pre-wrap;font-size:.75rem;background:#f0f4f4;padding:8px;border-radius:8px}
-</style></head><body>
+.fbi{border-top:1px solid #e3ecec;padding:8px 0}.fbi p{margin:4px 0}button[data-rn],button[data-dm],button[data-fd]{font-size:.78rem;padding:4px 8px}</style></head><body>
 <h1>Chase 300 · admin</h1>
 <div id="login" class="card"><p class="mut">Enter the admin token (the ADMIN_TOKEN value set on the server).</p><input id="tok" type="password" placeholder="Admin token" autocomplete="off"><button id="go">Open dashboard</button><p id="err" style="color:#c0392b"></p></div>
 <div id="app" hidden></div>
@@ -47,7 +47,23 @@ function render(s, token) {
   <h2>Actions</h2><div class="card">${table(['Action', 'Count'], kv(s.actions))}</div>
   <h2>Audience report (for sponsors)</h2><div class="card"><p class="mut">${s.audience.profiles} players shared an optional profile with consent. Under-18s are never profiled. Groups under ${s.audience.minBucket} are hidden.</p>
     ${table(['Age band', 'Players'], kv(s.audience.age))}${table(['State', 'Players'], kv(s.audience.state))}${table(['Favourite team city', 'Players'], kv(s.audience.team))}</div>
+  <h2>Player names &amp; reports</h2><div class="card"><p class="mut">Players are listed by number of reports. "Remove name" gives them a random name and locks it. "Dismiss" clears the reports.</p><div id="mod">Loading…</div></div>
+  <h2>Feedback inbox</h2><div class="card"><div id="fb">Loading…</div></div>
   <h2>Send a notification to all subscribers</h2><div class="card"><input id="bt" maxlength="60" placeholder="Title"><textarea id="bb" maxlength="160" placeholder="Message (160 characters)"></textarea><button id="send">Send to ${s.pushSubscribers} subscribers</button><p id="bmsg" class="mut"></p></div>`
+  const H = { 'x-admin-token': token, 'content-type': 'application/json' }
+  const post = (u, b) => fetch(u, { method: 'POST', headers: H, body: JSON.stringify(b) }).then((r) => r.json())
+  const loadMod = async () => {
+    const m = await (await fetch('/api/admin/moderation', { headers: H })).json()
+    $('#mod').innerHTML = m.players.length ? `<table><tr><th>Name</th><th>Games</th><th>Wins</th><th>Reports</th><th></th></tr>${m.players.slice(0, 60).map((p) => `<tr><td>${esc(p.name)}${p.locked ? ' 🔒' : ''}</td><td>${p.games}</td><td>${p.wins}</td><td>${p.reports ? '<b>' + p.reports + ' ⚑</b>' : 0}</td><td><button data-rn="${p.pid}">Remove name</button> ${p.reports ? `<button data-dm="${p.pid}">Dismiss</button>` : ''}</td></tr>`).join('')}</table>` : '<p class="mut">No players yet.</p>'
+    $('#mod').querySelectorAll('[data-rn]').forEach((b) => (b.onclick = async () => { if (confirm('Replace this player\'s name with a random one and lock it?')) { await post('/api/admin/rename', { pid: b.dataset.rn }); loadMod() } }))
+    $('#mod').querySelectorAll('[data-dm]').forEach((b) => (b.onclick = async () => { await post('/api/admin/dismiss', { pid: b.dataset.dm }); loadMod() }))
+  }
+  const loadFb = async () => {
+    const f = await (await fetch('/api/admin/feedback', { headers: H })).json()
+    $('#fb').innerHTML = f.items.length ? f.items.slice(0, 50).map((x) => `<div class="fbi"><p><b>${{ bug: '🐞 Bug', idea: '💡 Idea', other: '💬 Other' }[x.type] || x.type}</b> <span class="mut">${esc(new Date(x.t).toLocaleString())} · ${esc(x.dev || '')} ${esc(x.os || '')} ${esc(x.ctx || '')}${x.contact ? ' · contact: ' + esc(x.contact) : ''}</span></p><p>${esc(x.text)}</p><button data-fd="${x.id}">Delete</button></div>`).join('') : '<p class="mut">No feedback yet.</p>'
+    $('#fb').querySelectorAll('[data-fd]').forEach((b) => (b.onclick = async () => { await post('/api/admin/feedback/delete', { id: b.dataset.fd }); loadFb() }))
+  }
+  loadMod(); loadFb()
   const dl = async (q, name, json) => { const r = await fetch('/api/admin/matches?' + q, { headers: { 'x-admin-token': token } }); const b = await r.blob(); const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = name; a.click() }
   $('#mcsv').onclick = () => dl('format=csv&days=365&limit=50000', 'chase300-matches.csv')
   $('#mjson').onclick = () => dl('limit=50', 'chase300-matches.json')
