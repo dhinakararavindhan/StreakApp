@@ -1,7 +1,7 @@
 // Load test: many virtual players each open the game, draft an XI, "chase" (the same simulation the app runs),
 // post the score to the leaderboard and look at the boards. Repeats for several rounds, then deletes the test data.
 //   node scripts/loadtest.mjs [BASE_URL] [PLAYERS] [ROUNDS] [CONCURRENCY]
-//   env: MIX=1 (play batting, bowling, Super Over AND full matches, not just batting)  SPOOF_IP=1 (give every virtual player its own x-forwarded-for, for local servers) CLEANUP=0 (keep the data)
+//   env: NAME_OFFSET=400 (names start at the 400th combination; 3,600 exist)  MIX=1 (play batting, bowling, Super Over AND full matches, not just batting)  SPOOF_IP=1 (give every virtual player its own x-forwarded-for, for local servers) CLEANUP=0 (keep the data)
 import { PLAYABLE } from '../src/data.js'
 import { simulate, simulateBowl, simulateSuper, superOpponent, simulateFull, autoAttack, opponentFor } from '../src/sim.js'
 import { batTarget, bowlTarget, BOWL_MIN } from '../src/data.js'
@@ -10,6 +10,7 @@ import { rng, hashStr } from '../src/rng.js'
 
 const BASE = (process.argv[2] || 'http://localhost:8787').replace(/\/$/, '')
 const PLAYERS = Number(process.argv[3] || 250), ROUNDS = Number(process.argv[4] || 3), CONC = Number(process.argv[5] || 40)
+const NAME_OFFSET = Number(process.env.NAME_OFFSET || 0) // start of the unique-name sequence (use a new offset for each run so names never repeat)
 const MIX = process.env.MIX === '1', SPOOF = process.env.SPOOF_IP === '1', CLEANUP = process.env.CLEANUP !== '0'
 const day = new Date().toISOString().slice(0, 10)
 const lat = {}, codes = {}, problems = []
@@ -56,7 +57,7 @@ const pct = (a, q) => { const s = [...a].sort((x, y) => x - y); return s.length 
 async function player(i) {
   const device = `load-${Date.now().toString(36)}-${i}-${Math.random().toString(36).slice(2, 8)}`
   const ip = SPOOF ? `10.${(i >> 8) & 255}.${i & 255}.${1 + (i % 250)}` : null
-  const name = testName(i)
+  const name = testName(i + NAME_OFFSET)
   await call('page /', 'GET', '/', null, ip)
   await call('GET leaderboard', 'GET', `/api/leaderboard?kind=bat&scope=today&day=${day}&device=${device}`, null, ip)
   for (let round = 0; round < ROUNDS; round++) {
