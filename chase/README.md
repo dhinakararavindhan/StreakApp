@@ -53,3 +53,6 @@ Push needs HTTPS in production (localhost is exempt). Without VAPID keys the ser
 
 ## Analytics and audience data
 Anonymous usage events (`src/analytics.js`, `server/analytics.js`), an optional consented profile (`src/privacy.jsx`), a token-protected `/admin` dashboard (`server/admin.html`) and push broadcasts. See DEPLOY.md. Players under 18 are never profiled and get no analytics.
+
+## Load test
+`node scripts/loadtest.mjs <base-url> [players=250] [games-each=3] [concurrency=40]` runs virtual players that open the app, draft an XI, run the same chase simulation as the app, post the score, and read the boards. It checks every posted score against the server's own re-run and prints latency percentiles. Test players are deleted afterwards (`CLEANUP=0` keeps them). Use `SPOOF_IP=1` against a local server so each virtual player has its own client IP (the API allows 120 requests per minute per IP).
