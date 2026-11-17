@@ -47,7 +47,7 @@ function render(s, token) {
   <h2>Actions</h2><div class="card">${table(['Action', 'Count'], kv(s.actions))}</div>
   <h2>Audience report (for sponsors)</h2><div class="card"><p class="mut">${s.audience.profiles} players shared an optional profile with consent. Under-18s are never profiled. Groups under ${s.audience.minBucket} are hidden.</p>
     ${table(['Age band', 'Players'], kv(s.audience.age))}${table(['State', 'Players'], kv(s.audience.state))}${table(['Favourite team city', 'Players'], kv(s.audience.team))}</div>
-  <h2>Player names &amp; reports</h2><div class="card"><p class="mut">Players are listed by number of reports. "Remove name" gives them a random name and locks it. "Dismiss" clears the reports.</p><div id="mod">Loading…</div><p><button id="rt">Give load-test players unique names</button> <span id="rtm" class="mut"></span></p></div>
+  <h2>Player names &amp; reports</h2><div class="card"><p class="mut">Players are listed by number of reports. "Remove name" gives them a random name and locks it. "Dismiss" clears the reports.</p><div id="mod">Loading…</div><p><button id="rt">Give load-test players unique names</button> <span id="rtm" class="mut"></span></p><p><button id="pt">Delete ALL load-test players</button> <span id="ptm" class="mut"></span></p></div>
   <h2>Feedback inbox</h2><div class="card"><div id="fb">Loading…</div></div>
   <h2>Send a notification to all subscribers</h2><div class="card"><input id="bt" maxlength="60" placeholder="Title"><textarea id="bb" maxlength="160" placeholder="Message (160 characters)"></textarea><button id="send">Send to ${s.pushSubscribers} subscribers</button><p id="bmsg" class="mut"></p></div>`
   const H = { 'x-admin-token': token, 'content-type': 'application/json' }
@@ -64,6 +64,7 @@ function render(s, token) {
     $('#fb').querySelectorAll('[data-fd]').forEach((b) => (b.onclick = async () => { await post('/api/admin/feedback/delete', { id: b.dataset.fd }); loadFb() }))
   }
   $('#rt').onclick = async () => { if (!confirm('Rename every "Load N" test player to a unique realistic name?')) return; const r = await post('/api/admin/rename-test', {}); $('#rtm').textContent = 'Renamed ' + r.renamed + ' players.'; loadMod() }
+  $('#pt').onclick = async () => { if (!confirm('Permanently delete every load-test player and all their scores, matches and analytics?')) return; const r = await post('/api/admin/purge-test', {}); $('#ptm').textContent = 'Removed ' + r.removed + ' players.'; loadMod() }
   loadMod(); loadFb()
   const dl = async (q, name, json) => { const r = await fetch('/api/admin/matches?' + q, { headers: { 'x-admin-token': token } }); const b = await r.blob(); const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = name; a.click() }
   $('#mcsv').onclick = () => dl('format=csv&days=365&limit=50000', 'chase300-matches.csv')

@@ -85,6 +85,18 @@ export function deleteDevice(db, dir, device) {
   } catch {}
 }
 
+// erase many devices at once (hashed ids): one pass over each daily file
+export function deleteHashes(dir, hashes) {
+  try {
+    for (const f of fs.readdirSync(dir)) {
+      if (!/^events-.*\.ndjson$/.test(f)) continue
+      const p = path.join(dir, f)
+      const kept = fs.readFileSync(p, 'utf8').split('\n').filter((l) => { if (!l) return false; const m = l.match(/"d":"([0-9a-f]+)"/); return !(m && hashes.has(m[1])) })
+      fs.writeFileSync(p, kept.length ? kept.join('\n') + '\n' : '')
+    }
+  } catch {}
+}
+
 const bucket = (obj) => Object.fromEntries(Object.entries(obj).map(([k, n]) => [k, n < K ? `<${K}` : n]))
 const count = (arr, f) => arr.reduce((m, x) => { const k = f(x); if (k) m[k] = (m[k] || 0) + 1; return m }, {})
 const top = (m, n = 10) => Object.entries(m).sort((a, b) => b[1] - a[1]).slice(0, n)

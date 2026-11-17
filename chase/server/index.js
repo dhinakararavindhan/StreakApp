@@ -115,6 +115,23 @@ function tidyTestNames() {
 }
 { const n = tidyTestNames(); if (n) console.log(`renamed ${n} load-test players`) }
 
+// Remove every load-test player (device ids starting "load-") with all their data: scores, matches, analytics, challenge entries.
+function purgeTestPlayers() {
+  const devs = new Set(db.scores.filter((x) => typeof x.device === 'string' && x.device.startsWith('load-')).map((x) => x.device))
+  if (!devs.size) return 0
+  const hashes = new Set([...devs].map((d) => AN.hashDevice(db, d))), pids = new Set([...hashes].map((h) => h.slice(0, 10)))
+  db.scores = db.scores.filter((x) => !devs.has(x.device))
+  for (const h of hashes) { delete db.users[h]; delete db.profiles[h] }
+  for (const d of devs) delete db.subs[d]
+  for (const ch of Object.values(db.vs)) ch.entries = ch.entries.filter((e) => !devs.has(e.device))
+  db.reports = db.reports.filter((r) => !pids.has(r.pid) && !pids.has(r.by)); db.feedback = db.feedback.filter((f) => !pids.has(f.by))
+  AN.deleteHashes(DATA_DIR, hashes); MX.deleteHashes(DATA_DIR, hashes)
+  rebuildIdx(); save()
+  return devs.size
+}
+// one-time clean-up of the test players created by the load tests before launch (later load tests are kept unless purged from /admin)
+if (!db.testPurged) { const n = purgeTestPlayers(); db.testPurged = true; save(); if (n) console.log(`removed ${n} load-test players`) }
+
 // ---------- score verification ----------
 const byId = new Map(SQUADS.flatMap((s) => s.players.map((p) => [p.id, p]))) // every player (incl. squads switched off)
 const allPlayable = (list) => list.every((p) => p && isPlayable(p))
@@ -442,6 +459,7 @@ const server = http.createServer(async (req, res) => {
         }
         // tidy generated test players ("Load 12") into unique, realistic names
         if (req.method === 'POST' && url.pathname === '/api/admin/rename-test') return send(res, 200, { ok: true, renamed: tidyTestNames() })
+        if (req.method === 'POST' && url.pathname === '/api/admin/purge-test') return send(res, 200, { ok: true, removed: purgeTestPlayers() })
         if (req.method === 'POST' && url.pathname === '/api/admin/dismiss') {
           const b = await readJson(req); db.reports = db.reports.filter((r) => r.pid !== b.pid); save(); return send(res, 200, { ok: true })
         }

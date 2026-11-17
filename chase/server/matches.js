@@ -60,6 +60,17 @@ export function deleteDeviceMatches(dir, h) {
   } catch {}
 }
 
+export function deleteHashes(dir, hashes) {
+  try {
+    for (const f of fs.readdirSync(dir)) {
+      if (!/^matches-.*\.ndjson$/.test(f)) continue
+      const p = path.join(dir, f)
+      const kept = fs.readFileSync(p, 'utf8').split('\n').filter((l) => { if (!l) return false; const m = l.match(/"d":"([0-9a-f]+)"/); return !(m && hashes.has(m[1])) })
+      fs.writeFileSync(p, kept.length ? kept.join('\n') + '\n' : '')
+    }
+  } catch {}
+}
+
 export function purgeOldMatches(dir, keepDays = 365) {
   try {
     const cutoff = monthOf(Date.now() - keepDays * DAY)
