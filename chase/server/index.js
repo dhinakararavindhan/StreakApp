@@ -383,12 +383,13 @@ const server = http.createServer(async (req, res) => {
           const by = new Map()
           for (const s of db.scores) { const pid = pidOf(s.device); const e = by.get(pid) || { pid, name: s.name, games: 0, wins: 0, last: '' }; e.name = s.name; e.games++; if (s.won) e.wins++; if (!e.last || s.day > e.last) e.last = s.day; by.set(pid, e) }
           const rc = {}; for (const r of db.reports) rc[r.pid] = (rc[r.pid] || 0) + 1
-          const players = [...by.values()].map((e) => ({ ...e, reports: rc[e.pid] || 0, locked: !!db.nameLock[e.pid] })).sort((a, b) => b.reports - a.reports || (a.last < b.last ? 1 : -1)).slice(0, 300)
+          const players = [...by.values()].map((e) => ({ ...e, reports: rc[e.pid] || 0, locked: !!db.nameLock[e.pid] })).sort((a, b) => b.reports - a.reports || (a.last < b.last ? 1 : -1)).slice(0, 1000)
           return send(res, 200, { players, reported: players.filter((p) => p.reports > 0).length })
         }
         if (req.method === 'POST' && url.pathname === '/api/admin/rename') {
           const b = await readJson(req); if (typeof b.pid !== 'string') return send(res, 400, { error: 'bad pid' })
-          const nn = randomName(); let n = 0
+          // admin may pass a specific name (e.g. to tidy test data); otherwise a random one is generated
+          const nn = typeof b.name === 'string' && b.name.trim() ? cleanName(b.name) : randomName(); let n = 0
           const devices = new Set(db.scores.map((s) => s.device).filter((d) => pidOf(d) === b.pid))
           for (const s of db.scores) if (devices.has(s.device)) { s.name = nn; n++ }
           for (const ch of Object.values(db.vs)) for (const e of ch.entries) if (devices.has(e.device)) e.name = nn

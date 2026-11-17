@@ -15,6 +15,10 @@ const day = new Date().toISOString().slice(0, 10)
 const lat = {}, codes = {}, problems = []
 let seedN = 0
 const rnd = () => Math.random()
+// unique, realistic display names (60 first names x 60 surnames = 3,600 combinations, each at most 16 characters)
+const FIRST = ['Aarav', 'Vihaan', 'Arjun', 'Rohan', 'Kabir', 'Ishaan', 'Aditya', 'Dev', 'Rahul', 'Karan', 'Nikhil', 'Varun', 'Siddh', 'Pranav', 'Harsh', 'Manav', 'Yash', 'Tarun', 'Vivek', 'Ankit', 'Meera', 'Ananya', 'Diya', 'Isha', 'Kavya', 'Riya', 'Sneha', 'Tanvi', 'Neha', 'Pooja', 'Aisha', 'Naina', 'Priya', 'Sana', 'Zoya', 'Mohit', 'Sachin', 'Imran', 'Faiz', 'Zaid', 'Ravi', 'Kiran', 'Suresh', 'Anil', 'Deepak', 'Gaurav', 'Lokesh', 'Mayank', 'Naveen', 'Omkar', 'Parth', 'Rishi', 'Sameer', 'Tejas', 'Uday', 'Vikram', 'Wasim', 'Yuvraj', 'Zubin', 'Abhay']
+const LAST = ['Sharma', 'Verma', 'Iyer', 'Nair', 'Reddy', 'Patel', 'Singh', 'Gupta', 'Mehta', 'Joshi', 'Kapoor', 'Malik', 'Khan', 'Das', 'Bose', 'Rao', 'Menon', 'Pillai', 'Shetty', 'Naidu', 'Kulkarni', 'Desai', 'Bhatt', 'Chopra', 'Saini', 'Yadav', 'Mishra', 'Tiwari', 'Pandey', 'Thakur', 'Rawat', 'Negi', 'Sinha', 'Ghosh', 'Dutta', 'Roy', 'Sen', 'Jain', 'Goel', 'Arora', 'Bajaj', 'Soni', 'Kohli', 'Gill', 'Dhar', 'Bedi', 'Rana', 'Anand', 'Mann', 'Walia', 'Ahuja', 'Basu', 'Hegde', 'Kamath', 'Pai', 'Rane', 'Sawant', 'Jadhav', 'More', 'Pawar']
+const testName = (i) => `${FIRST[i % FIRST.length]} ${LAST[(Math.floor(i / FIRST.length) + i) % LAST.length]}`.slice(0, 16)
 const fits = (p, s) => s + 1 >= p.lo && s + 1 <= p.hi
 
 function draftXI() {
@@ -43,7 +47,7 @@ const pct = (a, q) => { const s = [...a].sort((x, y) => x - y); return s.length 
 async function player(i) {
   const device = `load-${Date.now().toString(36)}-${i}-${Math.random().toString(36).slice(2, 8)}`
   const ip = SPOOF ? `10.${(i >> 8) & 255}.${i & 255}.${1 + (i % 250)}` : null
-  const name = `Load ${i}`
+  const name = testName(i)
   await call('page /', 'GET', '/', null, ip)
   await call('GET leaderboard', 'GET', `/api/leaderboard?kind=bat&scope=today&day=${day}&device=${device}`, null, ip)
   for (let round = 0; round < ROUNDS; round++) {
