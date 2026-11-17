@@ -30,6 +30,22 @@ AN.ensureSalt(db)
 db.reports = db.reports || []; db.feedback = db.feedback || []; db.nameLock = db.nameLock || {}
 const DATA_DIR = path.dirname(DB_FILE)
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || ''
+// ---- score indexes and cached boards (keeps leaderboards fast as the database grows) ----
+// idx.byDay / byDevice: scores grouped for quick lookups; idx.seen: "device|seed|kind" for the duplicate check.
+// Every change to db.scores must call rescored() (or rebuildIdx() after removals) so cached boards are rebuilt.
+let idx = { byDay: new Map(), byDevice: new Map(), seen: new Set() }
+let scoresVer = 0
+const memo = new Map()
+const cached = (key, fn) => { const e = memo.get(key); if (e && e.v === scoresVer) return e.val; const val = fn(); memo.set(key, { v: scoresVer, val }); if (memo.size > 300) memo.clear(); return val }
+const seenKey = (s) => `${s.device}|${s.seed || s.day}|${s.kind || 'bat'}`
+function indexScore(s) {
+  let a = idx.byDay.get(s.day); if (!a) idx.byDay.set(s.day, (a = [])); a.push(s)
+  let b = idx.byDevice.get(s.device); if (!b) idx.byDevice.set(s.device, (b = [])); b.push(s)
+  idx.seen.add(seenKey(s))
+}
+function rebuildIdx() { idx = { byDay: new Map(), byDevice: new Map(), seen: new Set() }; for (const s of db.scores) indexScore(s); scoresVer++ }
+const rescored = () => { scoresVer++ }
+rebuildIdx()
 AN.purgeOld(DATA_DIR)
 MX.purgeOldMatches(DATA_DIR)
 let dirty = true // persist the freshly generated salt
@@ -60,7 +76,7 @@ webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'mailto:admin@example.com',
 const localDay = (tz) => todayKey(new Date(Date.now() - tz * 60000)) // tz = Date#getTimezoneOffset()
 const localHour = (tz) => new Date(Date.now() - tz * 60000).getUTCHours()
 const streakOf = (device, today) => {
-  const days = new Set(db.scores.filter((s) => s.device === device).map((s) => s.day))
+  const days = new Set((idx.byDevice.get(device) || []).map((s) => s.day))
   let n = 0, d = new Date(today + 'T00:00:00Z')
   if (!days.has(today)) d.setUTCDate(d.getUTCDate() - 1)
   while (days.has(d.toISOString().slice(0, 10))) { n++; d.setUTCDate(d.getUTCDate() - 1) }
@@ -71,7 +87,7 @@ async function sendReminders() {
   for (const [device, rec] of Object.entries(db.subs)) {
     const today = localDay(rec.tz)
     if (localHour(rec.tz) < REMINDER_HOUR || rec.lastReminded === today) continue
-    if (db.scores.some((s) => s.device === device && s.day === today)) continue
+    if ((idx.byDevice.get(device) || []).some((s) => s.day === today)) continue
     const streak = streakOf(device, today)
     const body = streak > 0 ? `Your ${streak}-day streak ends tonight. Today's wheel is waiting! 🔥` : "Today's wheel is ready. Can you chase 300?"
     try {
@@ -94,7 +110,7 @@ function tidyTestNames() {
   let i = 0, done = 0
   const next = () => { for (;;) { const nm = `${FIRST_NAMES[i % FIRST_NAMES.length]} ${LAST_NAMES[(Math.floor(i / FIRST_NAMES.length) + i) % LAST_NAMES.length]}`.slice(0, 16); i++; if (!taken.has(nm)) { taken.add(nm); return nm } } }
   for (const dev of devs) { const nm = next(); for (const x of db.scores) if (x.device === dev) x.name = nm; for (const ch of Object.values(db.vs)) for (const e of ch.entries) if (e.device === dev) e.name = nm; done++ }
-  if (done) save()
+  if (done) { save(); rescored() }
   return done
 }
 { const n = tidyTestNames(); if (n) console.log(`renamed ${n} load-test players`) }
@@ -158,7 +174,8 @@ function verify(kind, ids, seed, level, cap = -1, target, extra = {}) {
   return simulate(xi, rng(hashStr(seed + xi.map((p) => p.id).join('|'))), target ?? batTarget(level), { cap, cond })
 }
 // public display names: letters/digits only, no offensive words, and admin-locked players always get a generated name
-const pidOf = (device) => AN.hashDevice(db, device).slice(0, 10)
+const pidCache = new Map()
+const pidOf = (device) => { let p = pidCache.get(device); if (!p) { p = AN.hashDevice(db, device).slice(0, 10); pidCache.set(device, p); if (pidCache.size > 200000) pidCache.clear() } return p }
 const cleanName = (n, device) => {
   const c = String(n || '').replace(/[^\p{L}\p{N} _.-]/gu, '').trim().slice(0, 16)
   return !c || badName(c) || (device && db.nameLock[pidOf(device)]) ? randomName() : c
@@ -175,34 +192,42 @@ const betterOf = (kind) => (a, b) => clearedOf(b) - clearedOf(a)
   || (kind === 'bowl' ? a.score - b.score || b.wickets - a.wickets : b.score - a.score)
   || (b.level || 1) - (a.level || 1) || a.balls - b.balls
 const bestPerDevice = (rows, better) => { const best = new Map(); for (const s of rows) { const b = best.get(s.device); if (!b || better(s, b) < 0) best.set(s.device, s) } return [...best.values()] }
+const boardRow = (s, i, device) => ({ rank: i + 1, name: s.name, score: s.score, wickets: s.wickets, won: s.won, balls: s.balls, level: s.level || 1, pid: pidOf(s.device), you: s.device === device })
 function board(kind, scope, device, day) {
-  const mine = db.scores.filter((s) => (s.kind || 'bat') === kind && (scope === 'all' || s.day === day))
-  const better = betterOf(kind)
-  const rows = bestPerDevice(mine, better).sort(better) // every game counts: each player's best of the day (or ever)
-  const ranked = rows.map((s, i) => ({ rank: i + 1, name: s.name, score: s.score, wickets: s.wickets, won: s.won, balls: s.balls, level: s.level || 1, pid: pidOf(s.device), you: s.device === device }))
-  return { top: ranked.slice(0, 50), me: ranked.find((r) => r.you) || null, total: ranked.length }
+  // every game counts: each player's best of the day (or ever); sorted once per change, then reused
+  const { rows, rankOf } = cached(`board|${kind}|${scope}|${scope === 'all' ? '' : day}`, () => {
+    const src = scope === 'all' ? db.scores : idx.byDay.get(day) || []
+    const better = betterOf(kind)
+    const rows = bestPerDevice(src.filter((s) => (s.kind || 'bat') === kind), better).sort(better)
+    return { rows, rankOf: new Map(rows.map((s, i) => [s.device, i])) }
+  })
+  const mi = device ? rankOf.get(device) : undefined
+  return { top: rows.slice(0, 50).map((s, i) => boardRow(s, i, device)), me: mi === undefined ? null : boardRow(rows[mi], mi, device), total: rows.length }
 }
 
 // ---------- hall of fame: everyone who has posted a score and won ----------
 function hall(device) {
-  const by = new Map()
-  for (const s of db.scores) {
-    const e = by.get(s.device) || { name: s.name, games: 0, wins: 0, batLvl: 0, bowlLvl: 0, full: 0, sup: 0, last: '' }
-    const k = s.kind || 'bat'
-    e.name = s.name; e.games++
-    if (s.won) {
-      e.wins++; if (!e.last || s.day > e.last) e.last = s.day
-      if (k === 'bat') e.batLvl = Math.max(e.batLvl, s.level || 1)
-      else if (k === 'bowl') e.bowlLvl = Math.max(e.bowlLvl, s.level || 1)
-      else if (k === 'full') e.full++
-      else e.sup++
+  const { rows, rankOf } = cached('hall', () => {
+    const by = new Map()
+    for (const s of db.scores) {
+      const e = by.get(s.device) || { d: s.device, name: s.name, games: 0, wins: 0, batLvl: 0, bowlLvl: 0, full: 0, sup: 0, last: '' }
+      const k = s.kind || 'bat'
+      e.name = s.name; e.games++
+      if (s.won) {
+        e.wins++; if (!e.last || s.day > e.last) e.last = s.day
+        if (k === 'bat') e.batLvl = Math.max(e.batLvl, s.level || 1)
+        else if (k === 'bowl') e.bowlLvl = Math.max(e.bowlLvl, s.level || 1)
+        else if (k === 'full') e.full++
+        else e.sup++
+      }
+      by.set(s.device, e)
     }
-    by.set(s.device, e)
-  }
-  const rows = [...by.entries()].filter(([, e]) => e.wins > 0)
-    .sort((a, b) => b[1].wins - a[1].wins || (b[1].batLvl + b[1].bowlLvl) - (a[1].batLvl + a[1].bowlLvl) || a[1].games - b[1].games)
-    .map(([d, e], i) => ({ rank: i + 1, name: e.name, wins: e.wins, games: e.games, batLvl: e.batLvl, bowlLvl: e.bowlLvl, full: e.full, sup: e.sup, last: e.last, pid: pidOf(d), you: d === device }))
-  return { top: rows.slice(0, 100), me: rows.find((r) => r.you) || null, total: rows.length }
+    const rows = [...by.values()].filter((e) => e.wins > 0).sort((a, b) => b.wins - a.wins || (b.batLvl + b.bowlLvl) - (a.batLvl + a.bowlLvl) || a.games - b.games)
+    return { rows, rankOf: new Map(rows.map((e, i) => [e.d, i])) }
+  })
+  const row = (e, i) => ({ rank: i + 1, name: e.name, wins: e.wins, games: e.games, batLvl: e.batLvl, bowlLvl: e.bowlLvl, full: e.full, sup: e.sup, last: e.last, pid: pidOf(e.d), you: e.d === device })
+  const mi = device ? rankOf.get(device) : undefined
+  return { top: rows.slice(0, 100).map(row), me: mi === undefined ? null : row(rows[mi], mi), total: rows.length }
 }
 
 // ---------- weekly tournament & daily recap ----------
@@ -210,26 +235,31 @@ function weekly(day, device) {
   const start = mondayOf(day)
   const endD = new Date(start + 'T00:00:00Z'); endD.setUTCDate(endD.getUTCDate() + 6)
   const end = endD.toISOString().slice(0, 10)
-  const by = new Map(), bestDay = new Map() // points: a player's best game per mode per day (more games can't farm points)
-  for (const s of db.scores) {
-    if (s.day < start || s.day > end) continue
-    const k = s.device + '|' + (s.kind || 'bat') + '|' + s.day
-    const g = bestDay.get(k); if (!g || (s.pts || 0) > (g.pts || 0)) bestDay.set(k, s)
-  }
-  for (const s of bestDay.values()) {
-    const e = by.get(s.device) || { name: s.name, pts: 0, games: 0 }
-    e.pts += s.pts || 0; e.games += 1; e.name = s.name
-    by.set(s.device, e)
-  }
-  const rows = [...by.entries()].map(([d, e]) => ({ ...e, pid: pidOf(d), you: d === device })).sort((a, b) => b.pts - a.pts || a.games - b.games)
-  const ranked = rows.map((r, i) => ({ rank: i + 1, ...r }))
-  return { start, end, top: ranked.slice(0, 50), me: ranked.find((r) => r.you) || null, total: ranked.length }
+  const { rows, rankOf } = cached('weekly|' + start, () => {
+    const by = new Map(), bestDay = new Map() // points: a player's best game per mode per day (more games can't farm points)
+    for (let d = new Date(start + 'T00:00:00Z'); d.toISOString().slice(0, 10) <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+      for (const s of idx.byDay.get(d.toISOString().slice(0, 10)) || []) {
+        const k = s.device + '|' + (s.kind || 'bat') + '|' + s.day
+        const g = bestDay.get(k); if (!g || (s.pts || 0) > (g.pts || 0)) bestDay.set(k, s)
+      }
+    }
+    for (const s of bestDay.values()) {
+      const e = by.get(s.device) || { d: s.device, name: s.name, pts: 0, games: 0 }
+      e.pts += s.pts || 0; e.games += 1; e.name = s.name
+      by.set(s.device, e)
+    }
+    const rows = [...by.values()].sort((a, b) => b.pts - a.pts || a.games - b.games)
+    return { rows, rankOf: new Map(rows.map((e, i) => [e.d, i])) }
+  })
+  const row = (e, i) => ({ rank: i + 1, name: e.name, pts: e.pts, games: e.games, pid: pidOf(e.d), you: e.d === device })
+  const mi = device ? rankOf.get(device) : undefined
+  return { start, end, top: rows.slice(0, 50).map(row), me: mi === undefined ? null : row(rows[mi], mi), total: rows.length }
 }
 const pubPlayer = (id) => { const p = byId.get(id); return p ? { name: p.name, team: p.team, year: p.year } : { name: '?', team: '', year: 0 } }
 function recap(day) {
   const out = {}
   for (const kind of ['bat', 'bowl', 'super']) {
-    const rows0 = db.scores.filter((s) => (s.kind || 'bat') === kind && s.day === day && Array.isArray(s.xi))
+    const rows0 = (idx.byDay.get(day) || []).filter((s) => (s.kind || 'bat') === kind && Array.isArray(s.xi))
     const rows = bestPerDevice(rows0, kind === 'super' ? (a, b) => (b.score - (b.opp || 0)) - (a.score - (a.opp || 0)) : betterOf(kind))
     rows.sort(kind === 'bowl' ? betterOf('bowl')
       : kind === 'super' ? (a, b) => (b.score - (b.opp || 0)) - (a.score - (a.opp || 0)) || b.score - a.score
@@ -381,6 +411,7 @@ const server = http.createServer(async (req, res) => {
         { const me = pidOf(body.device); db.reports = db.reports.filter((r) => r.by !== me); db.feedback = db.feedback.filter((f) => f.by !== me) }
         delete db.subs[body.device]
         db.scores = db.scores.filter((s) => s.device !== body.device)
+        rebuildIdx()
         for (const ch of Object.values(db.vs)) ch.entries = ch.entries.filter((e) => e.device !== body.device)
         AN.deleteDevice(db, DATA_DIR, body.device)
         MX.deleteDeviceMatches(DATA_DIR, AN.hashDevice(db, body.device))
@@ -404,6 +435,7 @@ const server = http.createServer(async (req, res) => {
           const nn = typeof b.name === 'string' && b.name.trim() ? cleanName(b.name) : randomName(); let n = 0
           const devices = new Set(db.scores.map((s) => s.device).filter((d) => pidOf(d) === b.pid))
           for (const s of db.scores) if (devices.has(s.device)) { s.name = nn; n++ }
+          rescored()
           for (const ch of Object.values(db.vs)) for (const e of ch.entries) if (devices.has(e.device)) e.name = nn
           db.nameLock[b.pid] = true; db.reports = db.reports.filter((r) => r.pid !== b.pid); save()
           return send(res, 200, { ok: true, name: nn, updated: n })
@@ -483,8 +515,9 @@ const server = http.createServer(async (req, res) => {
         }
         const r = verify(kind, xi, seed, level, cap, undefined, { attack: body.attack, first: body.first, impact: body.impact })
         if (!r) return send(res, 400, { error: 'invalid XI' })
-        if (db.scores.some((s) => s.device === device && s.seed === seed && (s.kind || 'bat') === kind) || (seed === day && db.scores.some((s) => s.device === device && s.day === day && !s.seed && (s.kind || 'bat') === kind))) return send(res, 409, { error: 'already submitted' })
+        if (idx.seen.has(`${device}|${seed}|${kind}`)) return send(res, 409, { error: 'already submitted' })
         db.scores.push({ device, kind, level, name: cleanName(name, device), day, seed, score: r.score, wickets: r.wickets, won: r.won, balls: r.ballsUsed, pts: dailyPoints(kind, level, r), opp: r.oppScore, xi, cap, ...(kind === 'full' ? { attack: body.attack, first: body.first, impact: body.impact || null, text: r.text } : {}) })
+        indexScore(db.scores[db.scores.length - 1]); rescored()
         save()
         return send(res, 200, { score: r.score, pts: dailyPoints(kind, level, r), text: r.text, ...(kind === 'super' || kind === 'full' ? {} : board(kind, 'today', device, day)) })
       }

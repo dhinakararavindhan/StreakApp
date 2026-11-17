@@ -56,7 +56,7 @@ const pct = (a, q) => { const s = [...a].sort((x, y) => x - y); return s.length 
 
 async function player(i) {
   const device = `load-${Date.now().toString(36)}-${i}-${Math.random().toString(36).slice(2, 8)}`
-  const ip = SPOOF ? `10.${(i >> 8) & 255}.${i & 255}.${1 + (i % 250)}` : null
+  const ip = SPOOF ? `${10 + (Number(process.env.IP_RUN || 0) % 200)}.${(i >> 8) & 255}.${i & 255}.${1 + (i % 250)}` : null
   const name = testName(i + NAME_OFFSET)
   await call('page /', 'GET', '/', null, ip)
   await call('GET leaderboard', 'GET', `/api/leaderboard?kind=bat&scope=today&day=${day}&device=${device}`, null, ip)
