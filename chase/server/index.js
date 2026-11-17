@@ -87,6 +87,18 @@ setInterval(sendReminders, 10 * 60 * 1000).unref()
 // every pick must satisfy the day's twist given the OTHER picks (a player must not be compared with himself)
 const twistOK = (mod, list) => list.every((p) => pickAllowed(mod, p, list.filter((q) => q !== p)))
 
+// Load-test players (device ids start with "load-") get unique, realistic names. Runs at startup and from the admin page; idempotent.
+function tidyTestNames() {
+  const taken = new Set(db.scores.map((x) => x.name)), devs = new Set()
+  for (const x of db.scores) if (typeof x.device === 'string' && x.device.startsWith('load-') && /^Load \d+$/.test(x.name)) devs.add(x.device)
+  let i = 0, done = 0
+  const next = () => { for (;;) { const nm = `${FIRST_NAMES[i % FIRST_NAMES.length]} ${LAST_NAMES[(Math.floor(i / FIRST_NAMES.length) + i) % LAST_NAMES.length]}`.slice(0, 16); i++; if (!taken.has(nm)) { taken.add(nm); return nm } } }
+  for (const dev of devs) { const nm = next(); for (const x of db.scores) if (x.device === dev) x.name = nm; for (const ch of Object.values(db.vs)) for (const e of ch.entries) if (e.device === dev) e.name = nm; done++ }
+  if (done) save()
+  return done
+}
+{ const n = tidyTestNames(); if (n) console.log(`renamed ${n} load-test players`) }
+
 // ---------- score verification ----------
 const byId = new Map(SQUADS.flatMap((s) => s.players.map((p) => [p.id, p]))) // every player (incl. squads switched off)
 const allPlayable = (list) => list.every((p) => p && isPlayable(p))
@@ -397,14 +409,7 @@ const server = http.createServer(async (req, res) => {
           return send(res, 200, { ok: true, name: nn, updated: n })
         }
         // tidy generated test players ("Load 12") into unique, realistic names
-        if (req.method === 'POST' && url.pathname === '/api/admin/rename-test') {
-          const taken = new Set(db.scores.map((x) => x.name)), byDevice = new Map()
-          for (const x of db.scores) if (/^Load \d+$/.test(x.name)) byDevice.set(x.device, true)
-          let i = 0, done = 0
-          const next = () => { for (;;) { const nm = `${FIRST_NAMES[i % FIRST_NAMES.length]} ${LAST_NAMES[(Math.floor(i / FIRST_NAMES.length) + i) % LAST_NAMES.length]}`.slice(0, 16); i++; if (!taken.has(nm)) { taken.add(nm); return nm } } }
-          for (const dev of byDevice.keys()) { const nm = next(); for (const x of db.scores) if (x.device === dev) x.name = nm; for (const ch of Object.values(db.vs)) for (const e of ch.entries) if (e.device === dev) e.name = nm; done++ }
-          save(); return send(res, 200, { ok: true, renamed: done })
-        }
+        if (req.method === 'POST' && url.pathname === '/api/admin/rename-test') return send(res, 200, { ok: true, renamed: tidyTestNames() })
         if (req.method === 'POST' && url.pathname === '/api/admin/dismiss') {
           const b = await readJson(req); db.reports = db.reports.filter((r) => r.pid !== b.pid); save(); return send(res, 200, { ok: true })
         }
