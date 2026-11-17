@@ -1,0 +1,24 @@
+# Render blueprint (alternative to Fly.io). Lives at the repo root; the app is in ./chase.
+# Push keys are generated automatically and stored on the disk. Set CONTACT_EMAIL (shown on the privacy page).
+services:
+  - type: web
+    name: chase-300
+    runtime: docker
+    rootDir: chase
+    dockerfilePath: ./Dockerfile
+    branch: claude/beautiful-bohr-znhivj   # change to main once merged
+    plan: starter        # persistent disks need a paid plan
+    healthCheckPath: /healthz
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: DB_FILE
+        value: /data/db.json
+      - key: CONTACT_EMAIL
+        sync: false
+      - key: ADMIN_TOKEN
+        sync: false   # long random secret; opens /admin (analytics dashboard + push broadcast)
+      - key: VAPID_SUBJECT
+        sync: false   # e.g. mailto:you@example.com
