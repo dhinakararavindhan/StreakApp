@@ -14,7 +14,7 @@ import * as AN from './analytics.js'
 import * as MX from './matches.js'
 import { AGE_BANDS, STATES, TEAM_CITIES } from '../src/profile.js'
 import { rng, hashStr, todayKey } from '../src/rng.js'
-import { badName } from '../src/names.js'
+import { badName, FIRST_NAMES, LAST_NAMES } from '../src/names.js'
 import { randomName } from '../src/util.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -395,6 +395,15 @@ const server = http.createServer(async (req, res) => {
           for (const ch of Object.values(db.vs)) for (const e of ch.entries) if (devices.has(e.device)) e.name = nn
           db.nameLock[b.pid] = true; db.reports = db.reports.filter((r) => r.pid !== b.pid); save()
           return send(res, 200, { ok: true, name: nn, updated: n })
+        }
+        // tidy generated test players ("Load 12") into unique, realistic names
+        if (req.method === 'POST' && url.pathname === '/api/admin/rename-test') {
+          const taken = new Set(db.scores.map((x) => x.name)), byDevice = new Map()
+          for (const x of db.scores) if (/^Load \d+$/.test(x.name)) byDevice.set(x.device, true)
+          let i = 0, done = 0
+          const next = () => { for (;;) { const nm = `${FIRST_NAMES[i % FIRST_NAMES.length]} ${LAST_NAMES[(Math.floor(i / FIRST_NAMES.length) + i) % LAST_NAMES.length]}`.slice(0, 16); i++; if (!taken.has(nm)) { taken.add(nm); return nm } } }
+          for (const dev of byDevice.keys()) { const nm = next(); for (const x of db.scores) if (x.device === dev) x.name = nm; for (const ch of Object.values(db.vs)) for (const e of ch.entries) if (e.device === dev) e.name = nm; done++ }
+          save(); return send(res, 200, { ok: true, renamed: done })
         }
         if (req.method === 'POST' && url.pathname === '/api/admin/dismiss') {
           const b = await readJson(req); db.reports = db.reports.filter((r) => r.pid !== b.pid); save(); return send(res, 200, { ok: true })

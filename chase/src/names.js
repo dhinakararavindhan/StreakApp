@@ -9,3 +9,7 @@ export function badName(name) {
   // short words (up to 4 letters: mc, bc, sex, cunt...) only count as whole words (after un-leeting) so "Mcgrath" or "Scunthorpe" are fine
   return BAD.some((w) => { const q = squash(w); return w.length <= 4 ? tokens.includes(q) || sq === q : sq.includes(q) })
 }
+
+// realistic display names for generated test players (60 x 60 = 3,600 unique combinations, at most 16 characters each)
+export const FIRST_NAMES = ['Aarav', 'Vihaan', 'Arjun', 'Rohan', 'Kabir', 'Ishaan', 'Aditya', 'Dev', 'Rahul', 'Karan', 'Nikhil', 'Varun', 'Siddh', 'Pranav', 'Harsh', 'Manav', 'Yash', 'Tarun', 'Vivek', 'Ankit', 'Meera', 'Ananya', 'Diya', 'Isha', 'Kavya', 'Riya', 'Sneha', 'Tanvi', 'Neha', 'Pooja', 'Aisha', 'Naina', 'Priya', 'Sana', 'Zoya', 'Mohit', 'Sachin', 'Imran', 'Faiz', 'Zaid', 'Ravi', 'Kiran', 'Suresh', 'Anil', 'Deepak', 'Gaurav', 'Lokesh', 'Mayank', 'Naveen', 'Omkar', 'Parth', 'Rishi', 'Sameer', 'Tejas', 'Uday', 'Vikram', 'Wasim', 'Yuvraj', 'Zubin', 'Abhay']
+export const LAST_NAMES = ['Sharma', 'Verma', 'Iyer', 'Nair', 'Reddy', 'Patel', 'Singh', 'Gupta', 'Mehta', 'Joshi', 'Kapoor', 'Malik', 'Khan', 'Das', 'Bose', 'Rao', 'Menon', 'Pillai', 'Shetty', 'Naidu', 'Kulkarni', 'Desai', 'Bhatt', 'Chopra', 'Saini', 'Yadav', 'Mishra', 'Tiwari', 'Pandey', 'Thakur', 'Rawat', 'Negi', 'Sinha', 'Ghosh', 'Dutta', 'Roy', 'Sen', 'Jain', 'Goel', 'Arora', 'Bajaj', 'Soni', 'Kohli', 'Gill', 'Dhar', 'Bedi', 'Rana', 'Anand', 'Mann', 'Walia', 'Ahuja', 'Basu', 'Hegde', 'Kamath', 'Pai', 'Rane', 'Sawant', 'Jadhav', 'More', 'Pawar']

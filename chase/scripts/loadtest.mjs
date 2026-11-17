@@ -15,10 +15,8 @@ const day = new Date().toISOString().slice(0, 10)
 const lat = {}, codes = {}, problems = []
 let seedN = 0
 const rnd = () => Math.random()
-// unique, realistic display names (60 first names x 60 surnames = 3,600 combinations, each at most 16 characters)
-const FIRST = ['Aarav', 'Vihaan', 'Arjun', 'Rohan', 'Kabir', 'Ishaan', 'Aditya', 'Dev', 'Rahul', 'Karan', 'Nikhil', 'Varun', 'Siddh', 'Pranav', 'Harsh', 'Manav', 'Yash', 'Tarun', 'Vivek', 'Ankit', 'Meera', 'Ananya', 'Diya', 'Isha', 'Kavya', 'Riya', 'Sneha', 'Tanvi', 'Neha', 'Pooja', 'Aisha', 'Naina', 'Priya', 'Sana', 'Zoya', 'Mohit', 'Sachin', 'Imran', 'Faiz', 'Zaid', 'Ravi', 'Kiran', 'Suresh', 'Anil', 'Deepak', 'Gaurav', 'Lokesh', 'Mayank', 'Naveen', 'Omkar', 'Parth', 'Rishi', 'Sameer', 'Tejas', 'Uday', 'Vikram', 'Wasim', 'Yuvraj', 'Zubin', 'Abhay']
-const LAST = ['Sharma', 'Verma', 'Iyer', 'Nair', 'Reddy', 'Patel', 'Singh', 'Gupta', 'Mehta', 'Joshi', 'Kapoor', 'Malik', 'Khan', 'Das', 'Bose', 'Rao', 'Menon', 'Pillai', 'Shetty', 'Naidu', 'Kulkarni', 'Desai', 'Bhatt', 'Chopra', 'Saini', 'Yadav', 'Mishra', 'Tiwari', 'Pandey', 'Thakur', 'Rawat', 'Negi', 'Sinha', 'Ghosh', 'Dutta', 'Roy', 'Sen', 'Jain', 'Goel', 'Arora', 'Bajaj', 'Soni', 'Kohli', 'Gill', 'Dhar', 'Bedi', 'Rana', 'Anand', 'Mann', 'Walia', 'Ahuja', 'Basu', 'Hegde', 'Kamath', 'Pai', 'Rane', 'Sawant', 'Jadhav', 'More', 'Pawar']
-const testName = (i) => `${FIRST[i % FIRST.length]} ${LAST[(Math.floor(i / FIRST.length) + i) % LAST.length]}`.slice(0, 16)
+import { FIRST_NAMES, LAST_NAMES } from '../src/names.js'
+const testName = (i) => `${FIRST_NAMES[i % FIRST_NAMES.length]} ${LAST_NAMES[(Math.floor(i / FIRST_NAMES.length) + i) % LAST_NAMES.length]}`.slice(0, 16)
 const fits = (p, s) => s + 1 >= p.lo && s + 1 <= p.hi
 
 function draftXI() {
